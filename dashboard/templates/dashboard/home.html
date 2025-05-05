@@ -1,0 +1,48 @@
+<form id="scanForm" method="POST" class="mb-4">
+    {% csrf_token %}
+    <div class="input-group">
+      <input type="text" name="cidr" id="cidrInput" class="form-control" placeholder="Enter CIDR (e.g. 10.0.0.0/24)" required>
+      <button type="submit" class="btn btn-primary">Scan Network</button>
+    </div>
+  </form>
+  
+  <div id="scanStatus" class="mt-3"></div>
+  
+  <script>
+  document.getElementById("scanForm").addEventListener("submit", function(e) {
+    e.preventDefault();
+  
+    const cidr = document.getElementById("cidrInput").value;
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+  
+    document.getElementById("scanStatus").innerHTML = "Scanning started...";
+  
+    fetch("{% url 'scan-start' %}", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "X-CSRFToken": csrfToken
+      },
+      body: new URLSearchParams({ cidr })
+    })
+    .then(res => res.json())
+    .then(data => {
+      const taskId = data.task_id;
+      const interval = setInterval(() => {
+        fetch(`/scan/status/${taskId}/`)
+          .then(res => res.json())
+          .then(status => {
+            if (status.state === "SUCCESS") {
+              clearInterval(interval);
+              document.getElementById("scanStatus").innerHTML = `<div class="alert alert-success">${status.result.success}</div>`;
+              location.reload();  // reload to show new nodes
+            } else if (status.state === "FAILURE") {
+              clearInterval(interval);
+              document.getElementById("scanStatus").innerHTML = `<div class="alert alert-danger">Scan failed.</div>`;
+            }
+          });
+      }, 1000);
+    });
+  });
+  </script>
+  

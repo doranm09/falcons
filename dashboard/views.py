@@ -9,8 +9,9 @@ from celery.result import AsyncResult
 
 
 def home(request):
-    nodes = Node.objects.all()
+    nodes = Node.objects.all().values('ip_address', 'name')
     return render(request, 'dashboard/home.html', {'nodes': nodes})
+
 
 def start_scan_ajax(request):
     if request.method == "POST":
@@ -18,10 +19,25 @@ def start_scan_ajax(request):
         task = scan_network_task.delay(cidr)
         return JsonResponse({"task_id": task.id})
 
+
 def check_scan_status(request, task_id):
     result = AsyncResult(task_id)
+    nodes = Node.objects.all().values('ip_address', 'name', 'status', 'description', 'last_heartbeat')
+
     response = {
         "state": result.state,
-        "result": result.result if result.ready() else None
+        "nodes": list(nodes),
     }
+
+    # Only include result if it's ready and serializable
+    if result.ready():
+        try:
+            result_val = result.result
+            if isinstance(result_val, Exception):
+                response["result"] = str(result_val)  # Convert exception to string
+            else:
+                response["result"] = result_val
+        except Exception as e:
+            response["result"] = f"Error fetching result: {str(e)}"
+
     return JsonResponse(response)

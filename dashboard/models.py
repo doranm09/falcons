@@ -13,3 +13,8 @@ class Node(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.ip_address})"
+
+class Link(models.Model):
+    source = models.ForeignKey(Node, related_name='links_from', on_delete=models.CASCADE)
+    destination = models.ForeignKey(Node, related_name='links_to', on_delete=models.CASCADE)
+    weight = models.FloatField()  # e.g., ping latency or static cost

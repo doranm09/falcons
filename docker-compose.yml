@@ -1,8 +1,6 @@
-version: "3.9"
-
 services:
   db:
-    image: postgres
+    image: postgres:17
     volumes:
       - ./data/db:/var/lib/postgresql/data
     environment:
@@ -12,7 +10,7 @@ services:
 
   web:
     build: .
-    command: python ./manage.py runserver 0.0.0.0:8000
+    command: python cyber_pen_test/manage.py runserver 0.0.0.0:8000
     volumes:
       - .:/code/
     ports:
@@ -30,3 +28,18 @@ services:
     image: redis:7
     ports:
       - "6379:6379"
+
+  celery:
+    build: .
+    command: celery -A cyber_pen_test worker --loglevel=info
+    volumes:
+      - .:/code/
+    depends_on:
+      - db
+      - redis
+    environment:
+      - POSTGRES_NAME=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - PYTHONPATH=/code
+

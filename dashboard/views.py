@@ -22,8 +22,6 @@ def home(request):
         'timestamp': now().timestamp()  # auto-busts cache
     })
 
-
-
 def start_scan_ajax(request):
     print(f"[DEBUG] Method received: {request.method}")
     if request.method == "POST":
@@ -109,3 +107,5 @@ def graph_data(request):
 
     return JsonResponse(elements, safe=False)
 
+def get_interfaces(request):
+    return JsonResponse({'interfaces': list_interfaces()})

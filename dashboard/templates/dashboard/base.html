@@ -2,35 +2,87 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Network Dashboard</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CyberTwin Dashboard</title>
 
-  <!-- ✅ Load Bootstrap CSS from CDN -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet" />
 
-  <!-- ✅ Your custom stylesheet -->
-  <link href="{% static 'dashboard/style.css' %}" rel="stylesheet">
+  <link href="{% static 'style.css' %}" rel="stylesheet" />
+  <style>
+    body {
+      background-color: #121212;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+    }
+
+    .sidebar {
+      width: 250px;
+      background-color: #1f1f1f;
+      height: 100vh;
+      position: fixed;
+      top: 0;
+      left: 0;
+      padding: 1.5rem 1rem;
+      display: flex;
+      flex-direction: column;
+      border-right: 2px solid #00ff99;
+    }
+
+    .sidebar .logo {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .sidebar .logo img {
+      height: 100px;
+      border-radius: 50%;
+    }
+
+    .sidebar .nav-link {
+      color: #e0e0e0;
+      margin: 0.75rem 0;
+      font-size: 1rem;
+    }
+
+    .sidebar .nav-link:hover {
+      color: #00ff99;
+    }
+
+    main {
+      margin-left: 250px;
+      padding: 2rem;
+      width: 100%;
+    }
+
+    .sidebar hr {
+      border-color: #00ff99;
+    }
+  </style>
 </head>
 <body>
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-    <div class="container-fluid">
-      <a class="navbar-brand" href="{% url 'dashboard-home' %}">NetScan</a>
-      <div class="collapse navbar-collapse">
-        <ul class="navbar-nav ms-auto">
-          <li class="nav-item">
-            <a class="nav-link" href="{% url 'dashboard-home' %}">Dashboard</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{% url 'history' %}">History</a>  <!-- New History Link -->
-          </li>
-        </ul>
-      </div>
+  <div class="sidebar">
+    <div class="logo">
+      <img src="{% static 'logo.png' %}" alt="CyberTwin Logo" />
+      <h5 class="mt-2">CyberTwin</h5>
     </div>
-  </nav>
-  <main class="container mt-4">
-    {% block content %}{% endblock %}
+    <hr />
+    <nav class="nav flex-column">
+      <a class="nav-link" href="{% url 'dashboard-home' %}"><i class="bi bi-shield-lock-fill"></i> Dashboard</a>
+      <a class="nav-link" href="{% url 'history' %}"><i class="bi bi-clock-history"></i> Scan History</a>
+      <a class="nav-link" href="#"><i class="bi bi-diagram-3-fill"></i> Graph View</a>
+      <a class="nav-link" href="#"><i class="bi bi-broadcast-pin"></i> Passive Listener</a>
+      <a class="nav-link" href="#"><i class="bi bi-terminal"></i> Manual Trigger</a>
+      <a class="nav-link" href="#"><i class="bi bi-cpu-fill"></i> System Status</a>
+      <a class="nav-link" href="#"><i class="bi bi-gear-fill"></i> Settings</a>
+    </nav>
+  </div>
 
+  <main>
+    {% block content %}{% endblock %}
     {% block extra_scripts %}{% endblock %}
   </main>
 </body>

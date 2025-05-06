@@ -2,19 +2,34 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Cyber Pen Test Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="{% static 'dashboard/style.css' %}" rel="stylesheet">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Dashboard</title>
+
+  <!-- ✅ Load Bootstrap CSS from CDN -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- ✅ Your custom stylesheet -->
+  <link href="{% static 'dashboard/style.css' %}" rel="stylesheet">
 </head>
 <body>
-    <nav class="navbar navbar-dark bg-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/">Cyber Pen Test</a>
-        </div>
-    </nav>
-    <div class="container mt-4">
-        {% block content %}{% endblock %}
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="{% url 'dashboard-home' %}">NetScan</a>
+      <div class="collapse navbar-collapse">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item">
+            <a class="nav-link" href="{% url 'dashboard-home' %}">Dashboard</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{% url 'history' %}">History</a>  <!-- New History Link -->
+          </li>
+        </ul>
+      </div>
     </div>
+  </nav>
+  <main class="container mt-4">
+    {% block content %}{% endblock %}
+  </main>
 </body>
 </html>

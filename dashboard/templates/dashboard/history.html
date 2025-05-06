@@ -1,0 +1,24 @@
+{% extends "dashboard/base.html" %}
+{% block content %}
+<h3>Scan History</h3>
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th>CIDR</th>
+      <th>Timestamp</th>
+      <th>Status</th>
+      <th>Summary</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for run in runs %}
+    <tr>
+      <td>{{ run.cidr }}</td>
+      <td>{{ run.timestamp }}</td>
+      <td>{{ run.status }}</td>
+      <td>{{ run.result_summary }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

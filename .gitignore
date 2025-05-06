@@ -1,0 +1,75 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+.Python
+env/
+venv/
+ENV/
+env.bak/
+*.egg-info/
+.eggs/
+*.egg
+*.pkl
+
+# === Django ===
+*.log
+local_settings.py
+db.sqlite3
+media/
+staticfiles/
+
+# === Celery ===
+celerybeat-schedule
+celerybeat.pid
+
+# === IDEs ===
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# === OS / Editor cruft ===
+.DS_Store
+Thumbs.db
+
+# === Docker / PostgreSQL ===
+*.pid
+*.seed
+data/db/
+
+# === Coverage / Testing ===
+htmlcov/
+.tox/
+.coverage
+.cache
+pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+
+# === Migrations (optional) ===
+# Uncomment if you want to exclude initial migrations
+# **/migrations/*.py
+# **/migrations/*.pyc
+
+# === Pip ===
+pip-log.txt
+pip-delete-this-directory.txt
+
+# === Logs ===
+*.log
+*.out
+*.err
+*.gz
+
+# === Compiled Cython files ===
+*.c
+*.so
+
+# === NPM / JS (if used) ===
+node_modules/
+npm-debug.log
+yarn-error.log

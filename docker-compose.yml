@@ -1,71 +1,68 @@
 services:
   db:
-    image: postgres:17
+    image: postgres:17        # ← stable tag
     volumes:
       - ./data/db:/var/lib/postgresql/data
     environment:
-      - POSTGRES_DB=postgres
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-    networks:
-      - appnet
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:              # optional but useful
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks: [appnet]
 
   web:
     build: .
-    command: python cyber_pen_test/manage.py runserver 0.0.0.0:8000
-    volumes:
-      - .:/code/
-    ports:
-      - "8000:8000"
+    command: >
+      sh -c "python cyber_pen_test/manage.py migrate &&
+             python cyber_pen_test/manage.py runserver 0.0.0.0:8000"
     environment:
-      - POSTGRES_NAME=postgres
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - PYTHONPATH=/code
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_HOST: db        # if your settings.py expects it
+      PYTHONPATH: /code
     depends_on:
-      - db
-      - redis
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-    networks:
-      - appnet
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks: [appnet]
+    ports: ["8000:8000"]
+    volumes: [.:/code]
+
+  redis:
+    image: redis:7
+    networks: [appnet]         # put it on the same network
+
+  celery:
+    build: .
+    command: celery -A cyber_pen_test worker --loglevel=info
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_HOST: db
+      PYTHONPATH: /code
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks: [appnet]
+    volumes: [.:/code]
 
   sniffer:
     build:
       context: .
       dockerfile: sniffer/Dockerfile.sniffer
     command: python /sniffer/listener_api.py
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-    ports:
-      - "5000:5000"     # <-- ADD THIS
-    volumes:
-      - .:/code
-    networks:
-      - appnet          # <-- ADD THIS if other services need to communicate
-
-
-  redis:
-    image: redis:7
-    ports:
-      - "6379:6379"
-
-  celery:
-    build: .
-    command: celery -A cyber_pen_test worker --loglevel=info
-    volumes:
-      - .:/code/
-    depends_on:
-      - db
-      - redis
-    environment:
-      - POSTGRES_NAME=postgres
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - PYTHONPATH=/code
+    cap_add: [NET_ADMIN, NET_RAW]
+    ports:  ["5000:5000"]
+    networks: [appnet]
 
 networks:
   appnet:
-

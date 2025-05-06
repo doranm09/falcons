@@ -49,7 +49,40 @@ document.addEventListener('DOMContentLoaded', function () {
           const cy = cytoscape({
             container: document.getElementById('cy'),
             elements: data,
-            style: [/* same style config */],
+            style: [
+              {
+                selector: 'node',
+                style: {
+                  'label': 'data(label)',
+                  'background-color': '#007bff',
+                  'text-valign': 'center',
+                  'text-halign': 'center',
+                  'color': '#fff',
+                  'font-size': 12
+                }
+              },
+              {
+                selector: 'edge',
+                style: {
+                  'label': 'data(weight)',
+                  'font-size': 10,
+                  'text-background-color': '#ffffff',
+                  'text-background-opacity': 1,
+                  'text-background-shape': 'roundrectangle',
+                  'text-border-color': '#ccc',
+                  'text-border-width': 1,
+                  'text-border-opacity': 1,
+                  'text-rotation': 'autorotate',
+                  'line-color': '#999',
+                  'target-arrow-shape': 'triangle',
+                  'target-arrow-color': '#999',
+                  'curve-style': 'bezier',
+                  'width': 2
+                }
+              }
+            ],
+            
+            
             layout: { name: 'cose', animate: true }
           });
   

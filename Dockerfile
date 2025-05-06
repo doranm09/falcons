@@ -7,7 +7,7 @@ ENV PYTHONUNBUFFERED 1
 WORKDIR /code
 
 # Install system dependencies (add ping here)
-RUN apt-get update && apt-get install -y iputils-ping && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y iputils-ping net-tools && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies
 COPY requirements.txt /code/

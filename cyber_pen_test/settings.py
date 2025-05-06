@@ -132,6 +132,7 @@ STATIC_URL = '/static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CELERY_RESULT_BACKEND = 'redis://redis:6379/0'
+# CELERY_BROKER_URL = 'redis://localhost:6379/0'  # or 'redis://redis:6379/0'
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / "dashboard/static"]
 # Where collectstatic will put the static files for production

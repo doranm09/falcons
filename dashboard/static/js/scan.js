@@ -49,8 +49,52 @@ document.addEventListener('DOMContentLoaded', function () {
           const cy = cytoscape({
             container: document.getElementById('cy'),
             elements: data,
-            style: [/* same style config */],
-            layout: { name: 'cose', animate: true }
+            style: [
+              {
+                selector: 'node',
+                style: {
+                  'label': 'data(label)',
+                  'background-color': '#007bff',
+                  'text-valign': 'bottom',         // Keeps label below the node
+                  'text-halign': 'center',         // Center-align the label horizontally
+                  'color': '#000',
+                  'font-size': 12,
+                  'text-margin-y': 6,              // Adds space below the node
+                  'text-background-color': '#fff', // Improves readability
+                  'text-background-opacity': 1,
+                  'text-background-shape': 'roundrectangle',
+                  'text-border-color': '#333',
+                  'text-border-width': 0.5,
+                  'text-border-opacity': 0.8
+                }
+              },
+              {
+                selector: 'edge',
+                style: {
+                  'label': 'data(weight)',
+                  'font-size': 10,
+                  'color': '#000',
+                  'text-background-color': '#fff',
+                  'text-background-opacity': 1,
+                  'text-background-shape': 'roundrectangle',
+                  'text-rotation': 'autorotate',
+                  'curve-style': 'bezier',
+                  'width': 2,
+              
+                  // color mapped to numeric value
+                  'line-color': 'mapData(raw_weight, 0, 6, green, red)',
+                  'target-arrow-shape': 'triangle',
+                  'target-arrow-color': 'mapData(raw_weight, 0, 6, green, red)'
+                }
+              }
+            ],
+            layout: {
+              name: 'concentric',
+              concentric: node => node.degree(),
+              levelWidth: () => 2,
+              spacingFactor: 5,
+              animate: true
+            }
           });
   
           let selectedNode = null;

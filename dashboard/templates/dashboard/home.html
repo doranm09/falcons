@@ -4,7 +4,7 @@
 {% block content %}
 <div class="card mb-4">
   <div class="card-body">
-    <form id="scan-form" class="row g-3">
+    <form id="scan-form" class="row g-3" method="post">
       {% csrf_token %}
       <div class="col-auto">
         <input type="text" class="form-control" name="cidr" placeholder="Enter CIDR (e.g., 192.168.1.0/24)">
@@ -48,5 +48,5 @@
 
 {% block extra_scripts %}
   <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
-  <script src="{% static 'dashboard/js/scan.js' %}"></script>
+  <script src="{% static 'js/scan.js' %}"></script>
 {% endblock %}

@@ -7,6 +7,8 @@ services:
       - POSTGRES_DB=postgres
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
+    networks:
+      - appnet
 
   web:
     build: .
@@ -23,6 +25,23 @@ services:
     depends_on:
       - db
       - redis
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    networks:
+      - appnet
+
+  sniffer:
+    build:
+      context: .
+      dockerfile: sniffer/Dockerfile.sniffer
+    command: python /sniffer/listener.py
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    network_mode: host
+    volumes:
+      - .:/code
 
   redis:
     image: redis:7
@@ -42,4 +61,7 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - PYTHONPATH=/code
+
+networks:
+  appnet:
 

@@ -6,8 +6,25 @@ ENV PYTHONUNBUFFERED 1
 
 WORKDIR /code
 
-# Install system dependencies (add ping here)
-RUN apt-get update && apt-get install -y iputils-ping net-tools && rm -rf /var/lib/apt/lists/*
+# Install system dependencies
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    tcpdump \
+    tshark \
+    libpcap-dev \
+    build-essential \
+    python3-dev \
+    gcc \
+    net-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python libraries
+RUN pip install --no-cache-dir \
+    scapy \
+    pyshark
+
+# Ensure TShark permissions (non-root if needed)
+RUN setcap cap_net_raw,cap_net_admin=eip /usr/bin/dumpcap
 
 # Install dependencies
 COPY requirements.txt /code/

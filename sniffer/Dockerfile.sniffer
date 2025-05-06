@@ -1,8 +1,21 @@
 FROM python:3.10-slim
 
-RUN apt-get update && apt-get install -y tcpdump tshark iproute2 && \
-    pip install scapy pyshark
+# Add build tools and packet capture dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    python3-dev \
+    libffi-dev \
+    libpcap-dev \
+    tcpdump \
+    tshark \
+    iproute2 \
+    && pip install --upgrade pip
+
+# Install Python packages
+RUN pip install scapy pyshark flask netifaces
 
 WORKDIR /sniffer
 COPY sniffer/ /sniffer/
-CMD ["tail", "-f", "/dev/null"]
+
+ENTRYPOINT ["python", "listener_api.py"]
+

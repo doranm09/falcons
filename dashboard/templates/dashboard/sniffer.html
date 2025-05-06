@@ -1,0 +1,46 @@
+<h2>Sniffer Control</h2>
+<div>
+  <select id="interface-select" class="form-select mb-2"></select>
+  <button class="btn btn-success" onclick="startSniffing()">Start</button>
+  <button class="btn btn-danger" onclick="stopSniffing()">Stop</button>
+</div>
+
+<div id="sniffer-status" class="mt-2 text-info"></div>
+
+<script>
+  function loadInterfaces() {
+    fetch('/sniffer/interfaces/')
+      .then(res => res.json())
+      .then(data => {
+        const sel = document.getElementById('interface-select');
+        data.interfaces.forEach(iface => {
+          const opt = document.createElement('option');
+          opt.value = iface;
+          opt.text = iface;
+          sel.appendChild(opt);
+        });
+      });
+  }
+
+  function startSniffing() {
+    const iface = document.getElementById('interface-select').value;
+    fetch('/sniffer/start/', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `interface=${iface}`
+    }).then(res => res.json()).then(data => {
+      document.getElementById('sniffer-status').innerText = JSON.stringify(data);
+    });
+  }
+
+  function stopSniffing() {
+    fetch('/sniffer/stop/', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+    }).then(res => res.json()).then(data => {
+      document.getElementById('sniffer-status').innerText = JSON.stringify(data);
+    });
+  }
+
+  loadInterfaces();
+</script>

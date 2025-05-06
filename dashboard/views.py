@@ -14,6 +14,10 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.http import JsonResponse
 from .models import ScanRun
 from django.utils.timezone import now
+from django.views.decorators.csrf import csrf_exempt
+
+
+SNIFFER_BASE_URL = 'http://localhost:5000'
 
 def home(request):
     nodes = Node.objects.all().values('ip_address', 'name')
@@ -109,3 +113,22 @@ def graph_data(request):
 
 def get_interfaces(request):
     return JsonResponse({'interfaces': list_interfaces()})
+
+
+@csrf_exempt
+def start_listener(request):
+    if request.method == 'POST':
+        iface = request.POST.get("interface")
+        try:
+            res = requests.post(f"{SNIFFER_BASE_URL}/start", json={"interface": iface})
+            return JsonResponse(res.json(), status=res.status_code)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+
+@csrf_exempt
+def stop_listener(request):
+    try:
+        res = requests.post(f"{SNIFFER_BASE_URL}/stop")
+        return JsonResponse(res.json(), status=res.status_code)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)

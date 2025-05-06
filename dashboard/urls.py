@@ -8,5 +8,7 @@ urlpatterns = [
     path('paths/', views.shortest_paths, name='shortest-paths'),
     path('history/', views.history, name='history'),  # <-- Add this line
     path('graph/data/', views.graph_data, name='graph-data'),
-
+    path('sniffer/interfaces/', views.get_interfaces, name='sniffer-interfaces'),
+    path('sniffer/start/', views.start_listener, name='sniffer-start'),
+    path('sniffer/stop/', views.stop_listener, name='sniffer-stop')
 ]

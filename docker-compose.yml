@@ -35,13 +35,17 @@ services:
     build:
       context: .
       dockerfile: sniffer/Dockerfile.sniffer
-    command: python /sniffer/listener.py
+    command: python /sniffer/listener_api.py
     cap_add:
       - NET_ADMIN
       - NET_RAW
-    network_mode: host
+    ports:
+      - "5000:5000"     # <-- ADD THIS
     volumes:
       - .:/code
+    networks:
+      - appnet          # <-- ADD THIS if other services need to communicate
+
 
   redis:
     image: redis:7

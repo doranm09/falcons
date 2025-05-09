@@ -1,6 +1,6 @@
 from django.shortcuts import render, redirect
 from django.contrib import messages
-from .models import Node
+from .models import Node, ScanRun
 import ipaddress
 import subprocess
 from django.http import JsonResponse
@@ -17,14 +17,17 @@ from django.utils.timezone import now
 from django.views.decorators.csrf import csrf_exempt
 
 
-SNIFFER_BASE_URL = 'http://localhost:5000'
+SNIFFER_BASE_URL = 'http://localhost:5050'
 
 def home(request):
     nodes = Node.objects.all().values('ip_address', 'name')
+    scan_history = ScanRun.objects.all().order_by('-timestamp')[:10]  # limit to last 10
     return render(request, 'dashboard/home.html', {
         'nodes': nodes,
-        'timestamp': now().timestamp()  # auto-busts cache
+        'scan_history': scan_history,
+        'timestamp': now().timestamp()
     })
+
 
 def start_scan_ajax(request):
     print(f"[DEBUG] Method received: {request.method}")
@@ -132,3 +135,15 @@ def stop_listener(request):
         return JsonResponse(res.json(), status=res.status_code)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+
+@require_GET
+def get_scan_history(request):
+    recent = ScanRun.objects.all().order_by('-timestamp')[:10]
+    history = [{
+        "timestamp": run.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+        "cidr": run.cidr,
+        "status": run.status,
+        "summary": run.result_summary or "-"
+    } for run in recent]
+    return JsonResponse({"history": history})

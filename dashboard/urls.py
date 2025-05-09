@@ -10,5 +10,7 @@ urlpatterns = [
     path('graph/data/', views.graph_data, name='graph-data'),
     path('sniffer/interfaces/', views.get_interfaces, name='sniffer-interfaces'),
     path('sniffer/start/', views.start_listener, name='sniffer-start'),
-    path('sniffer/stop/', views.stop_listener, name='sniffer-stop')
+    path('sniffer/stop/', views.stop_listener, name='sniffer-stop'),
+    path('scan/history/', views.get_scan_history, name='scan-history'),
+
 ]

@@ -17,6 +17,31 @@
   </div>
 </div>
 
+<h3>Recent Scan History</h3>
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th scope="col">Timestamp</th>
+      <th scope="col">CIDR</th>
+      <th scope="col">Status</th>
+      <th scope="col">Summary</th>
+    </tr>
+  </thead>
+  <tbody id="scan-history-body">
+    {% for run in scan_history %}
+      <tr>
+        <td>{{ run.timestamp|date:"Y-m-d H:i:s" }}</td>
+        <td>{{ run.cidr }}</td>
+        <td>{{ run.status }}</td>
+        <td>{{ run.result_summary|default:"-" }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="4">No scans found.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+
 <h5>Discovered Nodes</h5>
 <table class="table table-striped">
   <thead>

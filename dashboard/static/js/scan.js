@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const scanForm = document.getElementById('scan-form');
     const scanStatus = document.getElementById('scan-status');
     const nodesBody = document.getElementById('nodes-body');
-  
+
     scanForm.addEventListener('submit', async function (e) {
       e.preventDefault();
       const formData = new FormData(scanForm);
@@ -17,13 +17,14 @@ document.addEventListener('DOMContentLoaded', function () {
       const data = await response.json();
       const taskId = data.task_id;
       scanStatus.innerText = 'Scan started...';
-  
+
       const interval = setInterval(async () => {
         const statusRes = await fetch(`/scan/status/${taskId}/`);
         const statusData = await statusRes.json();
         if (statusData.state === 'SUCCESS') {
           clearInterval(interval);
           scanStatus.innerText = 'Scan complete. Nodes updated.';
+          updateScanHistory();
           nodesBody.innerHTML = '';
           statusData.nodes.forEach(node => {
             nodesBody.innerHTML += `
@@ -41,7 +42,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
       }, 2000);
     });
-  
+
     window.renderGraph = function () {
       fetch('/graph/data/')
         .then(response => response.json())
@@ -80,7 +81,7 @@ document.addEventListener('DOMContentLoaded', function () {
                   'text-rotation': 'autorotate',
                   'curve-style': 'bezier',
                   'width': 2,
-              
+
                   // color mapped to numeric value
                   'line-color': 'mapData(raw_weight, 0, 6, green, red)',
                   'target-arrow-shape': 'triangle',
@@ -96,7 +97,7 @@ document.addEventListener('DOMContentLoaded', function () {
               animate: true
             }
           });
-  
+
           let selectedNode = null;
           cy.on('tap', 'node', function (evt) {
             const tapped = evt.target;
@@ -119,7 +120,25 @@ document.addEventListener('DOMContentLoaded', function () {
           });
         });
     };
-  
+
     renderGraph();
+
+    function updateScanHistory() {
+      fetch('/scan/history/')
+        .then(response => response.json())
+        .then(data => {
+          const historyTable = document.getElementById('scan-history-body');
+          historyTable.innerHTML = '';
+          data.history.forEach(run => {
+            historyTable.innerHTML += `
+              <tr>
+                <td>${run.timestamp}</td>
+                <td>${run.cidr}</td>
+                <td>${run.status}</td>
+                <td>${run.summary}</td>
+              </tr>`;
+          });
+        });
+    }
+
   });
-  

@@ -61,7 +61,7 @@ services:
       dockerfile: sniffer/Dockerfile.sniffer
     command: python /sniffer/listener_api.py
     cap_add: [NET_ADMIN, NET_RAW]
-    ports:  ["5000:5000"]
+    ports:  ["5050:5050"]
     networks: [appnet]
 
 networks:

@@ -139,17 +139,59 @@ cyber_pen_test/
 
 ---
 
-## 🧠 Roadmap (in progress)
+## 📅 Roadmap
+### ✅ Current Functionality
+- [x] Task 1.1: Passive Listener to capture real-time traffic
+- [x] Task 1.2: Extended Node model with protocols, banners, status
+- [x] Task 1.3: Visualize topology as weighted graph (Cytoscape)
+- [x] Task 1.4: Versioned rescan support
+- [x] Task 2.1: Backend vulnerability scan module stub
+- [x] Task 2.3: Node color gradient based on CVE severity
 
-- [x] Passive sniffer interface via Flask
-- [x] Host agent with persistent command polling
-- [x] NVD integration via keyword
-- [ ] CPE-to-node fingerprinting
-- [ ] OpenVAS/Greenbone plugin integration
-- [ ] Regulatory CDA tier export + diff
+---
+
+### 🔬 In Progress / Research-Driven Tasks
+#### 3. Asset Importance via Causal Learning
+- [ ] Task 3.1: Integrate DoWhy / PyWhy causal backends
+- [ ] Task 3.2: Compute `causal_score` per node
+- [ ] Task 3.3: Encode causal score visually (e.g., node size or border thickness)
+- [ ] Task 3.4: Generate causal impact heatmap for graph
+
+#### 4. CDA Tier Classification Engine
+- [ ] Task 4.1: Fuse `causal_score` and `vuln_score` into tier level (I, II, III)
+- [ ] Task 4.2: Admin-adjustable thresholds for tiers
+- [ ] Task 4.3: Filter/Highlight nodes by tier level
+- [ ] Task 4.4: Export tiered CDA report with justification
+
+#### 5. Time-Based Monitoring
+- [ ] Task 5.1: Track network snapshots by scan timestamp
+- [ ] Task 5.2: Plot time series of CVEs and tier changes
+- [ ] Task 5.3: Visual diff for graph deltas
+
+#### 6. Digital Twin + HIL Integration
+- [ ] Task 6.1: Mock digital twin API for reactor operational data
+- [ ] Task 6.2: Sync state between ops model and cyber twin
+- [ ] Task 6.3: Display live reactor variables (e.g. core pressure, flow) on graph nodes
+- [ ] Task 6.4: Enable HIL mode with external testbed (e.g., Georgia Tech)
+
+#### 7. Real-time Packet Analytics
+- [ ] Task 7.1: Extract protocol + banner info from PyShark captures
+- [ ] Task 7.2: Enrich node metadata with passive scan results
+- [ ] Task 7.3: Flag packets matching CVE fingerprints in real-time
+- [ ] Task 7.4: Map protocol activity to live heatmap overlays
+
+---
 
 ---
 
 ## 🙋‍♂️ Questions?
 
 Open an issue or contact via GitHub or LinkedIn. This work is under development as part of a doctoral research effort into cyber-informed engineering and digital twin resilience.
+
+## 📄 Research Abstract
+**Title**: Causal-Aware Cybersecurity Digital Twins for Networked Nuclear Systems
+
+**Abstract**:
+This work presents a novel cybersecurity digital twin architecture for advanced nuclear reactors, integrating causal inference, vulnerability awareness, and real-time network telemetry. Unlike conventional vulnerability scanners, our system overlays cyber-physical impact models atop live network scans, enabling proactive risk prioritization based on operational criticality. The backend includes passive and active probing components, a shortest-path engine, and CVE classification logic. We extend this with a causal learning module that quantifies the system-wide effect of node compromise, and a tiered classification engine for Critical Digital Assets (CDAs). Through synchronized physical twin data (e.g., flow rate, control rod position), the framework simulates cyber-physical state evolution under fault scenarios. The platform supports time-based graph diffs, regulatory overlays, and simulated penetration testing to assess resilience. Our contributions lie in the integration of causal reasoning, digital twin synchronization, and a security-by-design interface for the nuclear cyber-physical domain.
+
+---

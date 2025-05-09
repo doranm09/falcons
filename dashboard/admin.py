@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Node, Link, ScanRun
+from .models import Node, Link, ScanRun, Vulnerability
 
 @admin.register(Node)
 class NodeAdmin(admin.ModelAdmin):
@@ -17,3 +17,9 @@ class LinkAdmin(admin.ModelAdmin):
 class ScanRunAdmin(admin.ModelAdmin):
     list_display = ('cidr', 'timestamp', 'status', 'result_summary')
     readonly_fields = ('timestamp',)
+
+@admin.register(Vulnerability)
+class VulnerabilityAdmin(admin.ModelAdmin):
+    list_display = ("cve_id", "severity", "score", "published", "last_modified")
+    search_fields = ("cve_id", "description", "references")
+    list_filter = ("severity", "published")

@@ -27,3 +27,17 @@ class Link(models.Model):
     source = models.ForeignKey(Node, related_name='links_from', on_delete=models.CASCADE)
     destination = models.ForeignKey(Node, related_name='links_to', on_delete=models.CASCADE)
     weight = models.FloatField()
+
+class Vulnerability(models.Model):
+    cve_id = models.CharField(max_length=32, unique=True)
+    description = models.TextField()
+    severity = models.CharField(max_length=16, blank=True)
+    score = models.FloatField(null=True, blank=True)
+    published = models.DateTimeField()
+    last_modified = models.DateTimeField()
+    references = models.TextField(blank=True)
+    nodes = models.ManyToManyField(Node, blank=True)
+
+    def __str__(self):
+        return f"{self.cve_id} ({self.severity})"
+

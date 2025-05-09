@@ -3,3 +3,4 @@ psycopg2-binary>=2.8
 celery>=5.2
 redis
 django-celery-beat
+requests

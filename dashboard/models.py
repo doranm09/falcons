@@ -12,15 +12,26 @@ class ScanRun(models.Model):
         return f"Scan on {self.cidr} at {self.timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
 
 class Node(models.Model):
-    scan_run = models.ForeignKey(ScanRun, on_delete=models.CASCADE, related_name="nodes", null=True)
+    scan_run = models.ForeignKey(ScanRun, on_delete=models.CASCADE, related_name="nodes", null=True, blank=True)
     ip_address = models.GenericIPAddressField()
     name = models.CharField(max_length=255)
     status = models.CharField(max_length=32, default="online")
     last_heartbeat = models.DateTimeField(null=True, blank=True)
     description = models.TextField(blank=True)
+    agent_id = models.CharField(max_length=64, unique=True, null=True, blank=True)  # New
 
     def __str__(self):
         return f"{self.name} ({self.ip_address})"
+
+class NodeInterface(models.Model):
+    node = models.ForeignKey(Node, on_delete=models.CASCADE, related_name="interfaces")
+    name = models.CharField(max_length=64)
+    ip = models.GenericIPAddressField()
+    mac = models.CharField(max_length=64)
+
+    def __str__(self):
+        return f"{self.node.name} - {self.name} ({self.ip})"
+
 
 class Link(models.Model):
     scan_run = models.ForeignKey(ScanRun, on_delete=models.CASCADE, related_name="links", null=True)
@@ -41,3 +52,19 @@ class Vulnerability(models.Model):
     def __str__(self):
         return f"{self.cve_id} ({self.severity})"
 
+class AgentCommand(models.Model):
+    agent_id = models.CharField(max_length=64)
+    action = models.CharField(max_length=64)
+    parameters = models.JSONField(blank=True, null=True)
+    created = models.DateTimeField(auto_now_add=True)
+    acknowledged = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"{self.agent_id} - {self.action}"
+
+
+class CommandResult(models.Model):
+    command = models.ForeignKey(AgentCommand, on_delete=models.CASCADE)
+    agent_id = models.CharField(max_length=64)
+    output = models.TextField()
+    timestamp = models.DateTimeField(auto_now_add=True)

@@ -33,7 +33,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 <td>${node.name}</td>
                 <td>${node.status}</td>
                 <td>${node.last_heartbeat || ''}</td>
-                <td>${node.description || ''}</td>
+                <td>
+                  ${node.description || ''}
+                  <ul style="font-size: 0.85em; margin-top: 0.5em;">
+                    ${(node.interfaces || []).map(i => `<li>${i.name}: ${i.ip} / ${i.mac}</li>`).join('')}
+                  </ul>
+                </td>
               </tr>`;
           });
           renderGraph();

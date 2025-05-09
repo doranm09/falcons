@@ -12,5 +12,7 @@ urlpatterns = [
     path('sniffer/start/', views.start_listener, name='sniffer-start'),
     path('sniffer/stop/', views.stop_listener, name='sniffer-stop'),
     path('scan/history/', views.get_scan_history, name='scan-history'),
-
+    path('agent/report/', views.agent_report),
+    path('agent/commands/', views.agent_commands),
+    path('agent/command_result/', views.agent_command_result),
 ]

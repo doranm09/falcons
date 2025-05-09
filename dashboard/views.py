@@ -1,6 +1,6 @@
 from django.shortcuts import render, redirect
 from django.contrib import messages
-from .models import Node, ScanRun
+from .models import Node, ScanRun, AgentCommand, CommandResult, NodeInterface
 import ipaddress
 import subprocess
 from django.http import JsonResponse
@@ -12,9 +12,12 @@ from django.views.decorators.http import require_GET
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
 from django.http import JsonResponse
-from .models import ScanRun
 from django.utils.timezone import now
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+import json
+
+
 
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
@@ -43,14 +46,31 @@ def start_scan_ajax(request):
 
 def check_scan_status(request, task_id):
     result = AsyncResult(str(task_id))
-    nodes = Node.objects.all().values('ip_address', 'name', 'status', 'description', 'last_heartbeat')
+
+    # Fetch all nodes with interfaces
+    nodes = Node.objects.all()
+    node_data = []
+    for node in nodes:
+        node_data.append({
+            "ip_address": node.ip_address,
+            "name": node.name,
+            "status": node.status,
+            "description": node.description,
+            "last_heartbeat": node.last_heartbeat,
+            "interfaces": [
+                {
+                    "name": iface.name,
+                    "ip": iface.ip,
+                    "mac": iface.mac
+                } for iface in node.interfaces.all()
+            ]
+        })
 
     response = {
         "state": result.state,
-        "nodes": list(nodes),
+        "nodes": node_data
     }
 
-    # Optional hint during task progress
     if result.state in ['PENDING', 'STARTED']:
         response["progress"] = "Scan is running..."
 
@@ -147,3 +167,77 @@ def get_scan_history(request):
         "summary": run.result_summary or "-"
     } for run in recent]
     return JsonResponse({"history": history})
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+@require_http_methods(["POST"])
+def agent_report(request):
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    agent_id = data.get("agent_id")
+    hostname = data.get("hostname")
+    interfaces = data.get("interfaces", [])
+    ip = interfaces[0].get("ip", "127.0.0.1") if interfaces else "127.0.0.1"
+
+    node, _ = Node.objects.update_or_create(
+        agent_id=agent_id,
+        defaults={
+            "name": hostname,
+            "ip_address": ip,
+            "description": f"Reported from agent {agent_id}",
+            "status": "online"
+        }
+    )
+
+    # Clear old interfaces
+    node.interfaces.all().delete()
+
+    # Save current interfaces
+    for iface in interfaces:
+        NodeInterface.objects.create(
+            node=node,
+            name=iface.get("name", "unknown"),
+            ip=iface.get("ip", "0.0.0.0"),
+            mac=iface.get("mac", "00:00:00:00:00:00")
+        )
+
+    return JsonResponse({"status": "ok", "node_id": node.id})
+
+@require_http_methods(["GET"])
+def agent_commands(request):
+    agent_id = request.GET.get("agent_id")
+    commands = AgentCommand.objects.filter(agent_id=agent_id, acknowledged=False)
+    serialized = [
+        {"id": cmd.id, "action": cmd.action, "parameters": cmd.parameters}
+        for cmd in commands
+    ]
+    # mark them as acknowledged
+    commands.update(acknowledged=True)
+    return JsonResponse({"commands": serialized})
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def agent_command_result(request):
+    data = json.loads(request.body)
+    agent_id = data.get("agent_id")
+    command_id = data.get("command_id")
+    output = data.get("output")
+
+    try:
+        cmd = AgentCommand.objects.get(id=command_id)
+    except AgentCommand.DoesNotExist:
+        return JsonResponse({"error": "Command not found"}, status=404)
+
+    CommandResult.objects.create(
+        agent_id=agent_id,
+        command=cmd,
+        output=output
+    )
+
+    return JsonResponse({"status": "received"})
+

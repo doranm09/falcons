@@ -1,23 +1,29 @@
 {% extends "dashboard/base.html" %}
 {% block content %}
 <h3>Scan History</h3>
-<table class="table table-bordered">
+<table class="table table-dark table-striped">
   <thead>
     <tr>
-      <th>CIDR</th>
       <th>Timestamp</th>
+      <th>Type</th>
+      <th>CIDR</th>
       <th>Status</th>
-      <th>Summary</th>
+      <th>Vulnerabilities</th>
     </tr>
   </thead>
   <tbody>
-    {% for run in runs %}
-    <tr>
-      <td>{{ run.cidr }}</td>
-      <td>{{ run.timestamp }}</td>
-      <td>{{ run.status }}</td>
-      <td>{{ run.result_summary }}</td>
-    </tr>
+    {% for entry in runs %}
+      <tr>
+        <td>{{ entry.run.timestamp }}</td>
+        <td>{{ entry.run.scan_type }}</td>
+        <td>{{ entry.run.cidr }}</td>
+        <td>{{ entry.run.status }}</td>
+        <td>
+          <a href="{% url 'vuln-detail' entry.run.id %}">
+            {{ entry.vuln_count }}
+          </a>
+        </td>
+      </tr>
     {% endfor %}
   </tbody>
 </table>

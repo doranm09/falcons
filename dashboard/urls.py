@@ -15,4 +15,6 @@ urlpatterns = [
     path('agent/report/', views.agent_report),
     path('agent/commands/', views.agent_commands),
     path('agent/command_result/', views.agent_command_result),
+    path("vulnerabilities/<int:scan_id>/", views.vulnerability_detail, name="vuln-detail"),
+    path('scan/vuln/start/', views.start_vuln_scan, name='start-vuln-scan'),
 ]

@@ -1,6 +1,10 @@
 # dashboard/tasks.py
 from celery import shared_task
-from .models import Node, Link
+from .models import Node, Link, ScanRun, Vulernability
+from .openvas_client import openvas_session, create_target, start_scan, get_report_id, download_report
+from django.utils.timezone import now
+import time
+import xml.etree.ElementTree as ET
 import subprocess
 import ipaddress
 import requests
@@ -100,3 +104,46 @@ def fetch_and_store_cves(keyword="scada"):
                 "references": refs
             }
         )
+
+@shared_task
+def launch_openvas_scan_task(cidr):
+    scan = ScanRun.objects.create(cidr=cidr, status="IN_PROGRESS", scan_type="openvas")
+
+    try:
+        gmp = openvas_session()
+        target_id = create_target(gmp, cidr)
+        task_id = start_scan(gmp, target_id)
+        scan.openvas_task_id = task_id
+        scan.result_summary = f"OpenVAS scan launched. Task ID: {task_id}"
+    except Exception as e:
+        scan.status = "FAILED"
+        scan.result_summary = str(e)
+
+    scan.save()
+    return scan.result_summary
+
+@shared_task
+def poll_openvas_results():
+    scans = ScanRun.objects.filter(status="IN_PROGRESS", scan_type="openvas")
+
+    for scan in scans:
+        try:
+            gmp = openvas_session()
+            task = gmp.get_task(scan.openvas_task_id)
+            status = task.xpath("//task/status/text()")[0]
+
+            if status != "Done":
+                continue
+
+            report_id = get_report_id(gmp, scan.openvas_task_id)
+            report_xml = download_report(gmp, report_id)
+            parse_and_save_vulnerabilities(report_xml, scan)
+
+            scan.status = "COMPLETE"
+            scan.result_summary = f"Scan complete. Report ID: {report_id}"
+            scan.save()
+
+        except Exception as e:
+            scan.result_summary = f"Polling error: {e}"
+            scan.save()
+

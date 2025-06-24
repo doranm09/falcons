@@ -4,7 +4,7 @@ from .models import Node, ScanRun, AgentCommand, CommandResult, NodeInterface
 import ipaddress
 import subprocess
 from django.http import JsonResponse
-from .tasks import scan_network_task
+from .tasks import scan_network_task, launch_openvas_scan_task
 from celery.result import AsyncResult
 from .models import Node, Link
 from .utils import dijkstra
@@ -16,9 +16,6 @@ from django.utils.timezone import now
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 import json
-
-
-
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 
@@ -99,7 +96,17 @@ def shortest_paths(request, start_node_id):
     return JsonResponse(distances_serialized, encoder=DjangoJSONEncoder, safe=False)
 
 def history(request):
+    from .models import Vulnerability
     runs = ScanRun.objects.all().order_by('-timestamp')
+
+    run_data = []
+    for run in runs:
+        vulns = Vulnerability.objects.filter(scan_run=run)
+        run_data.append({
+            "run": run,
+            "vuln_count": vulns.count(),
+        })
+
     return render(request, 'dashboard/history.html', {'runs': runs})
 
 def graph_data(request):
@@ -137,7 +144,6 @@ def graph_data(request):
 def get_interfaces(request):
     return JsonResponse({'interfaces': list_interfaces()})
 
-
 @csrf_exempt
 def start_listener(request):
     if request.method == 'POST':
@@ -156,7 +162,6 @@ def stop_listener(request):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
-
 @require_GET
 def get_scan_history(request):
     recent = ScanRun.objects.all().order_by('-timestamp')[:10]
@@ -168,8 +173,6 @@ def get_scan_history(request):
     } for run in recent]
     return JsonResponse({"history": history})
 
-@csrf_exempt
-@require_http_methods(["POST"])
 @csrf_exempt
 @require_http_methods(["POST"])
 def agent_report(request):
@@ -241,3 +244,24 @@ def agent_command_result(request):
 
     return JsonResponse({"status": "received"})
 
+def vulnerability_detail(request, scan_id):
+    scan = ScanRun.objects.get(id=scan_id)
+    vulns = scan.vulnerabilities.all().order_by("-severity")
+    return redner(request, "dashboard/vulnerabilities.html", {
+        "scan": scan,
+        "vulnerabilities": vulns
+    })
+
+def start_vuln_scan(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST only"}, status=405)
+    cidr = request.POST.get("cidr")
+    task = launch_openvas_scan_task.delay(cidr)
+    return JsonResponse({"task_id": str(task.id)})
+
+def vuln_scan_status(request, task_id):
+    async_res = AsyncResult(task_id)
+    data = {"state": async_res.state}
+    if async_res.ready():
+        data["result"] = async_res.result
+    return JsonResponse(data)

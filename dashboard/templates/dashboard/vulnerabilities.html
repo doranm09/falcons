@@ -1,0 +1,27 @@
+{% extends "dashboard/base.html" %}
+{% block content %}
+<h2>Vulnerabilities for Scan: {{ scan.cidr }} ({{ scan.timestamp }})</h2>
+
+<table class="table table-bordered table-dark table-striped">
+  <thead>
+    <tr>
+      <th>Host</th>
+      <th>CVE</th>
+      <th>Name</th>
+      <th>Severity</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for v in vulnerabilities %}
+      <tr>
+        <td>{{ v.host_ip }}</td>
+        <td>{{ v.cve_id }}</td>
+        <td>{{ v.name }}</td>
+        <td>{{ v.severity }}</td>
+        <td>{{ v.description|truncatechars:150 }}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

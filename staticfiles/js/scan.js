@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const scanForm = document.getElementById('scan-form');
     const scanStatus = document.getElementById('scan-status');
     const nodesBody = document.getElementById('nodes-body');
-  
+
     scanForm.addEventListener('submit', async function (e) {
       e.preventDefault();
       const formData = new FormData(scanForm);
@@ -17,13 +17,14 @@ document.addEventListener('DOMContentLoaded', function () {
       const data = await response.json();
       const taskId = data.task_id;
       scanStatus.innerText = 'Scan started...';
-  
+
       const interval = setInterval(async () => {
         const statusRes = await fetch(`/scan/status/${taskId}/`);
         const statusData = await statusRes.json();
         if (statusData.state === 'SUCCESS') {
           clearInterval(interval);
           scanStatus.innerText = 'Scan complete. Nodes updated.';
+          updateScanHistory();
           nodesBody.innerHTML = '';
           statusData.nodes.forEach(node => {
             nodesBody.innerHTML += `
@@ -32,7 +33,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 <td>${node.name}</td>
                 <td>${node.status}</td>
                 <td>${node.last_heartbeat || ''}</td>
-                <td>${node.description || ''}</td>
+                <td>
+                  ${node.description || ''}
+                  <ul style="font-size: 0.85em; margin-top: 0.5em;">
+                    ${(node.interfaces || []).map(i => `<li>${i.name}: ${i.ip} / ${i.mac}</li>`).join('')}
+                  </ul>
+                </td>
               </tr>`;
           });
           renderGraph();
@@ -41,7 +47,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
       }, 2000);
     });
-  
+
     window.renderGraph = function () {
       fetch('/graph/data/')
         .then(response => response.json())
@@ -55,10 +61,17 @@ document.addEventListener('DOMContentLoaded', function () {
                 style: {
                   'label': 'data(label)',
                   'background-color': '#007bff',
-                  'text-valign': 'center',
-                  'text-halign': 'center',
-                  'color': '#fff',
-                  'font-size': 12
+                  'text-valign': 'bottom',         // Keeps label below the node
+                  'text-halign': 'center',         // Center-align the label horizontally
+                  'color': '#000',
+                  'font-size': 12,
+                  'text-margin-y': 6,              // Adds space below the node
+                  'text-background-color': '#fff', // Improves readability
+                  'text-background-opacity': 1,
+                  'text-background-shape': 'roundrectangle',
+                  'text-border-color': '#333',
+                  'text-border-width': 0.5,
+                  'text-border-opacity': 0.8
                 }
               },
               {
@@ -66,26 +79,30 @@ document.addEventListener('DOMContentLoaded', function () {
                 style: {
                   'label': 'data(weight)',
                   'font-size': 10,
-                  'text-background-color': '#ffffff',
+                  'color': '#000',
+                  'text-background-color': '#fff',
                   'text-background-opacity': 1,
                   'text-background-shape': 'roundrectangle',
-                  'text-border-color': '#ccc',
-                  'text-border-width': 1,
-                  'text-border-opacity': 1,
                   'text-rotation': 'autorotate',
-                  'line-color': '#999',
-                  'target-arrow-shape': 'triangle',
-                  'target-arrow-color': '#999',
                   'curve-style': 'bezier',
-                  'width': 2
+                  'width': 2,
+
+                  // color mapped to numeric value
+                  'line-color': 'mapData(raw_weight, 0, 6, green, red)',
+                  'target-arrow-shape': 'triangle',
+                  'target-arrow-color': 'mapData(raw_weight, 0, 6, green, red)'
                 }
               }
             ],
-            
-            
-            layout: { name: 'cose', animate: true }
+            layout: {
+              name: 'concentric',
+              concentric: node => node.degree(),
+              levelWidth: () => 2,
+              spacingFactor: 5,
+              animate: true
+            }
           });
-  
+
           let selectedNode = null;
           cy.on('tap', 'node', function (evt) {
             const tapped = evt.target;
@@ -108,7 +125,25 @@ document.addEventListener('DOMContentLoaded', function () {
           });
         });
     };
-  
+
     renderGraph();
+
+    function updateScanHistory() {
+      fetch('/scan/history/')
+        .then(response => response.json())
+        .then(data => {
+          const historyTable = document.getElementById('scan-history-body');
+          historyTable.innerHTML = '';
+          data.history.forEach(run => {
+            historyTable.innerHTML += `
+              <tr>
+                <td>${run.timestamp}</td>
+                <td>${run.cidr}</td>
+                <td>${run.status}</td>
+                <td>${run.summary}</td>
+              </tr>`;
+          });
+        });
+    }
+
   });
-  

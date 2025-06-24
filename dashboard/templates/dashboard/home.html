@@ -13,6 +13,17 @@
         <button type="submit" class="btn btn-primary">Start Scan</button>
       </div>
     </form>
+
+    <!-- new OpenVAS scan form -->
+    <form id="vuln-scan-form" class="row g-3 mt-3">
+      {% csrf_token %}
+      <div class="col-auto">
+        <input type="text" class="form-control" name="cidr" placeholder="Enter CIDR for Vuln Scan">
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-warning">Start OpenVAS Scan</button>
+      </div>
+    </form>
     <div id="scan-status" class="mt-3 text-muted"></div>
   </div>
 </div>

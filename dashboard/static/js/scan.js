@@ -146,4 +146,22 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-  });
+    const vulnForm = document.getElementById('vuln-scan-form');
+
+    vulnForm.addEventListener('submit', async function(e) {
+      e.preventDefault();
+
+      const formData  = new FormData(vulnForm);
+      const csrfToken = formData.get('csrfmiddlewaretoken');
+
+      // kick off your new endpoint (make sure your URLConf has 'start-vuln-scan')
+      const res = await fetch('/scan/vuln/start/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfToken },
+        body: formData
+      });
+
+      const { task_id } = await res.json();
+      scanStatus.innerText = `OpenVAS scan launched (task ${task_id}), checking back shortly…`;
+    });
+});

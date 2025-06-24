@@ -139,3 +139,9 @@ STATICFILES_DIRS = [BASE_DIR / "dashboard/static"]
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 
+CELERY_BEAT_SCHEDULE = {
+    'poll-openvas-results-every-5min': {
+        'task': 'dashboard.tasks.poll_openvas_results',
+        'schedule': crontab(minute='*/5'),
+    },
+}

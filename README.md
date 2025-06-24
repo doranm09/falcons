@@ -45,6 +45,16 @@ This project is a full-stack Django platform that simulates and secures networke
 - Docker & Docker Compose
 - Python 3.10+ (for host agent)
 
+### 0. Openvas Log File
+```bash
+mkdir -p ./data/gvm-logs
+
+# on your host, NOT inside the container
+sudo chown -R 1000:1000 ./data/gvm-logs
+sudo chmod -R u+rwX,go-rwx ./data/gvm-logs
+
+```
+
 ### 1. Build & Run the Platform
 
 ```bash

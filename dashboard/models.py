@@ -7,6 +7,8 @@ class ScanRun(models.Model):
     cidr = models.CharField(max_length=64)
     status = models.CharField(max_length=32, default='PENDING')  # or 'COMPLETE', 'FAILED'
     result_summary = models.TextField(blank=True, null=True)
+    openvas_task_id = models.CharField(max_length=64, null=True, blank=True)
+    scan_type = models.CharField(max_length=32, default="ping") # ping or openvas
 
     def __str__(self):
         return f"Scan on {self.cidr} at {self.timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
@@ -68,3 +70,20 @@ class CommandResult(models.Model):
     agent_id = models.CharField(max_length=64)
     output = models.TextField()
     timestamp = models.DateTimeField(auto_now_add=True)
+
+
+class Vulernability(models.Model):
+    scan_run = models.ForeignKey(ScanRun, on_delete=models.CASCADE, related_name="vulnerabilities")
+    host_ip = models.GenericIPAddressField()
+    cve_id = models.CharField(max_length=32)
+    name = models.CharField(max_length=255)
+    severity = models.FloatField()
+    description = models.TextField()
+    description = models.TextField(blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["host_ip", "cve_id"])]
+
+    def __str__(self):
+        return f"{self.cve_id} on {self.host_ip} ({self.severity})"

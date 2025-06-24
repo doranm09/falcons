@@ -22,7 +22,8 @@ RUN apt-get update && apt-get install -y \
 # Install Python libraries
 RUN pip install --no-cache-dir \
     scapy \
-    pyshark
+    pyshark \
+    python-gvm
 
 # Ensure TShark permissions (non-root if needed)
 RUN setcap cap_net_raw,cap_net_admin=eip /usr/bin/dumpcap

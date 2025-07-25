@@ -10,7 +10,7 @@ import subprocess
 import argparse
 import datetime
 import json
-from sbom.os_sbom import collect_linux_packages
+from sbom.os_sbom import collect_linux_packages, generate_cyclonedx_sbom
 
 SERVER_URL = "http://localhost:8000"
 AGENT_ID = str(uuid.getnode())
@@ -110,7 +110,9 @@ if __name__ == "__main__":
     subparsers.add_parser("heartbeat", help="send a single heartbeat")
     subparsers.add_parser("poll", help="Poll once for commands")
     subparsers.add_parser("info", help="Print system info")
-    subparsers.add_parser("sbom", help="Collect installed package list (SBOM)")
+    sbom_parser = subparsers.add_parser("sbom", help="Collect installed package list (SBOM)")
+    sbom_parser.add_argument("--output", "-o", help="Write SBOM to a file")
+    sbom_parser.add_argument("--format", "-f", choices=["raw", "cyclonedx"], default="raw", help="SBOM output format")
 
     args = parser.parse_args()
 
@@ -123,6 +125,18 @@ if __name__ == "__main__":
         print(json.dumps(get_system_info(), indent=2))
     elif args.command == "sbom":
         packages = collect_linux_packages()
-        print(json.dumps(packages, indent=2))
+
+        if args.format == "cyclonedx":
+            sbom = generate_cyclonedx_sbom(packages)
+        else:
+            sbom = packages
+
+        if args.output:
+            with open(args.output, "w") as f:
+                json.dump(sbom, f, indent=2)
+            print(f"[sbom] SBOM written to {args.output}")
+        else:
+            print(json.dumps(sbom, indent=2))
+
     else:
         parser.print_help()

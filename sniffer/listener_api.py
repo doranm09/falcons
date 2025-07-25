@@ -96,6 +96,24 @@ def receive_sbom():
     return jsonify({"status": "received"}), 200
 
 
+@app.route("/agent/report/", methods=["POST"])
+def agent_report():
+    data = request.get_json()
+    print(f"[server] Received agent report: {data}")
+    return jsonify({"status": "ok"}), 200
+
+@app.route("/agent/commands/", methods=["GET"])
+def get_commands():
+    agent_id = request.args.get("agent_id")
+    # For now, return a static list or empty list
+    return jsonify({"commands": []})
+
+@app.route("/agent/command_result/", methods=["POST"])
+def command_result():
+    result = request.get_json()
+    print(f"[server] Received command result: {result}")
+    return jsonify({"status": "acknowledged"}), 200
+
 if __name__ == '__main__':
     log.info("Starting sniffer API service")
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='192.168.100.1', port=5000)

@@ -13,7 +13,7 @@ vm config net 100  # Uses vlan 100 (auto-bridged)
 # Configure and Launch VMs
 
 ```
-vm config memory 512
+vm config memory 2048
 vm config net 100
 vm config disk /var/lib/minimega/images/vm01.qcow2
 vm launch kvm vm01
@@ -25,8 +25,8 @@ vm launch kvm vm02
 
 # Assign static IP in each VM
 ```
-sudo ip addr add 192.168.100.11/24 dev eth0
-sudo ip link set eth0 up
+sudo ip addr add 192.168.100.11/24 dev enp1s1
+sudo ip link set enp1s1 up
 
 ```
 
@@ -34,6 +34,16 @@ sudo ip link set eth0 up
 
 ```
 sudo ovs-vsctl add-port mega_bridge eth1  # Replace eth1 with the correct NIC
+
+```
+
+# Setup veth-pair
+```
+sudo ip link add veth-host type veth peer name veth-br
+sudo ip addr add 192.168.100.1/24 dev veth-host
+sudo ip link set veth-host up
+ip link show veth-host
+ip addr show veth-host
 
 ```
 

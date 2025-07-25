@@ -1,4 +1,16 @@
-import platform, socket, uuid, psutil, requests, json, time, threading, subprocess
+import platform
+import socket
+import uuid
+import psutil 
+import requests
+import json
+import time
+import threading
+import subprocess
+import argparse
+import datetime
+import json
+from sbom.os_sbom import collect_linux_packages
 
 SERVER_URL = "http://localhost:8000"
 AGENT_ID = str(uuid.getnode())
@@ -89,5 +101,28 @@ def main_loop():
         time.sleep(30)
 
 if __name__ == "__main__":
-    print("[agent] starting persistent agent loop")
-    main_loop()
+    
+    # parse commands
+    parser = argparse.ArgumentParser(description="Host Agent CLI")
+    subparsers = parser.add_subparsers(dest="command")
+
+    subparsers.add_parser("run", help="Run persistent agent loop")
+    subparsers.add_parser("heartbeat", help="send a single heartbeat")
+    subparsers.add_parser("poll", help="Poll once for commands")
+    subparsers.add_parser("info", help="Print system info")
+    subparsers.add_parser("sbom", help="Collect installed package list (SBOM)")
+
+    args = parser.parse_args()
+
+    # process command
+    if args.command == "run":
+        main_loop()
+    elif args.command == "heartbeat":
+        send_heartbeat()
+    elif args.command == "info":
+        print(json.dumps(get_system_info(), indent=2))
+    elif args.command == "sbom":
+        packages = collect_linux_packages()
+        print(json.dumps(packages, indent=2))
+    else:
+        parser.print_help()

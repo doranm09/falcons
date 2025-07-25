@@ -1,0 +1,5 @@
+# Snapshot a qcow
+
+```
+udo qemu-img create -f qcow2 -b /var/lib/libvirt/images/ifan-ubuntu24.04.qcow2 -F qcow2 /var/lib/minimega/images/vm01.qcow2
+```

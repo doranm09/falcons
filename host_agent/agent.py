@@ -94,6 +94,21 @@ def return_output(cmd_id, output):
     except Exception as e:
         print(f"[command_result] failed: {e}")
 
+def post_sbom_to_server(sbom_data, server_url="http://localhost:5000/sbom", agent_id="unknown"):
+    try:
+        headers = {
+            "Content-Type": "application/json",
+            "X-Agent-ID": agent_id,
+            "X-Timestamp": datetime.datetime.utcnow().isoformat() + "Z"
+        }
+        response = requests.post(server_url, headers=headers, json=sbom_data)
+        print(f"[sbom] POST status: {response.status_code}")
+        if response.status_code != 200:
+            print(f"[sbom] Error: {response.text}")
+    except Exception as e:
+        print(f"[sbom] Failed to post SBOM: {e}")
+
+
 def main_loop():
     while True:
         send_heartbeat()
@@ -135,8 +150,11 @@ if __name__ == "__main__":
             with open(args.output, "w") as f:
                 json.dump(sbom, f, indent=2)
             print(f"[sbom] SBOM written to {args.output}")
+        
         else:
             print(json.dumps(sbom, indent=2))
 
+        # Always post the SBOM to server for now
+        post_sbom_to_server(sbom_data=sbom, agent_id=AGENT_ID)
     else:
         parser.print_help()

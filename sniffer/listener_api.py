@@ -5,9 +5,10 @@ import netifaces
 import os
 import logging
 import sys
+import json
 
 # Ensure log directory exists
-LOG_DIR = '/var/log/sniffer'
+LOG_DIR = './logs/'
 os.makedirs(LOG_DIR, exist_ok=True)
 
 # Setup logger
@@ -81,6 +82,18 @@ def list_interfaces():
     log.info("Listing available interfaces")
     interfaces = netifaces.interfaces()
     return jsonify({"interfaces": interfaces})
+
+@app.route('/sbom', methods=['POST'])
+def receive_sbom():
+    agent_id = request.headers.get("X-Agent-ID", "unknown")
+    timestamp = request.headers.get("X-Timestamp", "")
+    sbom_data = request.get_json()
+
+    with open(f"/tmp/received_sbom_{agent_id}.json", "w") as f:
+        json.dump(sbom_data, f, indent=2)
+
+    log.info(f"Received SBOM from {agent_id} at {timestamp}")
+    return jsonify({"status": "received"}), 200
 
 
 if __name__ == '__main__':

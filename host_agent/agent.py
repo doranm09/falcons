@@ -10,7 +10,7 @@ import subprocess
 import argparse
 import datetime
 import json
-from sbom.os_sbom import collect_linux_packages, generate_cyclonedx_sbom
+from sbom.os_sbom import collect_linux_packages, collect_packages, generate_cyclonedx_sbom
 
 SERVER_URL = "http://localhost:8000"
 AGENT_ID = str(uuid.getnode())
@@ -139,7 +139,7 @@ if __name__ == "__main__":
     elif args.command == "info":
         print(json.dumps(get_system_info(), indent=2))
     elif args.command == "sbom":
-        packages = collect_linux_packages()
+        packages = collect_packages()
 
         if args.format == "cyclonedx":
             sbom = generate_cyclonedx_sbom(packages)

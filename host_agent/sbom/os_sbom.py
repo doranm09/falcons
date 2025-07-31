@@ -7,7 +7,10 @@ from datetime import datetime
 def detect_os_metadata():
     os_info = {"name": "unknown", "version": "unknown"}
     try:
-        if os.path.exists("/etc/os-release"):
+        if platform.system() == "Windows":
+            os_info["name"] = "windows"
+            os_info["version"] = platform.version()
+        elif os.path.exists("/etc/os-release"):
             with open("/etc/os-release") as f:
                 for line in f:
                     if line.startswith("ID="):
@@ -46,6 +49,43 @@ def collect_linux_packages():
     except Exception as e:
         print(f"[sbom] Linux package collection error: {e}")
     return packages
+
+def collect_windows_packages():
+    import winreg
+    packages = []
+
+    registry_paths = [
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")
+    ]
+
+    for hive, path in registry_paths:
+        try:
+            with winreg.OpenKey(hive, path) as key:
+                for i in range(winreg.QueryInfoKey(Key)[0]):
+                    try:
+                        subkey_name = winreg.EnumKey(key, i)
+                        with winreg.OpenKey(key, subkey_name) as subkey:
+                            name = winreg.QueryValueEx(subkey, "DisplayName")[0]
+                            version = winreg.QuerValueEx(subkey, "DisplayVersion")[0]
+                            packages.append({
+                                "name": name,
+                                "version": version,
+                                "type": "windows"
+                            })
+                    except Exception:
+                        continue
+        except Exception:
+            continue
+
+        return packages
+    
+def collect_packages():
+    if platform.system() == "Windows":
+        return collect_windows_packages()
+    else:
+        return collect_linux_packages()
 
 def generate_cyclonedx_sbom(packages, tool_name="host-agent", tool_version="0.1.0"):
     os_info = detect_os_metadata()

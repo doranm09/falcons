@@ -140,7 +140,7 @@ if __name__ == "__main__":
         print(json.dumps(get_system_info(), indent=2))
     elif args.command == "sbom":
         packages = collect_packages()
-
+        
         if args.format == "cyclonedx":
             sbom = generate_cyclonedx_sbom(packages)
         else:

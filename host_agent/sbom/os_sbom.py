@@ -50,25 +50,30 @@ def collect_linux_packages():
         print(f"[sbom] Linux package collection error: {e}")
     return packages
 
+def normalize_purl(name: str, version: str) -> str:
+    slug = re.sub(r'[^a-zA-Z0-9\-\.]+', '-', name.strip().lower()).strip('-')
+    return f"pkg:generic/{slug}@{version.strip()}"
+
 def collect_windows_packages():
     import winreg
-    packages = []
 
     registry_paths = [
         (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
         (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
-        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")
+        (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
     ]
+
+    packages = []
 
     for hive, path in registry_paths:
         try:
             with winreg.OpenKey(hive, path) as key:
-                for i in range(winreg.QueryInfoKey(Key)[0]):
+                for i in range(winreg.QueryInfoKey(key)[0]):
                     try:
                         subkey_name = winreg.EnumKey(key, i)
                         with winreg.OpenKey(key, subkey_name) as subkey:
                             name = winreg.QueryValueEx(subkey, "DisplayName")[0]
-                            version = winreg.QuerValueEx(subkey, "DisplayVersion")[0]
+                            version = winreg.QueryValueEx(subkey, "DisplayVersion")[0]
                             packages.append({
                                 "name": name,
                                 "version": version,
@@ -78,8 +83,8 @@ def collect_windows_packages():
                         continue
         except Exception:
             continue
-
-        return packages
+    
+    return packages
     
 def collect_packages():
     if platform.system() == "Windows":

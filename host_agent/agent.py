@@ -11,9 +11,14 @@ import argparse
 import datetime
 import json
 from sbom.os_sbom import collect_linux_packages, collect_packages, generate_cyclonedx_sbom
+from scapy.all import sniff, IP, TCP, UDP, ICMP, Ether, ARP
+from datetime import datetime
+import heapq
+
 
 SERVER_URL = "http://localhost:8000"
 AGENT_ID = str(uuid.getnode())
+neighbor_table = {}
 
 def get_system_info():
     return {
@@ -108,6 +113,79 @@ def post_sbom_to_server(sbom_data, server_url="http://localhost:5000/sbom", agen
     except Exception as e:
         print(f"[sbom] Failed to post SBOM: {e}")
 
+def packet_callback(pkt):
+    info = {
+        "timestamp": datetime.now().isoformat(),
+        "proto": "Unknown",
+        "src_mac": None,
+        "dst_mac": None,
+        "src_ip": None,
+        "dst_ip": None,
+        "src_port": None,
+        "dst_port": None,
+    }
+
+    # Layer 2 MAC addresses
+    if pkt.haslayer(Ether):
+        info["src_mac"] = pkt[Ether].src
+        info["dst_mac"] = pkt[Ether].dst
+
+    # IP layer
+    if pkt.haslayer(IP):
+        info["proto"] = "IP"
+        info["src_ip"] = pkt[IP].src
+        info["dst_ip"] = pkt[IP].dst
+
+        if pkt.haslayer(TCP):
+            info["proto"] = "TCP"
+            info["src_port"] = pkt[TCP].sport
+            info["dst_port"] = pkt[TCP].dport
+        elif pkt.haslayer(UDP):
+            info["proto"] = "UDP"
+            info["src_port"] = pkt[UDP].sport
+            info["dst_port"] = pkt[UDP].dport
+        elif pkt.haslayer(ICMP):
+            info["proto"] = "ICMP"
+
+    # ARP layer
+    elif pkt.haslayer(ARP):
+        info["proto"] = "ARP"
+        info["src_ip"] = pkt[ARP].psrc
+        info["dst_ip"] = pkt[ARP].pdst
+
+    # Print captured info
+    print(f"[sniff] {info['timestamp']} {info['proto']} {info['src_mac']} -> {info['dst_mac']} | "
+          f"{info['src_ip']}:{info['src_port']} -> {info['dst_ip']}:{info['dst_port']}")
+    
+    key = (info["src_ip"], info["src_mac"])
+    if key not in neighbor_table:
+        neighbor_table[key] = {
+            "first_seen": info["timestamp"],
+            "proto": info["proto"]
+        }
+        print(f"[neighbor] new: {info['src_ip']} / {info['src_mac']} via {info['proto']}")
+
+
+    # Optional: send to server
+    # try:
+    #     requests.post(f"{SERVER_URL}/agent/sniff/", json={
+    #         "agent_id": AGENT_ID,
+    #         **info
+    #     })
+    # except Exception as e:
+    #     print(f"[sniff] error posting: {e}")
+        
+
+def sniff_interface(interface):
+    print(f"[sniff] Starting sniff on {interface}")
+    sniff(iface=interface, prn=packet_callback, store=False)
+
+def dijkstra(graph, start, end):
+    queue = [(0, start, [])]
+    visited = set()
+
+    while queue:
+        (cost, node, path)
 
 def main_loop():
     while True:
@@ -128,6 +206,10 @@ if __name__ == "__main__":
     sbom_parser = subparsers.add_parser("sbom", help="Collect installed package list (SBOM)")
     sbom_parser.add_argument("--output", "-o", help="Write SBOM to a file")
     sbom_parser.add_argument("--format", "-f", choices=["raw", "cyclonedx"], default="raw", help="SBOM output format")
+    sniff_parser = subparsers.add_parser("sniff", help="Sniff packets on interface")
+    sniff_parser.add_argument("--interface", "-i", required=True, help="Interface to sniff on")
+    
+
 
     args = parser.parse_args()
 
@@ -156,5 +238,7 @@ if __name__ == "__main__":
 
         # Always post the SBOM to server for now
         post_sbom_to_server(sbom_data=sbom, agent_id=AGENT_ID)
+    elif args.command == "sniff":
+        sniff_interface(args.interface)
     else:
         parser.print_help()

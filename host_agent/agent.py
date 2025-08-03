@@ -9,16 +9,16 @@ import threading
 import subprocess
 import argparse
 import datetime
-import json
 from sbom.os_sbom import collect_linux_packages, collect_packages, generate_cyclonedx_sbom
 from scapy.all import sniff, IP, TCP, UDP, ICMP, Ether, ARP
 from datetime import datetime
 import heapq
 
-
 SERVER_URL = "http://localhost:8000"
 AGENT_ID = str(uuid.getnode())
 neighbor_table = {}
+tcp_syn_times = {}
+network_graph = {}
 
 def get_system_info():
     return {
@@ -84,7 +84,6 @@ def handle_command(cmd):
         result = subprocess.run(["ping", "-c", "2", "8.8.8.8"], capture_output=True, text=True)
         return_output(cmd_id, result.stdout)
     elif action == "scan":
-        # Placeholder: run scan tool
         return_output(cmd_id, "scan complete (stub)")
     else:
         return_output(cmd_id, f"Unknown action: {action}")
@@ -104,7 +103,7 @@ def post_sbom_to_server(sbom_data, server_url="http://localhost:5000/sbom", agen
         headers = {
             "Content-Type": "application/json",
             "X-Agent-ID": agent_id,
-            "X-Timestamp": datetime.datetime.utcnow().isoformat() + "Z"
+            "X-Timestamp": datetime.utcnow().isoformat() + "Z"
         }
         response = requests.post(server_url, headers=headers, json=sbom_data)
         print(f"[sbom] POST status: {response.status_code}")
@@ -112,6 +111,26 @@ def post_sbom_to_server(sbom_data, server_url="http://localhost:5000/sbom", agen
             print(f"[sbom] Error: {response.text}")
     except Exception as e:
         print(f"[sbom] Failed to post SBOM: {e}")
+
+def update_graph_latency(src, dst, latency):
+    network_graph.setdefault(src, {})[dst] = latency
+    network_graph.setdefault(dst, {})[src] = latency
+
+def dijkstra(graph, start, end):
+    queue = [(0, start, [])]
+    visited = set()
+    while queue:
+        cost, node, path = heapq.heappop(queue)
+        if node in visited:
+            continue
+        visited.add(node)
+        path = path + [node]
+        if node == end:
+            return (cost, path)
+        for neighbor, weight in graph.get(node, {}).items():
+            if neighbor not in visited:
+                heapq.heappush(queue, (cost + weight, neighbor, path))
+    return (float("inf"), [])
 
 def packet_callback(pkt):
     info = {
@@ -125,12 +144,12 @@ def packet_callback(pkt):
         "dst_port": None,
     }
 
-    # Layer 2 MAC addresses
+    now = datetime.utcnow()
+
     if pkt.haslayer(Ether):
         info["src_mac"] = pkt[Ether].src
         info["dst_mac"] = pkt[Ether].dst
 
-    # IP layer
     if pkt.haslayer(IP):
         info["proto"] = "IP"
         info["src_ip"] = pkt[IP].src
@@ -138,8 +157,19 @@ def packet_callback(pkt):
 
         if pkt.haslayer(TCP):
             info["proto"] = "TCP"
-            info["src_port"] = pkt[TCP].sport
-            info["dst_port"] = pkt[TCP].dport
+            tcp = pkt[TCP]
+            info["src_port"] = tcp.sport
+            info["dst_port"] = tcp.dport
+            key = (info["src_ip"], info["dst_ip"], info["dst_port"])
+            if tcp.flags == "S":
+                tcp_syn_times[key] = now
+            elif tcp.flags == "SA":
+                reverse_key = (info["dst_ip"], info["src_ip"], tcp.sport)
+                if reverse_key in tcp_syn_times:
+                    delta = (now - tcp_syn_times.pop(reverse_key)).total_seconds() * 1000
+                    print(f"[latency] {reverse_key[0]} -> {reverse_key[1]}: ~{delta:.2f} ms")
+                    update_graph_latency(reverse_key[0], reverse_key[1], delta)
+
         elif pkt.haslayer(UDP):
             info["proto"] = "UDP"
             info["src_port"] = pkt[UDP].sport
@@ -147,16 +177,14 @@ def packet_callback(pkt):
         elif pkt.haslayer(ICMP):
             info["proto"] = "ICMP"
 
-    # ARP layer
     elif pkt.haslayer(ARP):
         info["proto"] = "ARP"
         info["src_ip"] = pkt[ARP].psrc
         info["dst_ip"] = pkt[ARP].pdst
 
-    # Print captured info
     print(f"[sniff] {info['timestamp']} {info['proto']} {info['src_mac']} -> {info['dst_mac']} | "
           f"{info['src_ip']}:{info['src_port']} -> {info['dst_ip']}:{info['dst_port']}")
-    
+
     key = (info["src_ip"], info["src_mac"])
     if key not in neighbor_table:
         neighbor_table[key] = {
@@ -165,27 +193,29 @@ def packet_callback(pkt):
         }
         print(f"[neighbor] new: {info['src_ip']} / {info['src_mac']} via {info['proto']}")
 
-
-    # Optional: send to server
-    # try:
-    #     requests.post(f"{SERVER_URL}/agent/sniff/", json={
-    #         "agent_id": AGENT_ID,
-    #         **info
-    #     })
-    # except Exception as e:
-    #     print(f"[sniff] error posting: {e}")
-        
+    # Auto-path calculation from new node
+    if info["src_ip"] in network_graph:
+        for target in network_graph:
+            if target != info["src_ip"]:
+                cost, path = dijkstra(network_graph, info["src_ip"], target)
+                if path:
+                    print(f"[autopath] {info['src_ip']} -> {target} ~{cost:.2f} ms via: {' -> '.join(path)}")
 
 def sniff_interface(interface):
     print(f"[sniff] Starting sniff on {interface}")
     sniff(iface=interface, prn=packet_callback, store=False)
 
-def dijkstra(graph, start, end):
-    queue = [(0, start, [])]
-    visited = set()
-
-    while queue:
-        (cost, node, path)
+def run_dijkstra_interactive():
+    print("\n[graph] Known nodes:")
+    for node in network_graph:
+        print(f" - {node}")
+    start = input("Enter start IP: ").strip()
+    end = input("Enter end IP: ").strip()
+    cost, path = dijkstra(network_graph, start, end)
+    if path:
+        print(f"[path] {start} -> {end} in {cost:.2f} ms via: {' -> '.join(path)}")
+    else:
+        print(f"[path] No route found from {start} to {end}.")
 
 def main_loop():
     while True:
@@ -194,8 +224,6 @@ def main_loop():
         time.sleep(30)
 
 if __name__ == "__main__":
-    
-    # parse commands
     parser = argparse.ArgumentParser(description="Host Agent CLI")
     subparsers = parser.add_subparsers(dest="command")
 
@@ -208,12 +236,10 @@ if __name__ == "__main__":
     sbom_parser.add_argument("--format", "-f", choices=["raw", "cyclonedx"], default="raw", help="SBOM output format")
     sniff_parser = subparsers.add_parser("sniff", help="Sniff packets on interface")
     sniff_parser.add_argument("--interface", "-i", required=True, help="Interface to sniff on")
-    
-
+    subparsers.add_parser("path", help="Run Dijkstra to find shortest latency path interactively")
 
     args = parser.parse_args()
 
-    # process command
     if args.command == "run":
         main_loop()
     elif args.command == "heartbeat":
@@ -222,23 +248,17 @@ if __name__ == "__main__":
         print(json.dumps(get_system_info(), indent=2))
     elif args.command == "sbom":
         packages = collect_packages()
-        
-        if args.format == "cyclonedx":
-            sbom = generate_cyclonedx_sbom(packages)
-        else:
-            sbom = packages
-
+        sbom = generate_cyclonedx_sbom(packages) if args.format == "cyclonedx" else packages
         if args.output:
             with open(args.output, "w") as f:
                 json.dump(sbom, f, indent=2)
             print(f"[sbom] SBOM written to {args.output}")
-        
         else:
             print(json.dumps(sbom, indent=2))
-
-        # Always post the SBOM to server for now
         post_sbom_to_server(sbom_data=sbom, agent_id=AGENT_ID)
     elif args.command == "sniff":
         sniff_interface(args.interface)
+    elif args.command == "path":
+        run_dijkstra_interactive()
     else:
         parser.print_help()

@@ -13,28 +13,6 @@ services:
       timeout: 3s
       retries: 5
     networks: [appnet]
-
-  openvas:
-    image: securecompliance/gvm
-    depends_on:
-      - db
-    environment:
-      PGHOST: db
-      PGPORT: 5432
-      PGUSER: postgres
-      PGPASSWORD: postgres
-      PGDATABASE: postgres
-    volumes:
-      - ./data/gvm-logs:/var/log/gvm
-    healthcheck:
-      test: ["CMD-SHELL", "gvmd --get-scanners >/dev/null 2>&1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    networks:
-      - appnet
-
   web:
     build: .
     command: >

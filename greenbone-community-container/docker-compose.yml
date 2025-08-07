@@ -1,5 +1,11 @@
 name: greenbone-community-edition
 
+x-gvmd-socket-bind: &gvmd-socket-bind
+  type: bind
+  source: /opt/gvm-run
+  target: /run/gvmd
+
+
 services:
   vulnerability-tests:
     image: registry.community.greenbone.net/community/vulnerability-tests
@@ -74,10 +80,10 @@ services:
       - data_objects_vol:/var/lib/gvm/data-objects/gvmd
       - vt_data_vol:/var/lib/openvas/plugins
       - psql_data_vol:/var/lib/postgresql
-      - gvmd_socket_vol:/run/gvmd
+      # - gvmd_socket_vol:/run/gvmd
       - ospd_openvas_socket_vol:/run/ospd
       - psql_socket_vol:/var/run/postgresql
-      - /opt/gvm-run:/run/gvmd
+      - *gvmd-socket-bind
     depends_on:
       pg-gvm:
         condition: service_started
@@ -98,7 +104,8 @@ services:
     ports:
       - 127.0.0.1:9392:80
     volumes:
-      - gvmd_socket_vol:/run/gvmd
+      # - gvmd_socket_vol:/run/gvmd
+      - *gvmd-socket-bind
     depends_on:
       - gvmd
   # Sets log level of openvas to the set LOG_LEVEL within the env
@@ -209,7 +216,8 @@ services:
     image: registry.community.greenbone.net/community/gvm-tools
     command: tail -f /dev/null # keep the container running
     volumes:
-      - gvmd_socket_vol:/run/gvmd
+      # - gvmd_socket_vol:/run/gvmd
+      - *gvmd-socket-bind
       - ospd_openvas_socket_vol:/run/ospd
     depends_on:
       - gvmd

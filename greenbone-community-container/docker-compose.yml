@@ -206,6 +206,7 @@ services:
 
   gvm-tools:
     image: registry.community.greenbone.net/community/gvm-tools
+    command: tail -f /dev/null # keep the container running
     volumes:
       - gvmd_socket_vol:/run/gvmd
       - ospd_openvas_socket_vol:/run/ospd

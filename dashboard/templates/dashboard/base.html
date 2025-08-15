@@ -7,8 +7,8 @@
   <title>CyberTwin Dashboard</title>
 
   <!-- Bootstrap & Icons -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
   <link href="{% static 'style.css' %}" rel="stylesheet" />
   
@@ -22,14 +22,8 @@
     <hr />
     <nav class="nav flex-column">
       <a class="nav-link" href="{% url 'dashboard-home' %}"><i class="bi bi-shield-lock-fill"></i> Dashboard</a>
-      <a class="nav-link" href="{% url 'history' %}"><i class="bi bi-clock-history"></i> Scan History</a>
-      <a class="nav-link" href="http://127.0.0.1:9392" target="_blank"><i class="bi bi-clock-history"></i> OpenVAS</a>
-      <a class="nav-link" href="http://127.0.0.1:9001"><i class="bi bi-clock-history"></i> MiniWeb</a>
-      <a class="nav-link" href="#"><i class="bi bi-diagram-3-fill"></i> Graph View</a>
-      <a class="nav-link" href="#"><i class="bi bi-broadcast-pin"></i> Passive Listener</a>
-      <a class="nav-link" href="#"><i class="bi bi-terminal"></i> Manual Trigger</a>
-      <a class="nav-link" href="#"><i class="bi bi-cpu-fill"></i> System Status</a>
-      <a class="nav-link" href="#"><i class="bi bi-gear-fill"></i> Settings</a>
+      <a class="nav-link" href="http://127.0.0.1:9392" target="_blank"><i class="bi bi-cpu"></i> OpenVAS</a>
+      <a class="nav-link" href="http://127.0.0.1:9001"><i class="bi bi-code-square"></i> MiniWeb</a>
     </nav>
   </div>
 

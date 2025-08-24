@@ -1,6 +1,6 @@
 # dashboard/tasks.py
 from celery import shared_task
-from .models import Node, Link, ScanRun, Vulernability
+from .models import Node, Link, ScanRun, Vulnerability
 from .openvas_client import openvas_session, create_target, start_scan, get_report_id, download_report
 from django.utils.timezone import now
 import time

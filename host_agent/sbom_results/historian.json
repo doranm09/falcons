@@ -1,0 +1,484 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2025-08-29T15:27:04Z",
+    "component": {
+      "type": "operating-system",
+      "name": "windows",
+      "version": "10.0.22631"
+    },
+    "tools": [
+      {
+        "vendor": "custom",
+        "name": "host-agent",
+        "version": "0.1.0"
+      }
+    ]
+  },
+  "components": [
+    {
+      "type": "application",
+      "name": "7-Zip 23.01 (x64)",
+      "version": "23.01",
+      "purl": "pkg:rpm/windows/7-Zip 23.01 (x64)@23.01"
+    },
+    {
+      "type": "application",
+      "name": "Docker Desktop",
+      "version": "4.32.0",
+      "purl": "pkg:rpm/windows/Docker Desktop@4.32.0"
+    },
+    {
+      "type": "application",
+      "name": "Git",
+      "version": "2.46.2",
+      "purl": "pkg:rpm/windows/Git@2.46.2"
+    },
+    {
+      "type": "application",
+      "name": "MATLAB R2023b",
+      "version": "23.2",
+      "purl": "pkg:rpm/windows/MATLAB R2023b@23.2"
+    },
+    {
+      "type": "application",
+      "name": "Mozilla Firefox (x64 en-US)",
+      "version": "121.0",
+      "purl": "pkg:rpm/windows/Mozilla Firefox (x64 en-US)@121.0"
+    },
+    {
+      "type": "application",
+      "name": "Mozilla Maintenance Service",
+      "version": "121.0",
+      "purl": "pkg:rpm/windows/Mozilla Maintenance Service@121.0"
+    },
+    {
+      "type": "application",
+      "name": "Notepad++ (64-bit x64)",
+      "version": "8.6",
+      "purl": "pkg:rpm/windows/Notepad++ (64-bit x64)@8.6"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft 365 Apps for enterprise - en-us",
+      "version": "16.0.18227.20222",
+      "purl": "pkg:rpm/windows/Microsoft 365 Apps for enterprise - en-us@16.0.18227.20222"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft OneDrive",
+      "version": "25.004.0109.0002",
+      "purl": "pkg:rpm/windows/Microsoft OneDrive@25.004.0109.0002"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2013 x64 Additional Runtime - 12.0.40664",
+      "version": "12.0.40664",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2013 x64 Additional Runtime - 12.0.40664@12.0.40664"
+    },
+    {
+      "type": "application",
+      "name": "Cortex XDR 8.8.0.10622",
+      "version": "8.8.0.10622",
+      "purl": "pkg:rpm/windows/Cortex XDR 8.8.0.10622@8.8.0.10622"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Policy Platform",
+      "version": "68.1.9086.1017",
+      "purl": "pkg:rpm/windows/Microsoft Policy Platform@68.1.9086.1017"
+    },
+    {
+      "type": "application",
+      "name": "Qualys Cloud Security Agent",
+      "version": "6.0.0.13",
+      "purl": "pkg:rpm/windows/Qualys Cloud Security Agent@6.0.0.13"
+    },
+    {
+      "type": "application",
+      "name": "Agent Client Collector",
+      "version": "3.5.5.2",
+      "purl": "pkg:rpm/windows/Agent Client Collector@3.5.5.2"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2010  x64 Redistributable - 10.0.40219",
+      "version": "10.0.40219",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2010  x64 Redistributable - 10.0.40219@10.0.40219"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2012 x64 Additional Runtime - 11.0.61030",
+      "version": "11.0.61030",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2012 x64 Additional Runtime - 11.0.61030@11.0.61030"
+    },
+    {
+      "type": "application",
+      "name": "Acrobat-x64-SDL",
+      "version": "1.0.0000",
+      "purl": "pkg:rpm/windows/Acrobat-x64-SDL@1.0.0000"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2013 x64 Minimum Runtime - 12.0.40664",
+      "version": "12.0.40664",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2013 x64 Minimum Runtime - 12.0.40664@12.0.40664"
+    },
+    {
+      "type": "application",
+      "name": "Windows Subsystem for Linux",
+      "version": "2.2.4.0",
+      "purl": "pkg:rpm/windows/Windows Subsystem for Linux@2.2.4.0"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2022 X64 Minimum Runtime - 14.30.30704",
+      "version": "14.30.30704",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2022 X64 Minimum Runtime - 14.30.30704@14.30.30704"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2022 X64 Additional Runtime - 14.30.30704",
+      "version": "14.30.30704",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2022 X64 Additional Runtime - 14.30.30704@14.30.30704"
+    },
+    {
+      "type": "application",
+      "name": "Configuration Manager Client",
+      "version": "5.00.9128.1000",
+      "purl": "pkg:rpm/windows/Configuration Manager Client@5.00.9128.1000"
+    },
+    {
+      "type": "application",
+      "name": "Office 16 Click-to-Run Licensing Component",
+      "version": "16.0.18227.20222",
+      "purl": "pkg:rpm/windows/Office 16 Click-to-Run Licensing Component@16.0.18227.20222"
+    },
+    {
+      "type": "application",
+      "name": "Office 16 Click-to-Run Extensibility Component",
+      "version": "16.0.18227.20082",
+      "purl": "pkg:rpm/windows/Office 16 Click-to-Run Extensibility Component@16.0.18227.20082"
+    },
+    {
+      "type": "application",
+      "name": "PuTTY release 0.80 (64-bit)",
+      "version": "0.80.0.0",
+      "purl": "pkg:rpm/windows/PuTTY release 0.80 (64-bit)@0.80.0.0"
+    },
+    {
+      "type": "application",
+      "name": "NVIDIA Graphics Driver 536.45",
+      "version": "536.45",
+      "purl": "pkg:rpm/windows/NVIDIA Graphics Driver 536.45@536.45"
+    },
+    {
+      "type": "application",
+      "name": "NVIDIA Install Application",
+      "version": "2.1002.400.0",
+      "purl": "pkg:rpm/windows/NVIDIA Install Application@2.1002.400.0"
+    },
+    {
+      "type": "application",
+      "name": "Zoom (64-bit)",
+      "version": "5.17.28914",
+      "purl": "pkg:rpm/windows/Zoom (64-bit)@5.17.28914"
+    },
+    {
+      "type": "application",
+      "name": "Google Chrome",
+      "version": "132.0.6834.111",
+      "purl": "pkg:rpm/windows/Google Chrome@132.0.6834.111"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Update Health Tools",
+      "version": "5.72.0.0",
+      "purl": "pkg:rpm/windows/Microsoft Update Health Tools@5.72.0.0"
+    },
+    {
+      "type": "application",
+      "name": "CrashPlan",
+      "version": "11.2.1.23",
+      "purl": "pkg:rpm/windows/CrashPlan@11.2.1.23"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2012 x64 Minimum Runtime - 11.0.61030",
+      "version": "11.0.61030",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2012 x64 Minimum Runtime - 11.0.61030@11.0.61030"
+    },
+    {
+      "type": "application",
+      "name": "Windows Subsystem for Linux Update",
+      "version": "5.10.102.1",
+      "purl": "pkg:rpm/windows/Windows Subsystem for Linux Update@5.10.102.1"
+    },
+    {
+      "type": "application",
+      "name": "GlobalProtect",
+      "version": "6.0.7",
+      "purl": "pkg:rpm/windows/GlobalProtect@6.0.7"
+    },
+    {
+      "type": "application",
+      "name": "Adobe Creative Cloud",
+      "version": "5.4.2.541",
+      "purl": "pkg:rpm/windows/Adobe Creative Cloud@5.4.2.541"
+    },
+    {
+      "type": "application",
+      "name": "Adobe Genuine Service",
+      "version": "8.5.1.48",
+      "purl": "pkg:rpm/windows/Adobe Genuine Service@8.5.1.48"
+    },
+    {
+      "type": "application",
+      "name": "Citrix Workspace 2309",
+      "version": "23.9.1.104",
+      "purl": "pkg:rpm/windows/Citrix Workspace 2309@23.9.1.104"
+    },
+    {
+      "type": "application",
+      "name": "Dropbox",
+      "version": "216.4.4420",
+      "purl": "pkg:rpm/windows/Dropbox@216.4.4420"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Edge",
+      "version": "139.0.3405.119",
+      "purl": "pkg:rpm/windows/Microsoft Edge@139.0.3405.119"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Edge WebView2 Runtime",
+      "version": "132.0.2957.127",
+      "purl": "pkg:rpm/windows/Microsoft Edge WebView2 Runtime@132.0.2957.127"
+    },
+    {
+      "type": "application",
+      "name": "ResearchSoft Direct Export Helper",
+      "version": "1.0.21.3540",
+      "purl": "pkg:rpm/windows/ResearchSoft Direct Export Helper@1.0.21.3540"
+    },
+    {
+      "type": "application",
+      "name": "WinSCP 6.1.2",
+      "version": "6.1.2",
+      "purl": "pkg:rpm/windows/WinSCP 6.1.2@6.1.2"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2013 Redistributable (x64) - 12.0.40664",
+      "version": "12.0.40664.0",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2013 Redistributable (x64) - 12.0.40664@12.0.40664.0"
+    },
+    {
+      "type": "application",
+      "name": "Dropbox Update Helper",
+      "version": "1.3.983.1",
+      "purl": "pkg:rpm/windows/Dropbox Update Helper@1.3.983.1"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2012 Redistributable (x86) - 11.0.61030",
+      "version": "11.0.61030.0",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2012 Redistributable (x86) - 11.0.61030@11.0.61030.0"
+    },
+    {
+      "type": "application",
+      "name": "BCR Plug-in",
+      "version": "23.9.1.5",
+      "purl": "pkg:rpm/windows/BCR Plug-in@23.9.1.5"
+    },
+    {
+      "type": "application",
+      "name": "Citrix Workspace(DV)",
+      "version": "23.9.1.5",
+      "purl": "pkg:rpm/windows/Citrix Workspace(DV)@23.9.1.5"
+    },
+    {
+      "type": "application",
+      "name": "MTOP Client",
+      "version": "23.9.1.5",
+      "purl": "pkg:rpm/windows/MTOP Client@23.9.1.5"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2015-2022 Redistributable (x86) - 14.30.30704",
+      "version": "14.30.30704.0",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2015-2022 Redistributable (x86) - 14.30.30704@14.30.30704.0"
+    },
+    {
+      "type": "application",
+      "name": "Citrix Authentication Manager",
+      "version": "23.8.0.5",
+      "purl": "pkg:rpm/windows/Citrix Authentication Manager@23.8.0.5"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.30.30704",
+      "version": "14.30.30704.0",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.30.30704@14.30.30704.0"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft .NET Host FX Resolver - 6.0.36 (x86)",
+      "version": "48.144.23141",
+      "purl": "pkg:rpm/windows/Microsoft .NET Host FX Resolver - 6.0.36 (x86)@48.144.23141"
+    },
+    {
+      "type": "application",
+      "name": "Dell Command | Update",
+      "version": "5.1.0",
+      "purl": "pkg:rpm/windows/Dell Command | Update@5.1.0"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2013 x86 Minimum Runtime - 12.0.40664",
+      "version": "12.0.40664",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2013 x86 Minimum Runtime - 12.0.40664@12.0.40664"
+    },
+    {
+      "type": "application",
+      "name": "Online Plug-in",
+      "version": "23.9.1.5",
+      "purl": "pkg:rpm/windows/Online Plug-in@23.9.1.5"
+    },
+    {
+      "type": "application",
+      "name": "EndNote 21",
+      "version": "21.0.1.17232",
+      "purl": "pkg:rpm/windows/EndNote 21@21.0.1.17232"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft .NET Runtime - 6.0.36 (x86)",
+      "version": "48.144.23141",
+      "purl": "pkg:rpm/windows/Microsoft .NET Runtime - 6.0.36 (x86)@48.144.23141"
+    },
+    {
+      "type": "application",
+      "name": "Citrix Workspace Inside",
+      "version": "23.9.1.63",
+      "purl": "pkg:rpm/windows/Citrix Workspace Inside@23.9.1.63"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Windows Desktop Runtime - 6.0.36 (x86)",
+      "version": "48.144.23186",
+      "purl": "pkg:rpm/windows/Microsoft Windows Desktop Runtime - 6.0.36 (x86)@48.144.23186"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2013 Redistributable (x86) - 12.0.40664",
+      "version": "12.0.40664.0",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2013 Redistributable (x86) - 12.0.40664@12.0.40664.0"
+    },
+    {
+      "type": "application",
+      "name": "Adobe Refresh Manager",
+      "version": "1.8.0",
+      "purl": "pkg:rpm/windows/Adobe Refresh Manager@1.8.0"
+    },
+    {
+      "type": "application",
+      "name": "Adobe Acrobat",
+      "version": "24.005.20320",
+      "purl": "pkg:rpm/windows/Adobe Acrobat@24.005.20320"
+    },
+    {
+      "type": "application",
+      "name": "Citrix Web Helper",
+      "version": "23.9.1.41",
+      "purl": "pkg:rpm/windows/Citrix Web Helper@23.9.1.41"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Intune Management Extension",
+      "version": "1.86.101.0",
+      "purl": "pkg:rpm/windows/Microsoft Intune Management Extension@1.86.101.0"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2012 x86 Additional Runtime - 11.0.61030",
+      "version": "11.0.61030",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2012 x86 Additional Runtime - 11.0.61030@11.0.61030"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2012 x86 Minimum Runtime - 11.0.61030",
+      "version": "11.0.61030",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2012 x86 Minimum Runtime - 11.0.61030@11.0.61030"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2022 X86 Additional Runtime - 14.30.30704",
+      "version": "14.30.30704",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2022 X86 Additional Runtime - 14.30.30704@14.30.30704"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Windows Desktop Runtime - 6.0.36 (x86)",
+      "version": "6.0.36.34217",
+      "purl": "pkg:rpm/windows/Microsoft Windows Desktop Runtime - 6.0.36 (x86)@6.0.36.34217"
+    },
+    {
+      "type": "application",
+      "name": "AppProtection",
+      "version": "23.8.0.13",
+      "purl": "pkg:rpm/windows/AppProtection@23.8.0.13"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2012 Redistributable (x64) - 11.0.61030",
+      "version": "11.0.61030.0",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2012 Redistributable (x64) - 11.0.61030@11.0.61030.0"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2013 x86 Additional Runtime - 12.0.40664",
+      "version": "12.0.40664",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2013 x86 Additional Runtime - 12.0.40664@12.0.40664"
+    },
+    {
+      "type": "application",
+      "name": "Citrix Workspace(USB)",
+      "version": "23.9.1.5",
+      "purl": "pkg:rpm/windows/Citrix Workspace(USB)@23.9.1.5"
+    },
+    {
+      "type": "application",
+      "name": "Self-service Plug-in",
+      "version": "23.9.1.41",
+      "purl": "pkg:rpm/windows/Self-service Plug-in@23.9.1.41"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2010  x86 Redistributable - 10.0.40219",
+      "version": "10.0.40219",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2010  x86 Redistributable - 10.0.40219@10.0.40219"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2022 X86 Minimum Runtime - 14.30.30704",
+      "version": "14.30.30704",
+      "purl": "pkg:rpm/windows/Microsoft Visual C++ 2022 X86 Minimum Runtime - 14.30.30704@14.30.30704"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft .NET Host - 6.0.36 (x86)",
+      "version": "48.144.23141",
+      "purl": "pkg:rpm/windows/Microsoft .NET Host - 6.0.36 (x86)@48.144.23141"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual Studio Code (User)",
+      "version": "1.102.3",
+      "purl": "pkg:rpm/windows/Microsoft Visual Studio Code (User)@1.102.3"
+    }
+  ]
+}

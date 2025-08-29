@@ -1,34 +1,27 @@
 // static/dashboard/js/scan.js
-
 document.addEventListener('DOMContentLoaded', function () {
   // Elements
-  const scanForm   = document.getElementById('scan-form');
-  const vulnForm   = document.getElementById('vuln-scan-form');
-  const scanStatus = document.getElementById('scan-status');
-  const nodesBody  = document.getElementById('nodes-body');
+  const scanForm     = document.getElementById('scan-form');
+  const vulnForm     = document.getElementById('vuln-scan-form');
+  const scanStatus   = document.getElementById('scan-status');
+  const nodesBody    = document.getElementById('nodes-body');
   const historyTbody = document.getElementById('scan-history-body');
+  const btnDownloadPng = document.getElementById('btn-download-png');
 
   // --- CSRF helpers ---
   function getCSRFToken() {
-    // Prefer hidden input (Django forms), fallback to cookie
     const input = document.querySelector('[name=csrfmiddlewaretoken]');
     if (input && input.value) return input.value;
-
-    // Cookie fallback
     const name = 'csrftoken=';
     const cookies = document.cookie ? document.cookie.split(';') : [];
-    for (let c of cookies) {
-      c = c.trim();
-      if (c.startsWith(name)) return decodeURIComponent(c.slice(name.length));
-    }
+    for (let c of cookies) { c = c.trim(); if (c.startsWith(name)) return decodeURIComponent(c.slice(name.length)); }
     return '';
   }
 
-  function jsonFetch(url, opts = {}) {
+  async function jsonFetch(url, opts = {}) {
     const headers = opts.headers || {};
     const method  = (opts.method || 'GET').toUpperCase();
     const csrf    = getCSRFToken();
-
     const final = {
       ...opts,
       method,
@@ -38,16 +31,10 @@ document.addEventListener('DOMContentLoaded', function () {
         ...headers
       }
     };
-    return fetch(url, final).then(async res => {
-      // Try to parse JSON even on non-2xx to surface server error messages
-      let data;
-      try { data = await res.json(); } catch { data = null; }
-      if (!res.ok) {
-        const msg = data && (data.detail || data.error || data.message) || `HTTP ${res.status}`;
-        throw new Error(msg);
-      }
-      return data;
-    });
+    const res = await fetch(url, final);
+    let data; try { data = await res.json(); } catch { data = null; }
+    if (!res.ok) throw new Error((data && (data.detail || data.error || data.message)) || `HTTP ${res.status}`);
+    return data;
   }
 
   // --- UI helpers ---
@@ -56,16 +43,15 @@ document.addEventListener('DOMContentLoaded', function () {
     scanStatus.className = `mt-3 text-${type}`;
     scanStatus.innerText = msg;
   }
-
   function disableForm(form, disabled) {
     if (!form) return;
-    const btn = form.querySelector('button[type="submit"]');
-    if (btn) btn.disabled = disabled;
-    const input = form.querySelector('input,select,textarea');
-    if (input) input.disabled = disabled;
+    form.querySelectorAll('input,select,textarea,button').forEach(el => el.disabled = disabled);
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
   }
 
-  // --- History table refresh ---
+  // --- History refresh ---
   async function updateScanHistory() {
     try {
       const data = await jsonFetch('/scan/history/');
@@ -77,300 +63,336 @@ document.addEventListener('DOMContentLoaded', function () {
           <td>${escapeHtml(run.timestamp || '')}</td>
           <td>${escapeHtml(run.cidr || '')}</td>
           <td>${escapeHtml(run.status || '')}</td>
-          <td>${escapeHtml(run.summary || run.result_summary || '-')}</td>
-        `;
+          <td>${escapeHtml(run.summary || run.result_summary || '-')}</td>`;
         historyTbody.appendChild(tr);
       });
-      if (!data.history || data.history.length === 0) {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td colspan="4">No scans found.</td>`;
-        historyTbody.appendChild(tr);
+      if (!data.history || !data.history.length) {
+        const tr = document.createElement('tr'); tr.innerHTML = `<td colspan="4">No scans found.</td>`; historyTbody.appendChild(tr);
       }
-    } catch (err) {
-      // non-fatal
-      console.warn('Failed to refresh scan history:', err.message);
-    }
+    } catch(e){ console.warn('History refresh failed:', e.message); }
   }
 
-  // --- Nodes table refresh (from scan status payload) ---
+  // --- Nodes table ---
   function renderNodes(nodes = []) {
     if (!nodesBody) return;
     nodesBody.innerHTML = '';
     nodes.forEach(node => {
       const li = (node.interfaces || []).map(i =>
-        `<li>${escapeHtml(i.name || '')}: ${escapeHtml(i.ip || '')} / ${escapeHtml(i.mac || '')}</li>`
-      ).join('');
-
+        `<li>${escapeHtml(i.name || '')}: ${escapeHtml(i.ip || '')} / ${escapeHtml(i.mac || '')}</li>`).join('');
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${escapeHtml(node.ip_address || '')}</td>
         <td>${escapeHtml(node.name || '')}</td>
         <td>${escapeHtml(node.status || '')}</td>
         <td>${escapeHtml(node.last_heartbeat || '')}</td>
-        <td>
-          ${escapeHtml(node.description || '')}
-          ${li ? `<ul style="font-size: 0.85em; margin-top: 0.5em;">${li}</ul>` : ''}
-        </td>
-      `;
+        <td>${escapeHtml(node.description || '')}${li ? `<ul style="font-size:.85em;margin-top:.5em;">${li}</ul>` : ''}</td>`;
       nodesBody.appendChild(tr);
     });
   }
 
   // --- Cytoscape graph ---
   let cyInstance = null;
+
   async function renderGraph() {
     try {
       const data = await jsonFetch('/graph/data/');
-      // Destroy old instance if present to avoid overlays
-      if (cyInstance) {
-        cyInstance.destroy();
-        cyInstance = null;
-      }
+      if (cyInstance) { cyInstance.destroy(); cyInstance = null; }
       cyInstance = cytoscape({
         container: document.getElementById('cy'),
         elements: data,
         style: [
-          {
-            selector: 'node',
-            style: {
-              'label': 'data(label)',
-              'background-color': '#007bff',
-              'text-valign': 'bottom',
-              'text-halign': 'center',
-              'color': '#000',
-              'font-size': 12,
-              'text-margin-y': 6,
-              'text-background-color': '#fff',
-              'text-background-opacity': 1,
-              'text-background-shape': 'roundrectangle',
-              'text-border-color': '#333',
-              'text-border-width': 0.5,
-              'text-border-opacity': 0.8,
-              'border-width': 1,
-              'border-color': '#fff'
-            }
-          },
-          {
-            selector: 'edge',
-            style: {
-              'label': 'data(weight)',
-              'font-size': 10,
-              'color': '#000',
-              'text-background-color': '#fff',
-              'text-background-opacity': 1,
-              'text-background-shape': 'roundrectangle',
-              'text-rotation': 'autorotate',
-              'curve-style': 'bezier',
-              'width': 2,
-              'line-color': 'mapData(raw_weight, 0, 6, green, red)',
-              'target-arrow-shape': 'triangle',
-              'target-arrow-color': 'mapData(raw_weight, 0, 6, green, red)'
-            }
-          }
+          { selector: 'node', style: {
+            'label':'data(label)', 'background-color':'#007bff', 'text-valign':'bottom', 'text-halign':'center',
+            'color':'#000','font-size':12,'text-margin-y':6,'text-background-color':'#fff','text-background-opacity':1,
+            'text-background-shape':'roundrectangle','text-border-color':'#333','text-border-width':0.5,'border-width':1,'border-color':'#fff'
+          }},
+          { selector: 'edge', style: {
+            'label':'data(weight)','font-size':10,'color':'#000','text-background-color':'#fff','text-background-opacity':1,
+            'text-background-shape':'roundrectangle','text-rotation':'autorotate','curve-style':'bezier','width':2,
+            'line-color':'mapData(raw_weight,0,6,green,red)','target-arrow-shape':'triangle','target-arrow-color':'mapData(raw_weight,0,6,green,red)'
+          }}
         ],
-        layout: {
-          name: 'concentric',
-          concentric: node => node.degree(),
-          levelWidth: () => 2,
-          spacingFactor: 5,
-          animate: true
-        }
+        layout: { name:'concentric', concentric:n=>n.degree(), levelWidth:()=>2, spacingFactor:5, animate:true }
       });
 
-      // Shortest path tap-to-select behavior
+      // Path find (tap-to-select)
       const pathResult = document.getElementById('path-result');
       let selectedNode = null;
-
-      cyInstance.on('tap', 'node', function (evt) {
+      cyInstance.on('tap','node',evt=>{
         const tapped = evt.target;
-        if (!selectedNode) {
-          selectedNode = tapped;
-          tapped.style('background-color', '#ffc107');
-        } else {
-          const sourceId = selectedNode.id();
-          const targetId = tapped.id();
-          jsonFetch(`/shortest-paths/${encodeURIComponent(sourceId)}/`)
-            .then(pathData => {
-              const cost = pathData[targetId];
-              if (pathResult) {
-                pathResult.innerText = `Shortest path from ${selectedNode.data('label')} to ${tapped.data('label')}: ${cost}`;
-              }
-            })
-            .catch(err => {
-              if (pathResult) {
-                pathResult.innerText = `Could not fetch shortest path: ${err.message}`;
-              }
-            });
-          selectedNode.style('background-color', '#007bff');
-          selectedNode = null;
+        if (!selectedNode) { selectedNode = tapped; tapped.style('background-color','#ffc107'); }
+        else {
+          const src = selectedNode.id(), dst = tapped.id();
+          jsonFetch(`/shortest-paths/${encodeURIComponent(src)}/`).then(pd=>{
+            const cost = pd[dst]; if (pathResult) pathResult.innerText = `Shortest path from ${selectedNode.data('label')} to ${tapped.data('label')}: ${cost}`;
+          }).catch(err=>{ if (pathResult) pathResult.innerText = `Path error: ${err.message}`; });
+          selectedNode.style('background-color','#007bff'); selectedNode = null;
         }
       });
 
-      // Handle container resizes (e.g., when tabs or panels change)
-      debounceResize(() => {
-        if (cyInstance) cyInstance.resize();
+      // When Graph tab is shown, fix size
+      document.addEventListener('shown.bs.tab', (e) => {
+        const target = e.target && e.target.getAttribute('data-bs-target');
+        if (target === '#graph' && cyInstance) { cyInstance.resize(); cyInstance.fit(); }
       });
+    } catch (e) { console.warn('Graph render failed:', e.message); }
+  }
 
+  // --- PNG export (robust)
+  function dataURLtoBlob(dataURL) {
+    const [meta, data] = dataURL.split(',');
+    const mime = (meta.match(/data:([^;]+)/) || [,'image/png'])[1];
+    const bin = atob(data), len = bin.length, arr = new Uint8Array(len);
+    for (let i=0;i<len;i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  }
+  function timestampFilename(prefix='network-graph', ext='png') {
+    const pad=n=>String(n).padStart(2,'0'); const d=new Date();
+    return `${prefix}_${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.${ext}`;
+  }
+  function elementIsHidden(el){ return !el || el.offsetParent === null || el.clientWidth === 0 || el.clientHeight === 0; }
+  function waitForRender(cy) {
+    return new Promise(resolve => {
+      // resolve on the next concrete render; use once() to avoid leaks
+      const done = () => { cy.off('render', done); resolve(); };
+      cy.on('render', done);
+      // kick the renderer
+      cy.resize(); cy.emit('render');
+    });
+  }
+  async function exportPng() {
+    if (!cyInstance) { setStatus('Graph not ready.','warning'); return; }
+    const container = cyInstance.container();
+    // guard: hidden or zero-size container -> white image
+    if (elementIsHidden(container)) {
+      console.warn('Export blocked — #cy size:', container.clientWidth, 'x', container.clientHeight);
+      setStatus('Open the Graph tab (visible, non-zero size) before exporting.','warning');
+      return;
+    }
+
+    try {
+      // remember view
+      const pan  = cyInstance.pan();
+      const zoom = cyInstance.zoom();
+
+      // fit for snapshot (toggle to false to keep current view)
+      const SNAP_FULL_GRAPH = true;
+      if (SNAP_FULL_GRAPH) cyInstance.fit();
+
+      // ensure a real render happened at this size
+      await waitForRender(cyInstance);
+
+      // create data URL (sync)
+      const dataUrl = cyInstance.png({ full: SNAP_FULL_GRAPH, scale: 2, bg: '#111111' }); // darker bg like your UI
+      const blob = dataURLtoBlob(dataUrl);
+
+      // restore view
+      cyInstance.zoom(zoom); cyInstance.pan(pan);
+
+      // download
+      const filename = timestampFilename();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      setStatus('PNG downloaded.','success');
     } catch (err) {
-      console.warn('Graph render failed:', err.message);
+      console.error(err);
+      setStatus(`PNG export failed: ${err.message}`, 'danger');
     }
   }
+  if (btnDownloadPng) btnDownloadPng.addEventListener('click', exportPng);
 
-  // --- Debounce resize helper ---
-  let resizeTimer = null;
-  function debounceResize(cb, delay = 150) {
-    window.removeEventListener('resize', onResize);
-    function onResize() {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(cb, delay);
-    }
-    window.addEventListener('resize', onResize);
-  }
-
-  // --- HTML escape to reduce accidental injection from server data ---
-  function escapeHtml(s) {
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
-
-  // --- Polling engines ---
-  function pollTask({ statusUrl, onTick, onDone, onError, intervalMs = 2000, maxMinutes = 30 }) {
-    const started = Date.now();
-    let stopped = false;
-
-    async function tick() {
-      if (stopped) return;
-      try {
-        const statusData = await jsonFetch(statusUrl);
-        onTick && onTick(statusData);
-
-        if (statusData.state === 'SUCCESS' || statusData.state === 'FAILURE' || statusData.state === 'REVOKED') {
-          stopped = true;
-          onDone && onDone(statusData);
-          return;
-        }
-      } catch (err) {
-        // Stop (or keep going) based on error type; we’ll stop to avoid hammering
-        stopped = true;
-        onError && onError(err);
-        return;
-      }
-
-      if ((Date.now() - started) > maxMinutes * 60 * 1000) {
-        stopped = true;
-        onError && onError(new Error('Timed out.'));
-        return;
-      }
+  // --- Polling ---
+  function pollTask({ statusUrl, onTick, onDone, onError, intervalMs=2000 }) {
+    let stopped=false;
+    async function tick(){
+      if(stopped) return;
+      try{
+        const data=await jsonFetch(statusUrl); onTick && onTick(data);
+        if(['SUCCESS','FAILURE','REVOKED'].includes(data.state)){ stopped=true; onDone && onDone(data); return; }
+      }catch(err){ stopped=true; onError && onError(err); return; }
       setTimeout(tick, intervalMs);
     }
-
-    tick();
-    return () => { stopped = true; };
+    tick(); return ()=>{stopped=true;};
   }
 
-  // --- Network scan submit ---
+  // --- Scan form ---
   if (scanForm) {
-    scanForm.addEventListener('submit', async function (e) {
-      e.preventDefault();
-      disableForm(scanForm, true);
-      setStatus('Starting discovery scan…');
-
+    scanForm.addEventListener('submit', async e=>{
+      e.preventDefault(); disableForm(scanForm,true); setStatus('Starting discovery scan…');
       try {
-        const formData = new FormData(scanForm);
-        const data = await fetch('/scan/start/', {
-          method: 'POST',
-          headers: { 'X-CSRFToken': getCSRFToken() },
-          body: formData
-        }).then(r => r.json());
-
-        const taskId = data.task_id;
-        if (!taskId) throw new Error('Missing task id');
-        setStatus('Scan started…');
-
-        // Begin polling
+        const formData=new FormData(scanForm);
+        const res=await fetch('/scan/start/',{method:'POST',headers:{'X-CSRFToken':getCSRFToken()},body:formData});
+        const data=await res.json(); const taskId=data.task_id; if(!taskId) throw new Error('No task id');
         pollTask({
-          statusUrl: `/scan/status/${encodeURIComponent(taskId)}/`,
-          onTick: (statusData) => {
-            setStatus(`Scanning… (${statusData.state})`);
+          statusUrl:`/scan/status/${encodeURIComponent(taskId)}/`,
+          onTick:s=>setStatus(`Scanning… (${s.state})`),
+          onDone:s=>{
+            if(s.state==='SUCCESS'){ setStatus('Scan complete. Nodes updated.','success'); renderNodes(s.nodes||[]); updateScanHistory(); renderGraph(); }
+            else setStatus(`Scan finished: ${s.state}`,'warning');
+            disableForm(scanForm,false);
           },
-          onDone: (statusData) => {
-            if (statusData.state === 'SUCCESS') {
-              setStatus('Scan complete. Nodes updated.', 'success');
-              renderNodes(statusData.nodes || []);
-              updateScanHistory();
-              renderGraph();
-            } else {
-              setStatus(`Scan finished with state: ${statusData.state}`, 'warning');
-            }
-            disableForm(scanForm, false);
-          },
-          onError: (err) => {
-            setStatus(`Scan failed: ${err.message}`, 'danger');
-            disableForm(scanForm, false);
-          }
+          onError:err=>{ setStatus(`Scan failed: ${err.message}`,'danger'); disableForm(scanForm,false); }
         });
-      } catch (err) {
-        setStatus(`Could not start scan: ${err.message}`, 'danger');
-        disableForm(scanForm, false);
+      } catch(err) {
+        setStatus(`Could not start: ${err.message}`,'danger'); disableForm(scanForm,false);
       }
     });
   }
 
-  // --- Vulnerability (OpenVAS) scan submit ---
+  // --- Vuln form ---
   if (vulnForm) {
-    vulnForm.addEventListener('submit', async function (e) {
-      e.preventDefault();
-      disableForm(vulnForm, true);
-
+    vulnForm.addEventListener('submit', async e=>{
+      e.preventDefault(); disableForm(vulnForm,true);
       try {
-        const formData = new FormData(vulnForm);
-        const res = await fetch('/scan/vuln/start/', {
-          method: 'POST',
-          headers: { 'X-CSRFToken': getCSRFToken() },
-          body: formData
-        });
-        const payload = await res.json();
-        const taskId = payload.task_id;
-        if (!taskId) throw new Error('Missing task id');
-
-        setStatus(`OpenVAS scan launched (task ${taskId}). Monitoring progress…`, 'warning');
-
-        // Try polling a conventional endpoint if your backend exposes it
-        // If not available, we’ll just leave the “launched” notice.
+        const formData=new FormData(vulnForm);
+        const res=await fetch('/scan/vuln/start/',{method:'POST',headers:{'X-CSRFToken':getCSRFToken()},body:formData});
+        const {task_id}=await res.json(); if(!task_id) throw new Error('No task id');
+        setStatus(`OpenVAS scan launched (task ${task_id}).`,'warning');
         pollTask({
-          statusUrl: `/scan/vuln/status/${encodeURIComponent(taskId)}/`,
-          onTick: (statusData) => {
-            // You can surface more details if your API returns % complete
-            setStatus(`OpenVAS scanning… (${statusData.state})`, 'warning');
-          },
-          onDone: (statusData) => {
-            if (statusData.state === 'SUCCESS') {
-              setStatus('OpenVAS scan complete. Results ready.', 'success');
-              // If your endpoint returns summaries, you could append them here
-              updateScanHistory();
-            } else {
-              setStatus(`OpenVAS scan finished with state: ${statusData.state}`, 'warning');
-            }
-            disableForm(vulnForm, false);
-          },
-          onError: (err) => {
-            // If the status endpoint doesn’t exist, keep a friendly message
-            setStatus(`OpenVAS status check unavailable or failed (${err.message}). Scan is running in the background.`, 'muted');
-            disableForm(vulnForm, false);
-          }
+          statusUrl:`/scan/vuln/status/${encodeURIComponent(task_id)}/`,
+          onTick:s=>setStatus(`OpenVAS scanning… (${s.state})`,'warning'),
+          onDone:s=>{ setStatus(`OpenVAS done: ${s.state}`,'success'); updateScanHistory(); disableForm(vulnForm,false); },
+          onError:err=>{ setStatus(`OpenVAS status failed (${err.message})`,'muted'); disableForm(vulnForm,false); }
         });
-      } catch (err) {
-        setStatus(`Could not start OpenVAS scan: ${err.message}`, 'danger');
-        disableForm(vulnForm, false);
-      }
+      } catch(err){ setStatus(`Could not start OpenVAS: ${err.message}`,'danger'); disableForm(vulnForm,false); }
     });
   }
 
-  // Initial draws/refreshes
+    // --- PNG export: robust off-screen mirror ---
+  function cloneElementsWithPositions(cy) {
+    const els = cy.elements().map(ele => {
+      const json = ele.json();
+      // Cytoscape keeps authoritative positions on live nodes; copy them explicitly
+      if (ele.isNode()) {
+        const p = ele.position();
+        json.position = { x: p.x, y: p.y };
+      }
+      return json;
+    });
+    return els;
+  }
+
+  function buildHiddenContainer(width = 1600, height = 1200, bg = '#111') {
+    const div = document.createElement('div');
+    Object.assign(div.style, {
+      position: 'fixed',
+      left: '-10000px',
+      top: '0',
+      width: `${width}px`,
+      height: `${height}px`,
+      visibility: 'hidden',      // renders, unlike display:none
+      background: bg,
+      zIndex: -1,
+    });
+    document.body.appendChild(div);
+    return div;
+  }
+
+  async function exportGraphPNG(cy, {bg = '#111', width = 1600, height = 1200, scale = 2, fit = true} = {}) {
+    if (!cy) throw new Error('Graph not ready');
+
+    // 1) Make a mirror container
+    const container = buildHiddenContainer(width, height, bg);
+
+    // 2) Create a mirror instance with identical style + element positions
+    const mirror = cytoscape({
+      container,
+      elements: cloneElementsWithPositions(cy),
+      style: cy.style().json(),
+      wheelSensitivity: cy._private?.wheelSensitivity ?? 1,
+      pixelRatio: 1,                 // we control resolution via scale below
+      textureOnViewport: false,
+      motionBlur: false,
+      // Force canvas renderer for widest snapshot compatibility
+      renderer: { name: 'canvas' }
+    });
+
+    // 3) Match viewport or fit
+    if (fit) {
+      mirror.fit();
+    } else {
+      mirror.zoom(cy.zoom());
+      mirror.pan(cy.pan());
+    }
+
+    // 4) Wait for a real render tick
+    await new Promise(res => {
+      const done = () => { mirror.off('render', done); res(); };
+      mirror.on('render', done);
+      mirror.resize(); mirror.emit('render');
+    });
+
+    // 5) Snapshot (use data URL → Blob to avoid WebGL preserveDrawingBuffer quirks)
+    const dataUrl = mirror.png({ full: true, scale, bg });
+    const blob = dataURLtoBlob(dataUrl);
+
+    // 6) Cleanup
+    mirror.destroy();
+    container.remove();
+
+    return blob;
+  }
+
+  function dataURLtoBlob(dataURL) {
+    const [meta, data] = dataURL.split(',');
+    const mime = (meta.match(/data:([^;]+)/) || [,'image/png'])[1];
+    const bin = atob(data);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  }
+
+  function timestampFilename(prefix='network-graph', ext='png') {
+    const pad = n => String(n).padStart(2,'0');
+    const d = new Date();
+    return `${prefix}_${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.${ext}`;
+  }
+
+  function wireDownloadPngButton() {
+    const btn = document.getElementById('btn-download-png');
+    if (!btn) return;
+    btn.onclick = async () => {
+      try {
+        if (!cyInstance) { setStatus('Graph not ready.', 'warning'); return; }
+
+        // Guard: exporting from a hidden tab = blank image
+        const cyDiv = cyInstance.container();
+        if (!cyDiv || cyDiv.clientWidth === 0 || cyDiv.clientHeight === 0 || cyDiv.offsetParent === null) {
+          setStatus('Open the Graph tab before exporting.', 'warning');
+          return;
+        }
+
+        setStatus('Rendering PNG…', 'muted');
+
+        // Export via mirror (fit whole graph; tweak width/height/scale as desired)
+        const blob = await exportGraphPNG(cyInstance, {
+          bg: '#111',         // matches your dark UI
+          width: 1800,        // export size in CSS pixels
+          height: 1200,
+          scale: 2,           // resolution multiplier (2 → 3600x2400)
+          fit: true           // true = whole graph; false = current viewport
+        });
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = timestampFilename();
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+
+        setStatus('PNG downloaded.', 'success');
+      } catch (err) {
+        console.error(err);
+        setStatus(`PNG export failed: ${err.message}`, 'danger');
+      }
+    };
+  }
+
+
+  // Init
   renderGraph();
   updateScanHistory();
 });
+

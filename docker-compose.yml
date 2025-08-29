@@ -16,7 +16,8 @@ services:
   web:
     build: .
     command: >
-      sh -c "python cyber_pen_test/manage.py migrate &&
+      sh -c "python cyber_pen_test/manage.py makemigrations &&
+              python cyber_pen_test/manage.py migrate &&
              python cyber_pen_test/manage.py runserver 0.0.0.0:8000"
     environment:
       POSTGRES_DB: postgres

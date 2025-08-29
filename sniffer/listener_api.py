@@ -116,4 +116,4 @@ def command_result():
 
 if __name__ == '__main__':
     log.info("Starting sniffer API service")
-    app.run(host='192.168.100.1', port=5000)
+    app.run(host='10.137.4.115', port=5000)

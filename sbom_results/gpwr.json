@@ -3,7 +3,7 @@
   "specVersion": "1.6",
   "version": 1,
   "metadata": {
-    "timestamp": "2025-08-29T15:42:52Z",
+    "timestamp": "2025-08-29T16:33:49Z",
     "component": {
       "type": "operating-system",
       "name": "windows",
@@ -65,6 +65,12 @@
       "name": "Microsoft Visual C++ 2013 x64 Additional Runtime - 12.0.40664",
       "version": "12.0.40664",
       "purl": "pkg:rpm/windows/Microsoft Visual C++ 2013 x64 Additional Runtime - 12.0.40664@12.0.40664"
+    },
+    {
+      "type": "application",
+      "name": "Cortex XDR 8.8.0.10622",
+      "version": "8.8.0.10622",
+      "purl": "pkg:rpm/windows/Cortex XDR 8.8.0.10622@8.8.0.10622"
     },
     {
       "type": "application",
@@ -218,9 +224,15 @@
     },
     {
       "type": "application",
-      "name": "NVIDIA Graphics Driver 572.76",
-      "version": "572.76",
-      "purl": "pkg:rpm/windows/NVIDIA Graphics Driver 572.76@572.76"
+      "name": "CyberArk Endpoint Privilege Manager Agent",
+      "version": "25.6.02589",
+      "purl": "pkg:rpm/windows/CyberArk Endpoint Privilege Manager Agent@25.6.02589"
+    },
+    {
+      "type": "application",
+      "name": "NVIDIA Graphics Driver 573.40",
+      "version": "573.40",
+      "purl": "pkg:rpm/windows/NVIDIA Graphics Driver 573.40@573.40"
     },
     {
       "type": "application",
@@ -281,12 +293,6 @@
       "name": "vs_devenx64vmsi",
       "version": "17.12.35410",
       "purl": "pkg:rpm/windows/vs_devenx64vmsi@17.12.35410"
-    },
-    {
-      "type": "application",
-      "name": "Cortex XDR 8.7.0.7735",
-      "version": "8.7.0.7735",
-      "purl": "pkg:rpm/windows/Cortex XDR 8.7.0.7735@8.7.0.7735"
     },
     {
       "type": "application",
@@ -608,6 +614,12 @@
     },
     {
       "type": "application",
+      "name": "Microsoft Intune Management Extension",
+      "version": "1.93.155.0",
+      "purl": "pkg:rpm/windows/Microsoft Intune Management Extension@1.93.155.0"
+    },
+    {
+      "type": "application",
       "name": "Windows Software Development Kit - Windows 10.0.22621.3233",
       "version": "10.1.22621.3233",
       "purl": "pkg:rpm/windows/Windows Software Development Kit - Windows 10.0.22621.3233@10.1.22621.3233"
@@ -716,12 +728,6 @@
     },
     {
       "type": "application",
-      "name": "Microsoft Intune Management Extension",
-      "version": "1.91.102.0",
-      "purl": "pkg:rpm/windows/Microsoft Intune Management Extension@1.91.102.0"
-    },
-    {
-      "type": "application",
       "name": "Windows IoT Extension SDK Contracts",
       "version": "10.1.22621.3233",
       "purl": "pkg:rpm/windows/Windows IoT Extension SDK Contracts@10.1.22621.3233"
@@ -795,8 +801,8 @@
     {
       "type": "application",
       "name": "Adobe Acrobat",
-      "version": "25.001.20531",
-      "purl": "pkg:rpm/windows/Adobe Acrobat@25.001.20531"
+      "version": "25.001.20643",
+      "purl": "pkg:rpm/windows/Adobe Acrobat@25.001.20643"
     },
     {
       "type": "application",

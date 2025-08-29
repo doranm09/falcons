@@ -1,0 +1,249 @@
+
+Report Summary
+
+┌────────────────────────────────────┬────────┬─────────────────┐
+│               Target               │  Type  │ Vulnerabilities │
+├────────────────────────────────────┼────────┼─────────────────┤
+│ control_server.sbom (ubuntu 24.04) │ ubuntu │       65        │
+└────────────────────────────────────┴────────┴─────────────────┘
+Legend:
+- '-': Not scanned
+- '0': Clean (no security findings detected)
+
+
+control_server.sbom (ubuntu 24.04)
+==================================
+Total: 65 (UNKNOWN: 0, LOW: 32, MEDIUM: 33, HIGH: 0, CRITICAL: 0)
+
+┌────────────────────────────┬──────────────────┬──────────┬──────────┬──────────────────────────────────┬───────────────────┬──────────────────────────────────────────────────────────────┐
+│          Library           │  Vulnerability   │ Severity │  Status  │        Installed Version         │   Fixed Version   │                            Title                             │
+├────────────────────────────┼──────────────────┼──────────┼──────────┼──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ amd64-microcode            │ CVE-2021-26318   │ MEDIUM   │ affected │ 3.20250311.1ubuntu0.24.04.1      │                   │ A timing and power-based side channel attack leveraging the  │
+│                            │                  │          │          │                                  │                   │ x86 PREFETCH instructions...                                 │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2021-26318                   │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2024-36350   │          │          │                                  │                   │ kernel: information leak via transient execution             │
+│                            │                  │          │          │                                  │                   │ vulnerability in some AMD processors                         │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2024-36350                   │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2024-36357   │          │          │                                  │                   │ kernel: transient execution vulnerability in some AMD        │
+│                            │                  │          │          │                                  │                   │ processors                                                   │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2024-36357                   │
+│                            ├──────────────────┼──────────┤          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2024-36348   │ LOW      │          │                                  │                   │ A transient execution vulnerability in some AMD processors   │
+│                            │                  │          │          │                                  │                   │ may allow a ......                                           │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2024-36348                   │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2024-36349   │          │          │                                  │                   │ A transient execution vulnerability in some AMD processors   │
+│                            │                  │          │          │                                  │                   │ may allow a ......                                           │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2024-36349                   │
+├────────────────────────────┼──────────────────┤          │          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ binutils                   │ CVE-2017-13716   │          │          │ 2.42-4ubuntu2.5                  │                   │ binutils: Memory leak with the C++ symbol demangler routine  │
+│                            │                  │          │          │                                  │                   │ in libiberty                                                 │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2017-13716                   │
+├────────────────────────────┼──────────────────┼──────────┤          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ bluez                      │ CVE-2020-10134   │ MEDIUM   │          │ 5.72-0ubuntu5.3                  │                   │ bluetooth: Method Confusion Pairing Vulnerability in LE      │
+│                            │                  │          │          │                                  │                   │ Secure Connections and BR/EDR Secure...                      │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2020-10134                   │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2021-37577   │          │          │                                  │                   │ bluez: Bluetooth Passkey Reflection Attack in Secure Pairing │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2021-37577                   │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2023-44431   │          │          │                                  │                   │ bluez: AVRCP stack-based buffer overflow remote code         │
+│                            │                  │          │          │                                  │                   │ execution vulnerability                                      │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2023-44431                   │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2023-51580   │          │          │                                  │                   │ bluez: avrcp_parse_attribute_list out-of-bounds read         │
+│                            │                  │          │          │                                  │                   │ information disclosure vulnerability                         │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2023-51580                   │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2023-51589   │          │          │                                  │                   │ bluez: audio profile avrcp parse_media_element out-of-bounds │
+│                            │                  │          │          │                                  │                   │ read information disclosure vulnerability                    │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2023-51589                   │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2023-51592   │          │          │                                  │                   │ bluez: audio profile avrcp parse_media_folder out-of-bounds  │
+│                            │                  │          │          │                                  │                   │ read information disclosure vulnerability                    │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2023-51592                   │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2023-51594   │          │          │                                  │                   │ bluez: OBEX library out-of-bounds read information           │
+│                            │                  │          │          │                                  │                   │ disclosure vulnerability                                     │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2023-51594                   │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2023-51596   │          │          │                                  │                   │ bluez: phone book access profile heap-based buffer overflow  │
+│                            │                  │          │          │                                  │                   │ remote code execution vulnerability...                       │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2023-51596                   │
+│                            ├──────────────────┼──────────┤          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2016-9797    │ LOW      │          │                                  │                   │ bluez: buffer over-read in l2cap_dump()                      │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2016-9797                    │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2016-9798    │          │          │                                  │                   │ bluez: use-after-free in conf_opt()                          │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2016-9798                    │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2016-9799    │          │          │                                  │                   │ bluez: buffer overflow in pklg_read_hci()                    │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2016-9799                    │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2016-9800    │          │          │                                  │                   │ bluez: buffer overflow in pin_code_reply_dump()              │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2016-9800                    │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2016-9801    │          │          │                                  │                   │ bluez: buffer overflow in set_ext_ctrl()                     │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2016-9801                    │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2016-9802    │          │          │                                  │                   │ bluez: buffer over-read in l2cap_packet()                    │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2016-9802                    │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2016-9803    │          │          │                                  │                   │ bluez: out-of-bounds read in le_meta_ev_dump()               │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2016-9803                    │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2016-9804    │          │          │                                  │                   │ bluez: buffer overflow in commands_dump()                    │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2016-9804                    │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2016-9917    │          │          │                                  │                   │ bluez: Heap-based buffer overflow vulnerability in read_n()  │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2016-9917                    │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2016-9918    │          │          │                                  │                   │ bluez: Out of bounds stack read in packet_hexdump()          │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2016-9918                    │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2020-9770    │          │          │                                  │                   │ bluez: BLESA bluetooth attack                                │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2020-9770                    │
+├────────────────────────────┼──────────────────┤          │          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ coreutils                  │ CVE-2016-2781    │          │          │ 9.4-3ubuntu6                     │                   │ coreutils: Non-privileged session can escape to the parent   │
+│                            │                  │          │          │                                  │                   │ session in chroot                                            │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2016-2781                    │
+├────────────────────────────┼──────────────────┼──────────┤          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ cpio                       │ CVE-2023-7216    │ MEDIUM   │          │ 2.15+dfsg-1ubuntu2               │                   │ CPIO: extraction allows symlinks which enables Remote        │
+│                            │                  │          │          │                                  │                   │ Command Execution                                            │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2023-7216                    │
+├────────────────────────────┼──────────────────┼──────────┤          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ curl                       │ CVE-2025-0167    │ LOW      │          │ 8.5.0-2ubuntu10.6                │                   │ When asked to use a `.netrc` file for credentials **and** to │
+│                            │                  │          │          │                                  │                   │ follow...                                                    │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2025-0167                    │
+├────────────────────────────┼──────────────────┤          │          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ gdm3                       │ CVE-2016-1000002 │          │          │ 46.2-1ubuntu1~24.04.1            │                   │ gdm: Information leak before screen lock                     │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2016-1000002                 │
+├────────────────────────────┼──────────────────┼──────────┤          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ git                        │ CVE-2024-52005   │ MEDIUM   │          │ 1:2.43.0-1ubuntu7.3              │                   │ git: The sideband payload is passed unfiltered to the        │
+│                            │                  │          │          │                                  │                   │ terminal in git...                                           │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2024-52005                   │
+├────────────────────────────┼──────────────────┤          │          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ gnome-remote-desktop       │ CVE-2025-5024    │          │          │ 46.3-0ubuntu1                    │                   │ gnome-remote-desktop: Uncontrolled Resource Consumption due  │
+│                            │                  │          │          │                                  │                   │ to Malformed RDP PDUs                                        │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2025-5024                    │
+├────────────────────────────┼──────────────────┤          │          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ hplip                      │ CVE-2025-43023   │          │          │ 3.23.12+dfsg0-0ubuntu5           │                   │ A potential security vulnerability has been identified in    │
+│                            │                  │          │          │                                  │                   │ the HP Linux Imaging...                                      │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2025-43023                   │
+├────────────────────────────┼──────────────────┼──────────┤          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ libgcrypt20                │ CVE-2024-2236    │ LOW      │          │ 1.10.3-2build1                   │                   │ libgcrypt: vulnerable to Marvin Attack                       │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2024-2236                    │
+├────────────────────────────┼──────────────────┤          │          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ libpam-krb5                │ CVE-2023-3326    │          │          │ 4.11-1build3                     │                   │ pam_krb5 authenticates a user by essentially running kinit   │
+│                            │                  │          │          │                                  │                   │ with the pa ......                                           │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2023-3326                    │
+├────────────────────────────┼──────────────────┼──────────┤          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ linux-firmware             │ CVE-2020-12313   │ MEDIUM   │          │ 20240318.git3b128b60-0ubuntu2.15 │                   │ Insufficient control flow management in some Intel(R)        │
+│                            │                  │          │          │                                  │                   │ PROSet/Wireless WiFi products before version...              │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2020-12313                   │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2020-12317   │          │          │                                  │                   │ Improper buffer restriction in some Intel(R) PROSet/Wireless │
+│                            │                  │          │          │                                  │                   │ WiFi products before version 21.110...                       │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2020-12317                   │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2020-12319   │          │          │                                  │                   │ Insufficient control flow management in some Intel(R)        │
+│                            │                  │          │          │                                  │                   │ PROSet/Wireless WiFi products before version...              │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2020-12319                   │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2023-4969    │          │          │                                  │                   │ hw: amd: GPU memory leaks                                    │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2023-4969                    │
+├────────────────────────────┼──────────────────┼──────────┤          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ network-manager            │ CVE-2012-1096    │ LOW      │          │ 1.46.0-1ubuntu2.2                │                   │ wpa_supplicant: Improper x509v3 certificate and key file     │
+│                            │                  │          │          │                                  │                   │ paths sanitization                                           │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2012-1096                    │
+├────────────────────────────┼──────────────────┤          │          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ ntfs-3g                    │ CVE-2023-52890   │          │          │ 1:2022.10.3-1.2ubuntu3           │                   │ NTFS-3G before 75dcdc2 has a use-after-free in               │
+│                            │                  │          │          │                                  │                   │ ntfs_uppercase_mbs in l ...                                  │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2023-52890                   │
+├────────────────────────────┼──────────────────┤          │          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ openssl                    │ CVE-2024-41996   │          │          │ 3.0.13-0ubuntu3.5                │                   │ openssl: remote attackers (from the client side) to trigger  │
+│                            │                  │          │          │                                  │                   │ unnecessarily expensive server-side...                       │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2024-41996                   │
+├────────────────────────────┼──────────────────┤          │          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ patch                      │ CVE-2018-6952    │          │          │ 2.7.6-7build3                    │                   │ patch: Double free of memory in pch.c:another_hunk() causes  │
+│                            │                  │          │          │                                  │                   │ a crash                                                      │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2018-6952                    │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2021-45261   │          │          │                                  │                   │ patch: Invalid Pointer via another_hunk function             │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2021-45261                   │
+├────────────────────────────┼──────────────────┤          │          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ policykit-1                │ CVE-2016-2568    │          │          │ 124-2ubuntu1.24.04.2             │                   │ polkit: Program run via pkexec as unprivileged user can      │
+│                            │                  │          │          │                                  │                   │ escape to parent...                                          │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2016-2568                    │
+├────────────────────────────┼──────────────────┤          │          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ snapd                      │ CVE-2024-5138    │          │          │ 2.67.1+24.04                     │                   │ The snapctl component within snapd allows a confined snap to │
+│                            │                  │          │          │                                  │                   │ interact ...                                                 │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2024-5138                    │
+├────────────────────────────┼──────────────────┤          │          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ sssd                       │ CVE-2023-3326    │          │          │ 2.9.4-1.1ubuntu6.2               │                   │ pam_krb5 authenticates a user by essentially running kinit   │
+│                            │                  │          │          │                                  │                   │ with the pa ......                                           │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2023-3326                    │
+├────────────────────────────┼──────────────────┼──────────┤          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ tar                        │ CVE-2025-45582   │ MEDIUM   │          │ 1.35+dfsg-3build1                │                   │ tar: Tar path traversal                                      │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2025-45582                   │
+├────────────────────────────┼──────────────────┤          ├──────────┼──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ udisks2                    │ CVE-2025-8067    │          │ fixed    │ 2.10.1-6ubuntu1.2                │ 2.10.1-6ubuntu1.3 │ udisks: Out-of-bounds read in UDisks Daemon                  │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2025-8067                    │
+├────────────────────────────┼──────────────────┤          ├──────────┼──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ wget                       │ CVE-2021-31879   │          │ affected │ 1.21.4-1ubuntu4.1                │                   │ wget: authorization header disclosure on redirect            │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2021-31879                   │
+├────────────────────────────┼──────────────────┤          │          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ wireshark                  │ CVE-2024-11595   │          │          │ 4.2.2-1.1build3                  │                   │ wireshark: Loop with Unreachable Exit Condition ('Infinite   │
+│                            │                  │          │          │                                  │                   │ Loop') in Wireshark                                          │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2024-11595                   │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2024-11596   │          │          │                                  │                   │ wireshark: Buffer Over-read in Wireshark                     │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2024-11596                   │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2024-2955    │          │          │                                  │                   │ wireshark: T.38 dissector crash                              │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2024-2955                    │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2024-4853    │          │          │                                  │                   │ wireshark: Editcap byte chopping crash                       │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2024-4853                    │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2024-4854    │          │          │                                  │                   │ wireshark: MONGO and ZigBee TLV dissector infinite loops     │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2024-4854                    │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2024-4855    │          │          │                                  │                   │ wireshark: Editcap secret injection crash                    │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2024-4855                    │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2024-8250    │          │          │                                  │                   │ wireshark: NTLMSSP dissector crash                           │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2024-8250                    │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2024-9780    │          │          │                                  │                   │ wireshark: Missing Initialization of a Variable in Wireshark │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2024-9780                    │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2024-9781    │          │          │                                  │                   │ wireshark: Improper Handling of Missing Values in Wireshark  │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2024-9781                    │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2025-1492    │          │          │                                  │                   │ wireshark: Uncontrolled Recursion in Wireshark               │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2025-1492                    │
+│                            ├──────────────────┼──────────┤          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2021-39920   │ LOW      │          │                                  │                   │ wireshark: IPPUSB dissector crash                            │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2021-39920                   │
+│                            ├──────────────────┤          │          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2024-8645    │          │          │                                  │                   │ wireshark: Denial of Service via SPRT Dissector Crash in     │
+│                            │                  │          │          │                                  │                   │ Wireshark                                                    │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2024-8645                    │
+├────────────────────────────┼──────────────────┼──────────┤          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ xdg-utils                  │ CVE-2025-52968   │ MEDIUM   │          │ 1.1.3-4.1ubuntu3                 │                   │ xdg-utils: xdg-open bypassing SameSite=Strict                │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2025-52968                   │
+│                            ├──────────────────┼──────────┤          │                                  ├───────────────────┼──────────────────────────────────────────────────────────────┤
+│                            │ CVE-2022-4055    │ LOW      │          │                                  │                   │ xdg-utils: improper parse of mailto URIs allows bypass of    │
+│                            │                  │          │          │                                  │                   │ Thunderbird security mechanism...                            │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2022-4055                    │
+├────────────────────────────┼──────────────────┤          │          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ xorg                       │ CVE-2023-5574    │          │          │ 1:7.7+23ubuntu3                  │                   │ xorg-x11-server: Use-after-free bug in DamageDestroy         │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2023-5574                    │
+├────────────────────────────┼──────────────────┤          │          ├──────────────────────────────────┼───────────────────┼──────────────────────────────────────────────────────────────┤
+│ xserver-xorg-video-nouveau │ CVE-2018-3979    │          │          │ 1:1.0.17-2build1                 │                   │ A remote denial-of-service vulnerability exists in the way   │
+│                            │                  │          │          │                                  │                   │ the Nouveau ...                                              │
+│                            │                  │          │          │                                  │                   │ https://avd.aquasec.com/nvd/cve-2018-3979                    │
+└────────────────────────────┴──────────────────┴──────────┴──────────┴──────────────────────────────────┴───────────────────┴──────────────────────────────────────────────────────────────┘

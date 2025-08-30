@@ -30,6 +30,11 @@ SEVERITY_CHOICES = [
 # Inventory / Scans
 # -----------------------------
 class ScanRun(models.Model):
+    class Status(models.TextChoices):
+        IN_PROGRESS = "IN_PROGRESS"
+        COMPLETED = "COMPLETED"
+        FAILED = "FAILED"
+
     timestamp = models.DateTimeField(default=timezone.now)
     cidr = models.CharField(max_length=64)
     status = models.CharField(max_length=32, choices=SCAN_STATUS_CHOICES, default="PENDING")

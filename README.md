@@ -4,7 +4,7 @@ This project is a full-stack Django platform that simulates and secures networke
 
 ---
 
-## 🌐 Project Architecture
+## Project Architecture
 
 - **Django + Celery Backend** — Topology modeling, scans, CVE storage
 - **Cytoscape.js Frontend** — Visual graph of nodes and link latencies
@@ -14,32 +14,32 @@ This project is a full-stack Django platform that simulates and secures networke
 
 ---
 
-## 🔒 Key Features
+## Key Features
 
-### 🕸 1. Network Mapping & Node Discovery
+### 1. Network Mapping & Node Discovery
 - Passive sniffer interface management via dashboard
 - IP discovery and latency-weighted graph generation
 - Dijkstra-based shortest path calculation
 - Versioned scans with historical view
 
-### 🛡 2. Vulnerability Assessment
+### 2. Vulnerability Assessment
 - CVE ingestion from NVD (via keyword or CPE)
 - Severity scoring and association with nodes
 - Admin integration for search, filter, and review
 
-### 💻 3. Persistent Host Agent
+### 3. Persistent Host Agent
 - Periodic system info push (CPU, interfaces, processes)
 - Command polling (e.g., test ping, scans)
 - Remote execution with output POST-back
 
-### ⚙️ 4. Real-Time Visualization
+### 4. Real-Time Visualization
 - Dynamic network graph with Cytoscape.js
 - Node color/size/styling mapped to attributes
 - Interactive shortest path UI
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 - Docker & Docker Compose
@@ -92,7 +92,7 @@ python agent.py
 
 ---
 
-## 🧪 Testing Agent Commands
+## Testing Agent Commands
 
 From the Django Admin:
 1. Go to **AgentCommand**
@@ -103,7 +103,7 @@ From the Django Admin:
 
 ---
 
-## 📬 API Endpoints (Simplified)
+## API Endpoints (Simplified)
 
 | Endpoint                | Method | Purpose                      |
 |-------------------------|--------|------------------------------|
@@ -116,7 +116,7 @@ From the Django Admin:
 
 ---
 
-## 🔧 Tech Stack
+## Tech Stack
 
 - Python 3.10
 - Django 3.2+
@@ -128,7 +128,7 @@ From the Django Admin:
 
 ---
 
-## 📁 Directory Structure
+## Directory Structure
 
 ```
 cyber_pen_test/
@@ -143,14 +143,14 @@ cyber_pen_test/
 
 ---
 
-## 📜 License
+## License
 
 © 2025 Michael Doran — for academic and federal cybersecurity research. Not intended for offensive use without explicit authorization.
 
 ---
 
-## 📅 Roadmap
-### ✅ Current Functionality
+## Roadmap
+### Current Functionality
 - [x] Task 1.1: Passive Listener to capture real-time traffic
 - [x] Task 1.2: Extended Node model with protocols, banners, status
 - [x] Task 1.3: Visualize topology as weighted graph (Cytoscape)
@@ -160,7 +160,7 @@ cyber_pen_test/
 
 ---
 
-### 🔬 In Progress / Research-Driven Tasks
+### In Progress / Research-Driven Tasks
 #### 3. Asset Importance via Causal Learning
 - [ ] Task 3.1: Integrate DoWhy / PyWhy causal backends
 - [ ] Task 3.2: Compute `causal_score` per node

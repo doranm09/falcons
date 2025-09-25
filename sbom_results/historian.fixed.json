@@ -1,0 +1,1241 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2025-08-29T15:27:04Z",
+    "component": {
+      "type": "operating-system",
+      "name": "windows",
+      "version": "10.0.22631",
+      "bom-ref": "pkg:generic/windows-os@10.0.22631"
+    },
+    "tools": [
+      {
+        "vendor": "custom",
+        "name": "host-agent",
+        "version": "0.1.0"
+      }
+    ]
+  },
+  "components": [
+    {
+      "type": "application",
+      "name": "7-Zip",
+      "version": "23.01",
+      "purl": "pkg:generic/7-zip@23.01",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "7-Zip 23.01 (x64)"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:7_zip:7_zip:23.01:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/7-zip@23.01",
+      "cpe": "cpe:2.3:a:7_zip:7_zip:23.01:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Docker Desktop",
+      "version": "4.32.0",
+      "purl": "pkg:generic/docker-desktop@4.32.0",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:docker:docker_desktop:4.32.0:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/docker-desktop@4.32.0",
+      "cpe": "cpe:2.3:a:docker:docker_desktop:4.32.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Git",
+      "version": "2.46.2",
+      "purl": "pkg:generic/git@2.46.2",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:git_scm:git:2.46.2:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/git@2.46.2",
+      "cpe": "cpe:2.3:a:git_scm:git:2.46.2:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "MATLAB R2023b",
+      "version": "23.2",
+      "purl": "pkg:generic/matlab-r2023b@23.2",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:mathworks:r2023b:23.2:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/matlab-r2023b@23.2",
+      "cpe": "cpe:2.3:a:mathworks:r2023b:23.2:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Mozilla Firefox (x64 en-US)",
+      "version": "121.0",
+      "purl": "pkg:generic/mozilla-firefox-x64-en-us@121.0",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:mozilla:mozilla_firefox_x64_en_us:121.0:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/mozilla-firefox-x64-en-us@121.0",
+      "cpe": "cpe:2.3:a:mozilla:mozilla_firefox_x64_en_us:121.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Mozilla Maintenance Service",
+      "version": "121.0",
+      "purl": "pkg:generic/mozilla-maintenance-service@121.0",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:mozilla:mozilla_maintenance_service:121.0:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/mozilla-maintenance-service@121.0",
+      "cpe": "cpe:2.3:a:mozilla:mozilla_maintenance_service:121.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Notepad++",
+      "version": "8.6",
+      "purl": "pkg:generic/notepad@8.6",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Notepad++ (64-bit x64)"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:don_ho:notepad:8.6:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/notepad@8.6",
+      "cpe": "cpe:2.3:a:don_ho:notepad:8.6:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft 365 Apps for enterprise - en-us",
+      "version": "16.0.18227.20222",
+      "purl": "pkg:generic/microsoft-365-apps-for-enterprise-en-us@16.0.18227.20222",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:365_apps_for_enterprise_en_us:16.0.18227.20222:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-365-apps-for-enterprise-en-us@16.0.18227.20222",
+      "cpe": "cpe:2.3:a:microsoft:365_apps_for_enterprise_en_us:16.0.18227.20222:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft OneDrive",
+      "version": "25.004.0109.0002",
+      "purl": "pkg:generic/microsoft-onedrive@25.004.0109.0002",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:onedrive:25.004.0109.0002:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-onedrive@25.004.0109.0002",
+      "cpe": "cpe:2.3:a:microsoft:onedrive:25.004.0109.0002:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2013 x64 Additional Runtime",
+      "version": "12.0.40664",
+      "purl": "pkg:generic/microsoft-visual-c-2013-x64-additional-runtime@12.0.40664",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2013 x64 Additional Runtime - 12.0.40664"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2013_runtime:12.0.40664:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2013-x64-additional-runtime@12.0.40664",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2013_runtime:12.0.40664:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Cortex XDR",
+      "version": "8.8.0.10622",
+      "purl": "pkg:generic/cortex-xdr@8.8.0.10622",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Cortex XDR 8.8.0.10622"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:palo_alto_networks:cortex_xdr_agent:8.8.0.10622:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/cortex-xdr@8.8.0.10622",
+      "cpe": "cpe:2.3:a:palo_alto_networks:cortex_xdr_agent:8.8.0.10622:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Policy Platform",
+      "version": "68.1.9086.1017",
+      "purl": "pkg:generic/microsoft-policy-platform@68.1.9086.1017",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:policy_platform:68.1.9086.1017:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-policy-platform@68.1.9086.1017",
+      "cpe": "cpe:2.3:a:microsoft:policy_platform:68.1.9086.1017:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Qualys Cloud Security Agent",
+      "version": "6.0.0.13",
+      "purl": "pkg:generic/qualys-cloud-security-agent@6.0.0.13",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:qualys:cloud_security_agent:6.0.0.13:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/qualys-cloud-security-agent@6.0.0.13",
+      "cpe": "cpe:2.3:a:qualys:cloud_security_agent:6.0.0.13:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Agent Client Collector",
+      "version": "3.5.5.2",
+      "purl": "pkg:generic/agent-client-collector@3.5.5.2",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:agent_client_collector:3.5.5.2:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/agent-client-collector@3.5.5.2",
+      "cpe": "cpe:2.3:a:microsoft:agent_client_collector:3.5.5.2:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2010 x64 Redistributable",
+      "version": "10.0.40219",
+      "purl": "pkg:generic/microsoft-visual-c-2010-x64-redistributable@10.0.40219",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2010  x64 Redistributable - 10.0.40219"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2010_redistributable:10.0.40219:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2010-x64-redistributable@10.0.40219",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2010_redistributable:10.0.40219:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2012 x64 Additional Runtime",
+      "version": "11.0.61030",
+      "purl": "pkg:generic/microsoft-visual-c-2012-x64-additional-runtime@11.0.61030",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2012 x64 Additional Runtime - 11.0.61030"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2012_runtime:11.0.61030:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2012-x64-additional-runtime@11.0.61030",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2012_runtime:11.0.61030:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Acrobat-x64-SDL",
+      "version": "1.0.0000",
+      "purl": "pkg:generic/acrobat-x64-sdl@1.0.0000",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:adobe:acrobat_x64_sdl:1.0.0000:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/acrobat-x64-sdl@1.0.0000",
+      "cpe": "cpe:2.3:a:adobe:acrobat_x64_sdl:1.0.0000:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2013 x64 Minimum Runtime",
+      "version": "12.0.40664",
+      "purl": "pkg:generic/microsoft-visual-c-2013-x64-minimum-runtime@12.0.40664",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2013 x64 Minimum Runtime - 12.0.40664"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2013_runtime:12.0.40664:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2013-x64-minimum-runtime@12.0.40664",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2013_runtime:12.0.40664:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Windows Subsystem for Linux",
+      "version": "2.2.4.0",
+      "purl": "pkg:generic/windows-subsystem-for-linux@2.2.4.0",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:subsystem_for_linux:2.2.4.0:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/windows-subsystem-for-linux@2.2.4.0",
+      "cpe": "cpe:2.3:a:microsoft:subsystem_for_linux:2.2.4.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2022 X64 Minimum Runtime",
+      "version": "14.30.30704",
+      "purl": "pkg:generic/microsoft-visual-c-2022-x64-minimum-runtime@14.30.30704",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2022 X64 Minimum Runtime - 14.30.30704"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2022_runtime:14.30.30704:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2022-x64-minimum-runtime@14.30.30704",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2022_runtime:14.30.30704:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2022 X64 Additional Runtime",
+      "version": "14.30.30704",
+      "purl": "pkg:generic/microsoft-visual-c-2022-x64-additional-runtime@14.30.30704",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2022 X64 Additional Runtime - 14.30.30704"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2022_runtime:14.30.30704:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2022-x64-additional-runtime@14.30.30704",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2022_runtime:14.30.30704:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Configuration Manager Client",
+      "version": "5.00.9128.1000",
+      "purl": "pkg:generic/configuration-manager-client@5.00.9128.1000",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:configuration_manager_client:5.00.9128.1000:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/configuration-manager-client@5.00.9128.1000",
+      "cpe": "cpe:2.3:a:microsoft:configuration_manager_client:5.00.9128.1000:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Office 16 Click-to-Run Licensing Component",
+      "version": "16.0.18227.20222",
+      "purl": "pkg:generic/office-16-click-to-run-licensing-component@16.0.18227.20222",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:office:office_16_click_to_run_licensing_component:16.0.18227.20222:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/office-16-click-to-run-licensing-component@16.0.18227.20222",
+      "cpe": "cpe:2.3:a:office:office_16_click_to_run_licensing_component:16.0.18227.20222:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Office 16 Click-to-Run Extensibility Component",
+      "version": "16.0.18227.20082",
+      "purl": "pkg:generic/office-16-click-to-run-extensibility-component@16.0.18227.20082",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:office:office_16_click_to_run_extensibility_component:16.0.18227.20082:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/office-16-click-to-run-extensibility-component@16.0.18227.20082",
+      "cpe": "cpe:2.3:a:office:office_16_click_to_run_extensibility_component:16.0.18227.20082:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "PuTTY",
+      "version": "0.80.0.0",
+      "purl": "pkg:generic/putty@0.80.0.0",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "PuTTY release 0.80 (64-bit)"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:putty:putty:0.80.0.0:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/putty@0.80.0.0",
+      "cpe": "cpe:2.3:a:putty:putty:0.80.0.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "NVIDIA Graphics Driver",
+      "version": "536.45",
+      "purl": "pkg:generic/nvidia-graphics-driver@536.45",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "NVIDIA Graphics Driver 536.45"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:nvidia:gpu_display_driver:536.45:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/nvidia-graphics-driver@536.45",
+      "cpe": "cpe:2.3:a:nvidia:gpu_display_driver:536.45:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "NVIDIA Install Application",
+      "version": "2.1002.400.0",
+      "purl": "pkg:generic/nvidia-install-application@2.1002.400.0",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:nvidia:installer:2.1002.400.0:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/nvidia-install-application@2.1002.400.0",
+      "cpe": "cpe:2.3:a:nvidia:installer:2.1002.400.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Zoom",
+      "version": "5.17.28914",
+      "purl": "pkg:generic/zoom@5.17.28914",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Zoom (64-bit)"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:zoom:zoom:5.17.28914:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/zoom@5.17.28914",
+      "cpe": "cpe:2.3:a:zoom:zoom:5.17.28914:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Google Chrome",
+      "version": "132.0.6834.111",
+      "purl": "pkg:generic/google-chrome@132.0.6834.111",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:google:chrome:132.0.6834.111:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/google-chrome@132.0.6834.111",
+      "cpe": "cpe:2.3:a:google:chrome:132.0.6834.111:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Update Health Tools",
+      "version": "5.72.0.0",
+      "purl": "pkg:generic/microsoft-update-health-tools@5.72.0.0",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:update_health_tools:5.72.0.0:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-update-health-tools@5.72.0.0",
+      "cpe": "cpe:2.3:a:microsoft:update_health_tools:5.72.0.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "CrashPlan",
+      "version": "11.2.1.23",
+      "purl": "pkg:generic/crashplan@11.2.1.23",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:code42:crashplan:11.2.1.23:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/crashplan@11.2.1.23",
+      "cpe": "cpe:2.3:a:code42:crashplan:11.2.1.23:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2012 x64 Minimum Runtime",
+      "version": "11.0.61030",
+      "purl": "pkg:generic/microsoft-visual-c-2012-x64-minimum-runtime@11.0.61030",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2012 x64 Minimum Runtime - 11.0.61030"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2012_runtime:11.0.61030:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2012-x64-minimum-runtime@11.0.61030",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2012_runtime:11.0.61030:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Windows Subsystem for Linux Update",
+      "version": "5.10.102.1",
+      "purl": "pkg:generic/windows-subsystem-for-linux-update@5.10.102.1",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:subsystem_for_linux_update:5.10.102.1:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/windows-subsystem-for-linux-update@5.10.102.1",
+      "cpe": "cpe:2.3:a:microsoft:subsystem_for_linux_update:5.10.102.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "GlobalProtect",
+      "version": "6.0.7",
+      "purl": "pkg:generic/globalprotect@6.0.7",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:palo_alto_networks:globalprotect:6.0.7:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/globalprotect@6.0.7",
+      "cpe": "cpe:2.3:a:palo_alto_networks:globalprotect:6.0.7:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Adobe Creative Cloud",
+      "version": "5.4.2.541",
+      "purl": "pkg:generic/adobe-creative-cloud@5.4.2.541",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:adobe:creative_cloud:5.4.2.541:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/adobe-creative-cloud@5.4.2.541",
+      "cpe": "cpe:2.3:a:adobe:creative_cloud:5.4.2.541:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Adobe Genuine Service",
+      "version": "8.5.1.48",
+      "purl": "pkg:generic/adobe-genuine-service@8.5.1.48",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:adobe:genuine_service:8.5.1.48:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/adobe-genuine-service@8.5.1.48",
+      "cpe": "cpe:2.3:a:adobe:genuine_service:8.5.1.48:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Citrix Workspace",
+      "version": "23.9.1.104",
+      "purl": "pkg:generic/citrix-workspace@23.9.1.104",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Citrix Workspace 2309"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:citrix:workspace_app:23.9.1.104:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/citrix-workspace@23.9.1.104",
+      "cpe": "cpe:2.3:a:citrix:workspace_app:23.9.1.104:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Dropbox",
+      "version": "216.4.4420",
+      "purl": "pkg:generic/dropbox@216.4.4420",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:dropbox:dropbox:216.4.4420:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/dropbox@216.4.4420",
+      "cpe": "cpe:2.3:a:dropbox:dropbox:216.4.4420:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Edge",
+      "version": "139.0.3405.119",
+      "purl": "pkg:generic/microsoft-edge@139.0.3405.119",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:edge:139.0.3405.119:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-edge@139.0.3405.119",
+      "cpe": "cpe:2.3:a:microsoft:edge:139.0.3405.119:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Edge WebView2 Runtime",
+      "version": "132.0.2957.127",
+      "purl": "pkg:generic/microsoft-edge-webview2-runtime@132.0.2957.127",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:edge_webview2:132.0.2957.127:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-edge-webview2-runtime@132.0.2957.127",
+      "cpe": "cpe:2.3:a:microsoft:edge_webview2:132.0.2957.127:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "ResearchSoft Direct Export Helper",
+      "version": "1.0.21.3540",
+      "purl": "pkg:generic/researchsoft-direct-export-helper@1.0.21.3540",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:clarivate:endnote_direct_export_helper:1.0.21.3540:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/researchsoft-direct-export-helper@1.0.21.3540",
+      "cpe": "cpe:2.3:a:clarivate:endnote_direct_export_helper:1.0.21.3540:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "WinSCP",
+      "version": "6.1.2",
+      "purl": "pkg:generic/winscp@6.1.2",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "WinSCP 6.1.2"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:winscp:winscp:6.1.2:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/winscp@6.1.2",
+      "cpe": "cpe:2.3:a:winscp:winscp:6.1.2:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2013 Redistributable",
+      "version": "12.0.40664.0",
+      "purl": "pkg:generic/microsoft-visual-c-2013-redistributable@12.0.40664.0",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2013 Redistributable (x64) - 12.0.40664"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2013_redistributable:12.0.40664.0:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2013-redistributable@12.0.40664.0",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2013_redistributable:12.0.40664.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Dropbox Update Helper",
+      "version": "1.3.983.1",
+      "purl": "pkg:generic/dropbox-update-helper@1.3.983.1",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:dropbox:update_helper:1.3.983.1:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/dropbox-update-helper@1.3.983.1",
+      "cpe": "cpe:2.3:a:dropbox:update_helper:1.3.983.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2012 Redistributable",
+      "version": "11.0.61030.0",
+      "purl": "pkg:generic/microsoft-visual-c-2012-redistributable@11.0.61030.0",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2012 Redistributable (x86) - 11.0.61030"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2012_redistributable:11.0.61030.0:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2012-redistributable@11.0.61030.0",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2012_redistributable:11.0.61030.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "BCR Plug-in",
+      "version": "23.9.1.5",
+      "purl": "pkg:generic/bcr-plug-in@23.9.1.5",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:citrix:workspace_app:23.9.1.5:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/bcr-plug-in@23.9.1.5",
+      "cpe": "cpe:2.3:a:citrix:workspace_app:23.9.1.5:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Citrix Workspace(DV)",
+      "version": "23.9.1.5",
+      "purl": "pkg:generic/citrix-workspace-dv@23.9.1.5",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:citrix:workspace_app:23.9.1.5:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/citrix-workspace-dv@23.9.1.5",
+      "cpe": "cpe:2.3:a:citrix:workspace_app:23.9.1.5:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "MTOP Client",
+      "version": "23.9.1.5",
+      "purl": "pkg:generic/mtop-client@23.9.1.5",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:citrix:workspace_app:23.9.1.5:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/mtop-client@23.9.1.5",
+      "cpe": "cpe:2.3:a:citrix:workspace_app:23.9.1.5:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2015-2022 Redistributable",
+      "version": "14.30.30704.0",
+      "purl": "pkg:generic/microsoft-visual-c-2015-2022-redistributable@14.30.30704.0",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2015-2022 Redistributable (x86) - 14.30.30704"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2015_2022_redistributable:14.30.30704.0:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2015-2022-redistributable@14.30.30704.0",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2015_2022_redistributable:14.30.30704.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Citrix Authentication Manager",
+      "version": "23.8.0.5",
+      "purl": "pkg:generic/citrix-authentication-manager@23.8.0.5",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:citrix:authentication_manager:23.8.0.5:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/citrix-authentication-manager@23.8.0.5",
+      "cpe": "cpe:2.3:a:citrix:authentication_manager:23.8.0.5:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2015-2022 Redistributable",
+      "version": "14.30.30704.0",
+      "purl": "pkg:generic/microsoft-visual-c-2015-2022-redistributable@14.30.30704.0",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.30.30704"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2015_2022_redistributable:14.30.30704.0:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2015-2022-redistributable@14.30.30704.0",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2015_2022_redistributable:14.30.30704.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft .NET Host FX Resolver",
+      "version": "48.144.23141",
+      "purl": "pkg:generic/microsoft-net-host-fx-resolver@48.144.23141",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft .NET Host FX Resolver - 6.0.36 (x86)"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:net_host_fx_resolver:48.144.23141:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-net-host-fx-resolver@48.144.23141",
+      "cpe": "cpe:2.3:a:microsoft:net_host_fx_resolver:48.144.23141:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Dell Command Update",
+      "version": "5.1.0",
+      "purl": "pkg:generic/dell-command-update@5.1.0",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Dell Command | Update"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:dell:command_update:5.1.0:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/dell-command-update@5.1.0",
+      "cpe": "cpe:2.3:a:dell:command_update:5.1.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2013 x86 Minimum Runtime",
+      "version": "12.0.40664",
+      "purl": "pkg:generic/microsoft-visual-c-2013-x86-minimum-runtime@12.0.40664",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2013 x86 Minimum Runtime - 12.0.40664"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2013_runtime:12.0.40664:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2013-x86-minimum-runtime@12.0.40664",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2013_runtime:12.0.40664:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Online Plug-in",
+      "version": "23.9.1.5",
+      "purl": "pkg:generic/online-plug-in@23.9.1.5",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:citrix:workspace_app:23.9.1.5:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/online-plug-in@23.9.1.5",
+      "cpe": "cpe:2.3:a:citrix:workspace_app:23.9.1.5:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "EndNote",
+      "version": "21.0.1.17232",
+      "purl": "pkg:generic/endnote@21.0.1.17232",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "EndNote 21"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:clarivate:endnote:21.0.1.17232:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/endnote@21.0.1.17232",
+      "cpe": "cpe:2.3:a:clarivate:endnote:21.0.1.17232:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft .NET Runtime",
+      "version": "48.144.23141",
+      "purl": "pkg:generic/microsoft-net-runtime@48.144.23141",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft .NET Runtime - 6.0.36 (x86)"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:net_runtime:48.144.23141:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-net-runtime@48.144.23141",
+      "cpe": "cpe:2.3:a:microsoft:net_runtime:48.144.23141:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Citrix Workspace Inside",
+      "version": "23.9.1.63",
+      "purl": "pkg:generic/citrix-workspace-inside@23.9.1.63",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:citrix:workspace_app:23.9.1.63:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/citrix-workspace-inside@23.9.1.63",
+      "cpe": "cpe:2.3:a:citrix:workspace_app:23.9.1.63:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Windows Desktop Runtime",
+      "version": "48.144.23186",
+      "purl": "pkg:generic/microsoft-windows-desktop-runtime@48.144.23186",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Windows Desktop Runtime - 6.0.36 (x86)"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:windows_desktop_runtime:48.144.23186:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-windows-desktop-runtime@48.144.23186",
+      "cpe": "cpe:2.3:a:microsoft:windows_desktop_runtime:48.144.23186:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2013 Redistributable",
+      "version": "12.0.40664.0",
+      "purl": "pkg:generic/microsoft-visual-c-2013-redistributable@12.0.40664.0",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2013 Redistributable (x86) - 12.0.40664"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2013_redistributable:12.0.40664.0:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2013-redistributable@12.0.40664.0",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2013_redistributable:12.0.40664.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Adobe Refresh Manager",
+      "version": "1.8.0",
+      "purl": "pkg:generic/adobe-refresh-manager@1.8.0",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:adobe:refresh_manager:1.8.0:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/adobe-refresh-manager@1.8.0",
+      "cpe": "cpe:2.3:a:adobe:refresh_manager:1.8.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Adobe Acrobat",
+      "version": "24.005.20320",
+      "purl": "pkg:generic/adobe-acrobat@24.005.20320",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:adobe:acrobat:24.005.20320:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/adobe-acrobat@24.005.20320",
+      "cpe": "cpe:2.3:a:adobe:acrobat:24.005.20320:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Citrix Web Helper",
+      "version": "23.9.1.41",
+      "purl": "pkg:generic/citrix-web-helper@23.9.1.41",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:citrix:workspace_app:23.9.1.41:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/citrix-web-helper@23.9.1.41",
+      "cpe": "cpe:2.3:a:citrix:workspace_app:23.9.1.41:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Intune Management Extension",
+      "version": "1.86.101.0",
+      "purl": "pkg:generic/microsoft-intune-management-extension@1.86.101.0",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:intune_management_extension:1.86.101.0:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-intune-management-extension@1.86.101.0",
+      "cpe": "cpe:2.3:a:microsoft:intune_management_extension:1.86.101.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2012 x86 Additional Runtime",
+      "version": "11.0.61030",
+      "purl": "pkg:generic/microsoft-visual-c-2012-x86-additional-runtime@11.0.61030",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2012 x86 Additional Runtime - 11.0.61030"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2012_runtime:11.0.61030:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2012-x86-additional-runtime@11.0.61030",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2012_runtime:11.0.61030:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2012 x86 Minimum Runtime",
+      "version": "11.0.61030",
+      "purl": "pkg:generic/microsoft-visual-c-2012-x86-minimum-runtime@11.0.61030",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2012 x86 Minimum Runtime - 11.0.61030"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2012_runtime:11.0.61030:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2012-x86-minimum-runtime@11.0.61030",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2012_runtime:11.0.61030:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2022 X86 Additional Runtime",
+      "version": "14.30.30704",
+      "purl": "pkg:generic/microsoft-visual-c-2022-x86-additional-runtime@14.30.30704",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2022 X86 Additional Runtime - 14.30.30704"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2022_runtime:14.30.30704:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2022-x86-additional-runtime@14.30.30704",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2022_runtime:14.30.30704:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Windows Desktop Runtime",
+      "version": "6.0.36.34217",
+      "purl": "pkg:generic/microsoft-windows-desktop-runtime@6.0.36.34217",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Windows Desktop Runtime - 6.0.36 (x86)"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:windows_desktop_runtime:6.0.36.34217:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-windows-desktop-runtime@6.0.36.34217",
+      "cpe": "cpe:2.3:a:microsoft:windows_desktop_runtime:6.0.36.34217:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "AppProtection",
+      "version": "23.8.0.13",
+      "purl": "pkg:generic/appprotection@23.8.0.13",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:appprotection:appprotection:23.8.0.13:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/appprotection@23.8.0.13",
+      "cpe": "cpe:2.3:a:appprotection:appprotection:23.8.0.13:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2012 Redistributable",
+      "version": "11.0.61030.0",
+      "purl": "pkg:generic/microsoft-visual-c-2012-redistributable@11.0.61030.0",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2012 Redistributable (x64) - 11.0.61030"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2012_redistributable:11.0.61030.0:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2012-redistributable@11.0.61030.0",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2012_redistributable:11.0.61030.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2013 x86 Additional Runtime",
+      "version": "12.0.40664",
+      "purl": "pkg:generic/microsoft-visual-c-2013-x86-additional-runtime@12.0.40664",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2013 x86 Additional Runtime - 12.0.40664"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2013_runtime:12.0.40664:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2013-x86-additional-runtime@12.0.40664",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2013_runtime:12.0.40664:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Citrix Workspace(USB)",
+      "version": "23.9.1.5",
+      "purl": "pkg:generic/citrix-workspace-usb@23.9.1.5",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:citrix:workspace_usb:23.9.1.5:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/citrix-workspace-usb@23.9.1.5",
+      "cpe": "cpe:2.3:a:citrix:workspace_usb:23.9.1.5:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Self-service Plug-in",
+      "version": "23.9.1.41",
+      "purl": "pkg:generic/self-service-plug-in@23.9.1.41",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:citrix:workspace_app:23.9.1.41:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/self-service-plug-in@23.9.1.41",
+      "cpe": "cpe:2.3:a:citrix:workspace_app:23.9.1.41:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2010 x86 Redistributable",
+      "version": "10.0.40219",
+      "purl": "pkg:generic/microsoft-visual-c-2010-x86-redistributable@10.0.40219",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2010  x86 Redistributable - 10.0.40219"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2010_redistributable:10.0.40219:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2010-x86-redistributable@10.0.40219",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2010_redistributable:10.0.40219:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2022 X86 Minimum Runtime",
+      "version": "14.30.30704",
+      "purl": "pkg:generic/microsoft-visual-c-2022-x86-minimum-runtime@14.30.30704",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft Visual C++ 2022 X86 Minimum Runtime - 14.30.30704"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_c_2022_runtime:14.30.30704:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-c-2022-x86-minimum-runtime@14.30.30704",
+      "cpe": "cpe:2.3:a:microsoft:visual_c_2022_runtime:14.30.30704:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft .NET Host",
+      "version": "48.144.23141",
+      "purl": "pkg:generic/microsoft-net-host@48.144.23141",
+      "properties": [
+        {
+          "name": "original:name",
+          "value": "Microsoft .NET Host - 6.0.36 (x86)"
+        },
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:net_host:48.144.23141:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-net-host@48.144.23141",
+      "cpe": "cpe:2.3:a:microsoft:net_host:48.144.23141:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual Studio Code (User)",
+      "version": "1.102.3",
+      "purl": "pkg:generic/microsoft-visual-studio-code-user@1.102.3",
+      "properties": [
+        {
+          "name": "cpe",
+          "value": "cpe:2.3:a:microsoft:visual_studio_code_user:1.102.3:*:*:*:*:*:*:*"
+        }
+      ],
+      "bom-ref": "pkg:generic/microsoft-visual-studio-code-user@1.102.3",
+      "cpe": "cpe:2.3:a:microsoft:visual_studio_code_user:1.102.3:*:*:*:*:*:*:*"
+    }
+  ]
+}

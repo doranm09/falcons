@@ -1,0 +1,82 @@
+NAME                                   INSTALLED         FIXED IN        TYPE            VULNERABILITY   SEVERITY  EPSS           RISK   
+WinSCP                                 6.1.2             6.2.2           UnknownPackage  CVE-2023-48795  Medium    76.2% (98th)   41.5   
+PuTTY                                  0.80.0.0          0.81            UnknownPackage  CVE-2024-31497  Medium    22.8% (95th)   12.4   
+WinSCP                                 6.1.2             6.3.3           UnknownPackage  CVE-2024-31497  Medium    22.8% (95th)   12.4   
+Microsoft OneDrive                     25.095.0518.0002                  UnknownPackage  CVE-2020-0654   Critical  9.0% (92nd)    7.5    
+Visual Studio Community                17.12.1                           UnknownPackage  CVE-2014-3802   Medium    11.2% (93rd)   6.6    
+vs FileTracker Singleton               17.12.35410                       UnknownPackage  CVE-2014-3802   Medium    11.2% (93rd)   6.6    
+vs communitymsires                     17.12.35410                       UnknownPackage  CVE-2014-3802   Medium    11.2% (93rd)   6.6    
+vs communitysharedmsi                  17.12.35410                       UnknownPackage  CVE-2014-3802   Medium    11.2% (93rd)   6.6    
+vs communityx64msi                     17.12.35410                       UnknownPackage  CVE-2014-3802   Medium    11.2% (93rd)   6.6    
+vs devenvsharedmsi                     17.12.35410                       UnknownPackage  CVE-2014-3802   Medium    11.2% (93rd)   6.6    
+vs devenx64vmsi                        17.12.35410                       UnknownPackage  CVE-2014-3802   Medium    11.2% (93rd)   6.6    
+vs minshellinteropsharedmsi            17.12.35410                       UnknownPackage  CVE-2014-3802   Medium    11.2% (93rd)   6.6    
+vs minshellinteropx64msi               17.12.35410                       UnknownPackage  CVE-2014-3802   Medium    11.2% (93rd)   6.6    
+vs minshellmsires                      17.12.35410                       UnknownPackage  CVE-2014-3802   Medium    11.2% (93rd)   6.6    
+vs minshellsharedmsi                   17.12.35410                       UnknownPackage  CVE-2014-3802   Medium    11.2% (93rd)   6.6    
+vs minshellx64msi                      17.12.35410                       UnknownPackage  CVE-2014-3802   Medium    11.2% (93rd)   6.6    
+vs tipsmsi                             17.12.35410                       UnknownPackage  CVE-2014-3802   Medium    11.2% (93rd)   6.6    
+Google Chrome                          138.0.7204.184                    UnknownPackage  CVE-2012-4929   Low       13.9% (94th)   3.9    
+Microsoft Intune Management Extension  1.93.155.0                        UnknownPackage  CVE-2021-31980  High      4.5% (88th)    3.6    
+Microsoft OneDrive                     25.095.0518.0002                  UnknownPackage  CVE-2018-0593   High      2.3% (84th)    1.7    
+Microsoft OneDrive                     25.095.0518.0002                  UnknownPackage  CVE-2018-0592   High      1.4% (79th)    1.1    
+NVIDIA Graphics Driver                 573.40                            UnknownPackage  CVE-2022-28181  Critical  0.9% (74th)    0.8    
+NVIDIA Graphics Driver                 573.40                            UnknownPackage  CVE-2022-28182  Medium    1.0% (76th)    0.7    
+Microsoft OneDrive                     25.095.0518.0002                  UnknownPackage  CVE-2020-16853  Low       0.7% (72nd)    0.3    
+Adobe Acrobat                          25.001.20643                      UnknownPackage  CVE-2024-20721  Medium    0.5% (64th)    0.3    
+Microsoft OneDrive                     25.095.0518.0002                  UnknownPackage  CVE-2020-1465   High      0.3% (55th)    0.2    
+Microsoft OneDrive                     25.095.0518.0002                  UnknownPackage  CVE-2020-16851  Low       0.5% (66th)    0.2    
+Microsoft OneDrive                     25.095.0518.0002                  UnknownPackage  CVE-2020-16852  Low       0.5% (65th)    0.2    
+Microsoft OneDrive                     25.095.0518.0002                  UnknownPackage  CVE-2020-0935   Medium    0.5% (63rd)    0.2    
+BCR Plug-in                            23.9.1.5          2006.1          UnknownPackage  CVE-2020-13885  High      0.2% (37th)    0.1    
+Citrix Web Helper                      23.9.1.41         2006.1          UnknownPackage  CVE-2020-13885  High      0.2% (37th)    0.1    
+Citrix Workspace                       23.9.1.104        2006.1          UnknownPackage  CVE-2020-13885  High      0.2% (37th)    0.1    
+Citrix Workspace Inside                23.9.1.63         2006.1          UnknownPackage  CVE-2020-13885  High      0.2% (37th)    0.1    
+Citrix Workspace(DV)                   23.9.1.5          2006.1          UnknownPackage  CVE-2020-13885  High      0.2% (37th)    0.1    
+MTOP Client                            23.9.1.5          2006.1          UnknownPackage  CVE-2020-13885  High      0.2% (37th)    0.1    
+Online Plug-in                         23.9.1.5          2006.1          UnknownPackage  CVE-2020-13885  High      0.2% (37th)    0.1    
+Self-service Plug-in                   23.9.1.41         2006.1          UnknownPackage  CVE-2020-13885  High      0.2% (37th)    0.1    
+Adobe Creative Cloud                   5.4.2.541         5.10            UnknownPackage  CVE-2023-26358  High      0.2% (36th)    0.1    
+Adobe Acrobat                          25.001.20643                      UnknownPackage  CVE-2024-20709  Medium    0.2% (44th)    0.1    
+Google Chrome                          138.0.7204.184    139.0.7258.66   UnknownPackage  CVE-2025-8576   High      0.1% (33rd)    0.1    
+Google Chrome                          138.0.7204.184    139.0.7258.66   UnknownPackage  CVE-2025-8578   High      0.1% (33rd)    0.1    
+NVIDIA Graphics Driver                 573.40                            UnknownPackage  CVE-2022-28183  High      0.1% (35th)    < 0.1  
+Microsoft Intune Management Extension  1.93.155.0                        UnknownPackage  CVE-2021-41363  Medium    0.2% (41st)    < 0.1  
+Dell Command Update                    5.1.0             5.4             UnknownPackage  CVE-2024-28962  High      0.1% (33rd)    < 0.1  
+Google Chrome                          138.0.7204.184    139.0.7258.127  UnknownPackage  CVE-2025-8882   High      0.1% (29th)    < 0.1  
+Google Chrome                          138.0.7204.184    139.0.7258.127  UnknownPackage  CVE-2025-8901   High      0.1% (28th)    < 0.1  
+Google Chrome                          138.0.7204.184    139.0.7258.138  UnknownPackage  CVE-2025-9132   High      0.1% (28th)    < 0.1  
+NVIDIA Graphics Driver                 573.40                            UnknownPackage  CVE-2022-28184  High      0.1% (31st)    < 0.1  
+Microsoft OneDrive                     25.095.0518.0002                  UnknownPackage  CVE-2022-23255  Medium    0.1% (35th)    < 0.1  
+Google Chrome                          138.0.7204.184    139.0.7258.127  UnknownPackage  CVE-2025-8880   High      < 0.1% (25th)  < 0.1  
+Google Chrome                          138.0.7204.184                    UnknownPackage  CVE-2012-4930   Low       0.2% (46th)    < 0.1  
+NVIDIA Graphics Driver                 573.40                            UnknownPackage  CVE-2022-28188  Medium    0.1% (32nd)    < 0.1  
+Google Chrome                          138.0.7204.184    139.0.7258.127  UnknownPackage  CVE-2025-8879   High      < 0.1% (22nd)  < 0.1  
+Google Chrome                          138.0.7204.184    139.0.7258.154  UnknownPackage  CVE-2025-9478   High      < 0.1% (21st)  < 0.1  
+BCR Plug-in                            23.9.1.5          2006.1          UnknownPackage  CVE-2020-13884  High      < 0.1% (19th)  < 0.1  
+Citrix Web Helper                      23.9.1.41         2006.1          UnknownPackage  CVE-2020-13884  High      < 0.1% (19th)  < 0.1  
+Citrix Workspace                       23.9.1.104        2006.1          UnknownPackage  CVE-2020-13884  High      < 0.1% (19th)  < 0.1  
+Citrix Workspace Inside                23.9.1.63         2006.1          UnknownPackage  CVE-2020-13884  High      < 0.1% (19th)  < 0.1  
+Citrix Workspace(DV)                   23.9.1.5          2006.1          UnknownPackage  CVE-2020-13884  High      < 0.1% (19th)  < 0.1  
+MTOP Client                            23.9.1.5          2006.1          UnknownPackage  CVE-2020-13884  High      < 0.1% (19th)  < 0.1  
+Online Plug-in                         23.9.1.5          2006.1          UnknownPackage  CVE-2020-13884  High      < 0.1% (19th)  < 0.1  
+Self-service Plug-in                   23.9.1.41         2006.1          UnknownPackage  CVE-2020-13884  High      < 0.1% (19th)  < 0.1  
+Google Chrome                          138.0.7204.184    139.0.7258.66   UnknownPackage  CVE-2025-8582   Medium    < 0.1% (26th)  < 0.1  
+NVIDIA Graphics Driver                 573.40                            UnknownPackage  CVE-2022-28189  Low       0.1% (32nd)    < 0.1  
+NVIDIA Graphics Driver                 573.40                            UnknownPackage  CVE-2022-28190  Low       0.1% (32nd)    < 0.1  
+Zoom                                   5.17.28914        6.4.5           UnknownPackage  CVE-2025-49463  Medium    < 0.1% (20th)  < 0.1  
+Zoom                                   5.17.28914                        UnknownPackage  CVE-2025-46789  Medium    < 0.1% (16th)  < 0.1  
+Zoom                                   5.17.28914        6.4.5           UnknownPackage  CVE-2025-49464  Medium    < 0.1% (15th)  < 0.1  
+NVIDIA Graphics Driver                 573.40                            UnknownPackage  CVE-2022-21813  Medium    < 0.1% (13th)  < 0.1  
+NVIDIA Graphics Driver                 573.40                            UnknownPackage  CVE-2022-21814  Medium    < 0.1% (13th)  < 0.1  
+NVIDIA Graphics Driver                 573.40                            UnknownPackage  CVE-2022-28187  Medium    < 0.1% (13th)  < 0.1  
+Google Chrome                          138.0.7204.184    139.0.7258.66   UnknownPackage  CVE-2025-8577   Medium    < 0.1% (14th)  < 0.1  
+Google Chrome                          138.0.7204.184    139.0.7258.66   UnknownPackage  CVE-2025-8579   Medium    < 0.1% (14th)  < 0.1  
+Google Chrome                          138.0.7204.184    139.0.7258.66   UnknownPackage  CVE-2025-8580   Medium    < 0.1% (14th)  < 0.1  
+Google Chrome                          138.0.7204.184    139.0.7258.66   UnknownPackage  CVE-2025-8581   Medium    < 0.1% (13th)  < 0.1  
+Google Chrome                          138.0.7204.184                    UnknownPackage  CVE-2013-6662   Medium    < 0.1% (11th)  < 0.1  
+NVIDIA Graphics Driver                 573.40                            UnknownPackage  CVE-2022-21815  Medium    < 0.1% (11th)  < 0.1  
+NVIDIA Graphics Driver                 573.40                            UnknownPackage  CVE-2022-28186  Low       < 0.1% (15th)  < 0.1  
+Google Chrome                          138.0.7204.184    139.0.7258.66   UnknownPackage  CVE-2025-8583   Medium    < 0.1% (8th)   < 0.1  
+Google Chrome                          138.0.7204.184    139.0.7258.127  UnknownPackage  CVE-2025-8881   Medium    < 0.1% (2nd)   < 0.1  
+Zoom                                   5.17.28914        6.4.5           UnknownPackage  CVE-2025-49462  Low       < 0.1% (2nd)   < 0.1

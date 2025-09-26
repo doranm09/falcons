@@ -60,6 +60,33 @@
     </div>
   </div>
 
+  <!-- Local Network Interface Information-->
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h5 class="mb-0">Local Network Configuration</h5>
+    <div>
+      <button class="btn btn-sm btn-outline-primary" id="refresh-network-interfaces">Refresh</button>
+    </div>
+  </div>
+  <div class="row g-3 mb-4" >
+    <div class="table-responsive">
+      <table class="table table-striped align-middle" id="network-interface-table">
+        <thead>
+          <tr>
+            <th data-sort="timestamp">Local Network Interfaces</th>
+            <th data-sort="timestamp">IP Address</th>
+          </tr>
+        </thead>
+        <tbody id="network-interfaces-body">
+          {% for iface in local_network_interfaces %}
+          {% empty %}
+          <tr><td colspan="5">No Network Interfaces Found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
   <!-- Tabs -->
   <ul class="nav nav-tabs" id="dashTabs" role="tablist">
     <li class="nav-item" role="presentation">
@@ -87,10 +114,12 @@
               <input type="text" class="form-control" name="cidr" placeholder="CIDR (e.g., 192.168.1.0/24)" required>
             </div>
             <div class="col-6 col-md-auto">
-              <button type="submit" class="btn btn-primary">Start Passive Scan</button>
+              <button type="submit" class="btn btn-primary">Start Ping Scan</button>
             </div>
-
-            <!-- OpenVAS subset -->
+          </form>
+          <!-- OpenVAS-->
+          <form id="vuln-scan-form" class="row g-2" method="post">
+            {% csrf_token %}
             <div class="col-12 mt-2"></div>
             <div class="col-12 col-md-auto">
               <input type="text" class="form-control" name="vuln_cidr" placeholder="CIDR for OpenVAS (optional)">
@@ -106,7 +135,7 @@
               <input type="number" min="1" max="64" class="form-control" name="max_hosts" placeholder="Max hosts (default 20)">
             </div>
             <div class="col-12 col-md-auto">
-              <button id="openvas-start" type="button" class="btn btn-warning">Start OpenVAS Scan</button>
+              <button type="submit" id="openvas-start" type="button" class="btn btn-warning">Start OpenVAS Scan</button>
             </div>
 
             <div class="col-12">

@@ -16,5 +16,8 @@ urlpatterns = [
     path('agent/commands/', views.agent_commands),
     path('agent/command_result/', views.agent_command_result),
     path("vulnerabilities/<int:scan_id>/", views.vulnerability_detail, name="vuln-detail"),
-    path('scan/vuln/start/', views.start_vuln_scan, name='start-vuln-scan'),
+    path('scan/vuln/start/', views.start_openvas_scan, name='start-vuln-scan'),
+    path('scan/vuln/status/<uuid:task_id>/', views.vuln_scan_status, name='vuln-scan-status'),
+    path('paths/<int:start_node_id>/', views.shortest_paths, name='shortest-paths'),
+
 ]

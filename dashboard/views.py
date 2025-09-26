@@ -16,6 +16,8 @@ from django.utils.timezone import now
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 import json
+from django.db import transaction
+from ipaddress import ip_network
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 
@@ -247,20 +249,41 @@ def agent_command_result(request):
 def vulnerability_detail(request, scan_id):
     scan = ScanRun.objects.get(id=scan_id)
     vulns = scan.vulnerabilities.all().order_by("-severity")
-    return redner(request, "dashboard/vulnerabilities.html", {
+    return render(request, "dashboard/vulnerabilities.html", {
         "scan": scan,
         "vulnerabilities": vulns
     })
 
-def start_vuln_scan(request):
-    if request.method != "POST":
-        return JsonResponse({"error": "POST only"}, status=405)
-    cidr = request.POST.get("cidr")
-    task = launch_openvas_scan_task.delay(cidr)
-    return JsonResponse({"task_id": str(task.id)})
+@csrf_exempt
+@require_http_methods(["POST"])
+def start_openvas_scan(request):
+    print("***********start openvas scan")
+
+    # get cidr from form field (your JS uses FormData on vuln-scan-form)
+    cidr = request.POST.get("vuln_cidr") or request.POST.get("cidr")
+    if not cidr:
+        return JsonResponse({"error": "cidr is required (e.g., 10.0.0.0/24)"}, status=400)
+
+    # validate
+    try:
+        ip_network(cidr, strict=False)
+    except ValueError:
+        return JsonResponse({"error": f"invalid CIDR: {cidr}"}, status=400)
+
+    with transaction.atomic():
+        scan = ScanRun.objects.create(
+            cidr=cidr,
+            status=ScanRun.Status.IN_PROGRESS,
+            scan_type="openvas",
+        )
+        async_result = launch_openvas_scan_task.delay(cidr=cidr)
+        scan.openvas_task_id = async_result.id
+        scan.save(update_fields=["openvas_task_id"])  # <-- plural
+
+    return JsonResponse({"scan_id": scan.id, "task_id": async_result.id}, status=202)
 
 def vuln_scan_status(request, task_id):
-    async_res = AsyncResult(task_id)
+    async_res = AsyncResult(str(task_id))
     data = {"state": async_res.state}
     if async_res.ready():
         data["result"] = async_res.result

@@ -1,211 +1,131 @@
 #!/usr/bin/env python3
-# fix_windows_sbom.py
-import argparse
-import json
-import re
-import sys
-import uuid
-from datetime import datetime, timezone
+# sbom_fix_windows.py
+import sys, json, argparse, uuid
 from urllib.parse import quote
 
-try:
-    import requests  # optional, only if --post is used
-except Exception:
-    requests = None
+KNOWN_PURL_TYPES = {
+    "alpm","apk","bitbucket","cargo","cocoapods","composer","conan","conda",
+    "cran","deb","docker","gem","generic","github","golang","hackage","hex",
+    "maven","npm","nuget","oci","pub","pypi","rpm","swift"
+}
 
-CYCLONEDX_SPEC = "1.6"
-
-# characters commonly present in Windows DisplayName that break purls
-# we'll normalize to a slug; keep alnum, dash, underscore, dot
-_slug_re = re.compile(r"[^a-z0-9._-]+")
-
-def now_iso_z():
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-def slugify_name(name: str) -> str:
+def needs_windows_fix(purl: str|None, comp: dict) -> bool:
     """
-    Produce a conservative purl-safe slug from an arbitrary Windows DisplayName.
-    Lowercase, replace spaces and punctuation with single '-'.
+    Heuristics:
+    - No purl at all -> fix
+    - purl type 'rpm' with a 'windows' namespace -> fix
+    - purl contains spaces or parentheses unencoded -> fix
+    - purl type not recognized -> fix
     """
-    name = (name or "").strip().lower()
-    # common cleanups
-    # collapse special tokens like " | " that appear in product titles
-    name = name.replace("|", "-").replace("–", "-").replace("—", "-")
-    name = name.replace("&", "and").replace("+", "plus")
-    name = name.replace("®", "").replace("™", "")
-    name = _slug_re.sub("-", name)
-    name = re.sub(r"-{2,}", "-", name).strip("-")
-    return name or "unknown"
-
-def clean_version(version: str) -> str:
-    return (version or "").strip()
-
-def ensure_bom_base(doc: dict, os_name: str, os_version: str, tool_vendor: str, tool_name: str, tool_version: str) -> None:
-    doc["bomFormat"] = "CycloneDX"
-    doc["specVersion"] = CYCLONEDX_SPEC
-    if not isinstance(doc.get("version"), int):
-        doc["version"] = 1
-    # serialNumber must be a URN with UUID (CycloneDX)
-    sn = doc.get("serialNumber")
+    if not purl:
+        return True
+    if " " in purl or "(" in purl or ")" in purl:
+        return True
     try:
-        if not (isinstance(sn, str) and sn.startswith("urn:uuid:") and uuid.UUID(sn.split("urn:uuid:")[-1])):
-            raise ValueError()
+        if not purl.startswith("pkg:"):
+            return True
+        body = purl[4:]
+        typ, rest = body.split("/", 1)
+        if typ not in KNOWN_PURL_TYPES:
+            return True
+        # rpm + windows namespace is a dead giveaway
+        if typ == "rpm" and rest.lower().startswith("windows/"):
+            return True
     except Exception:
-        doc["serialNumber"] = f"urn:uuid:{uuid.uuid4()}"
+        return True
+    return False
 
-    md = doc.setdefault("metadata", {})
-    md.setdefault("timestamp", now_iso_z())
-    comp = md.setdefault("component", {})
-    if not comp:
-        md["component"] = comp = {}
-    comp.setdefault("type", "operating-system")
-    comp["name"] = os_name or comp.get("name") or "windows"
-    comp["version"] = os_version or comp.get("version") or "unknown"
+def build_generic_windows_purl(name: str, version: str|None, arch_hint: str|None=None) -> str:
+    # URL-encode name and version per package-url rules
+    n = quote(name, safe="")            # encode everything that isn't unreserved
+    v = quote(version, safe="") if version else None
+    qualifiers = []
+    qualifiers.append("os=windows")
+    if arch_hint:
+        qualifiers.append(f"arch={quote(arch_hint, safe='')}")
+    q = "?" + "&".join(qualifiers) if qualifiers else ""
+    return f"pkg:generic/{n}@{v}{q}" if v else f"pkg:generic/{n}{q}"
 
-    tools = md.setdefault("tools", [])
-    # ensure our fixer tool is present (dedup on name/vendor)
-    already = any(
-        (isinstance(t, dict) and t.get("name") == tool_name and t.get("vendor") == tool_vendor)
-        for t in tools
-    )
-    if not already:
-        tools.append({"vendor": tool_vendor, "name": tool_name, "version": tool_version})
+def guess_arch(name: str) -> str|None:
+    low = name.lower()
+    if "x64" in low or " 64-bit" in low or " (64-bit" in low or "amd64" in low:
+        return "x64"
+    if "x86" in low or " 32-bit" in low or " (32-bit" in low or "win32" in low:
+        return "x86"
+    if "arm64" in low or " aarch64" in low:
+        return "arm64"
+    return None
 
-def build_generic_purl(name: str, version: str) -> str:
-    """
-    Build a pkg:generic PURL. We use a conservative slug for the name to avoid parser issues.
-    """
-    slug = slugify_name(name)
-    # per PURL spec, name should be URL-encoded if it had reserved chars; slug avoids most
-    # still defend by quoting any leftover
-    safe_name = quote(slug, safe="._-") or "unknown"
-    ver = clean_version(version) or "unknown"
-    return f"pkg:generic/{safe_name}@{ver}"
+def fix_component(comp: dict) -> dict:
+    # Ensure required fields
+    name = comp.get("name", "").strip()
+    version = (comp.get("version") or "").strip()
+    purl = comp.get("purl")
+    if needs_windows_fix(purl, comp):
+        arch = guess_arch(name)
+        new_purl = build_generic_windows_purl(name=name, version=version or None, arch_hint=arch)
+        comp["purl"] = new_purl
+    # bom-ref should be stable and URI-safe. Reuse purl if present; else synthesize.
+    if not comp.get("bom-ref"):
+        comp["bom-ref"] = comp["purl"] if comp.get("purl") else f"urn:uuid:{uuid.uuid4()}"
+    return comp
 
-def fix_components(doc: dict, drop_empty: bool = True) -> int:
-    comps = doc.setdefault("components", [])
-    if not isinstance(comps, list):
-        # If components is malformed, reset to list
-        comps = []
-        doc["components"] = comps
-        return 0
-
-    fixed = 0
-    new_list = []
-    for c in comps:
-        if not isinstance(c, dict):
-            continue
-        name = (c.get("name") or "").strip()
-        version = clean_version(c.get("version") or "")
-        if drop_empty and not name:
-            continue
-
-        # Make sure component is an application for Windows entries
-        c["type"] = c.get("type") or "application"
-
-        # Repair purl if missing/invalid or obviously not purl-safe
-        purl = c.get("purl")
-        replace_purl = True
-        if isinstance(purl, str) and purl.startswith("pkg:"):
-            # lightweight validation: must have '@version' and a name after scheme
-            replace_purl = ("@" not in purl) or (purl.count("/") < 1)
-
-        if replace_purl:
-            purl = build_generic_purl(name, version)
-            c["purl"] = purl
-
-        # bom-ref should be stable and unique per component; using purl is compliant
-        c["bom-ref"] = c.get("bom-ref") or purl
-
-        # Normalize display-ish name: trim whitespace
-        c["name"] = name
-
-        # Remove obviously empty fields some tools choke on
-        for k in list(c.keys()):
-            if c[k] in (None, "", []):
-                del c[k]
-
-        new_list.append(c)
-        fixed += 1
-
-    doc["components"] = new_list
-    return fixed
-
-def post_if_requested(url: str, sbom: dict, agent_id: str = None) -> None:
-    if not url:
-        return
-    if requests is None:
-        raise RuntimeError("requests is not installed; cannot POST")
-    headers = {"Content-Type": "application/json"}
-    if agent_id:
-        headers["X-Agent-ID"] = agent_id
-    headers["X-Timestamp"] = now_iso_z()
-    r = requests.post(url, headers=headers, data=json.dumps(sbom))
-    r.raise_for_status()
+def ensure_metadata(bom: dict) -> None:
+    bom.setdefault("metadata", {})
+    md = bom["metadata"]
+    # specVersion defaults
+    if "specVersion" not in bom:
+        bom["specVersion"] = "1.6"
+    # Optional: nothing else mandatory here for CycloneDX JSON
 
 def main():
-    ap = argparse.ArgumentParser(
-        description="Fix/normalize Windows-collected CycloneDX SBOMs for better tool compatibility (e.g., Trivy)."
-    )
-    ap.add_argument("input", nargs="?", help="Input SBOM file (JSON). If omitted, reads stdin.")
-    ap.add_argument("-o", "--output", help="Output file (JSON). If omitted, writes to stdout.")
-    ap.add_argument("--os-name", default="windows", help="Override OS name in metadata.component (default: windows)")
-    ap.add_argument("--os-version", default=None, help="Override OS version in metadata.component")
-    ap.add_argument("--tool-vendor", default="custom", help="Tool vendor to add into metadata.tools")
-    ap.add_argument("--tool-name", default="sbom-fixer", help="Tool name to add into metadata.tools")
-    ap.add_argument("--tool-version", default="0.1.0", help="Tool version to add into metadata.tools")
-    ap.add_argument("--no-drop-empty", action="store_true", help="Do not drop components with empty names")
-    ap.add_argument("--post", metavar="URL", help="POST the fixed SBOM to a URL after writing")
-    ap.add_argument("--agent-id", help="Optional X-Agent-ID header when posting")
+    ap = argparse.ArgumentParser(description="Fix Windows SBOM purls/bom-refs for CycloneDX JSON")
+    ap.add_argument("input", nargs="?", help="Input SBOM JSON file (defaults to stdin)")
+    ap.add_argument("-o", "--output", help="Output file (defaults to stdout)")
+    ap.add_argument("--only-windows", action="store_true",
+                    help="Only fix when metadata.component.type==operating-system and name contains 'windows'")
     args = ap.parse_args()
 
-    # Load input
-    data: dict
+    data = sys.stdin.read() if not args.input else open(args.input, "r", encoding="utf-8").read()
     try:
-        if args.input:
-            with open(args.input, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        else:
-            data = json.load(sys.stdin)
-    except Exception as e:
-        print(f"[error] Failed to read input: {e}", file=sys.stderr)
-        sys.exit(2)
+        bom = json.loads(data)
+    except json.JSONDecodeError as e:
+        print(f"ERROR: invalid JSON: {e}", file=sys.stderr)
+        sys.exit(1)
 
-    if not isinstance(data, dict):
-        print("[error] Input is not a JSON object", file=sys.stderr)
-        sys.exit(2)
+    # Optionally gate on OS=windows in metadata
+    if args.only_windows:
+        meta_comp = (((bom.get("metadata") or {}).get("component")) or {})
+        os_name = str(meta_comp.get("name", "")).lower()
+        os_type = str(meta_comp.get("type", "")).lower()
+        if not (os_type == "operating-system" and "windows" in os_name):
+            # Nothing to do
+            out = json.dumps(bom, indent=2, ensure_ascii=False)
+            if args.output:
+                with open(args.output, "w", encoding="utf-8") as f:
+                    f.write(out + "\n")
+            else:
+                print(out)
+            return
 
-    # Fix top-level + components
-    ensure_bom_base(
-        data,
-        os_name=args.os_name,
-        os_version=args.os_version or data.get("metadata", {}).get("component", {}).get("version") or "unknown",
-        tool_vendor=args.tool_vendor,
-        tool_name=args.tool_name,
-        tool_version=args.tool_version,
-    )
-    fixed_count = fix_components(data, drop_empty=not args.no_drop_empty)
+    # serialNumber is optional but helpful (Trivy likes it). Generate if missing.
+    if not bom.get("serialNumber"):
+        bom["serialNumber"] = f"urn:uuid:{uuid.uuid4()}"
 
-    # Write output
-    try:
-        out_json = json.dumps(data, indent=2, ensure_ascii=False)
-        if args.output:
-            with open(args.output, "w", encoding="utf-8") as f:
-                f.write(out_json)
-        else:
-            print(out_json)
-    except Exception as e:
-        print(f"[error] Failed to write output: {e}", file=sys.stderr)
-        sys.exit(3)
+    ensure_metadata(bom)
 
-    # Optional POST
-    if args.post:
-        try:
-            post_if_requested(args.post, data, agent_id=args.agent_id)
-        except Exception as e:
-            print(f"[warn] POST failed: {e}", file=sys.stderr)
+    comps = bom.get("components")
+    if isinstance(comps, list):
+        for i, c in enumerate(comps):
+            if isinstance(c, dict):
+                comps[i] = fix_component(c)
 
-    print(f"[ok] Fixed SBOM with {fixed_count} components", file=sys.stderr)
+    out = json.dumps(bom, indent=2, ensure_ascii=False)
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(out + "\n")
+    else:
+        print(out)
 
 if __name__ == "__main__":
     main()

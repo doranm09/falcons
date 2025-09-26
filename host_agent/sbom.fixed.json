@@ -1,0 +1,1276 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2025-08-29T16:33:49Z",
+    "component": {
+      "type": "operating-system",
+      "name": "windows",
+      "version": "10.0.22631"
+    },
+    "tools": [
+      {
+        "vendor": "custom",
+        "name": "host-agent",
+        "version": "0.1.0"
+      }
+    ]
+  },
+  "components": [
+    {
+      "type": "application",
+      "name": "7-Zip 23.01 (x64)",
+      "version": "23.01",
+      "purl": "pkg:generic/7-Zip%2023.01%20%28x64%29@23.01?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/7-Zip%2023.01%20%28x64%29@23.01?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Remote Support Jump Client 23.3.4 [remote.oit.gatech.edu] [65BC05D8]",
+      "version": "23.3.4",
+      "purl": "pkg:generic/Remote%20Support%20Jump%20Client%2023.3.4%20%5Bremote.oit.gatech.edu%5D%20%5B65BC05D8%5D@23.3.4?os=windows",
+      "bom-ref": "pkg:generic/Remote%20Support%20Jump%20Client%2023.3.4%20%5Bremote.oit.gatech.edu%5D%20%5B65BC05D8%5D@23.3.4?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Git",
+      "version": "2.46.2",
+      "purl": "pkg:generic/Git@2.46.2?os=windows",
+      "bom-ref": "pkg:generic/Git@2.46.2?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "MATLAB R2023b",
+      "version": "23.2",
+      "purl": "pkg:generic/MATLAB%20R2023b@23.2?os=windows",
+      "bom-ref": "pkg:generic/MATLAB%20R2023b@23.2?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Notepad++ (64-bit x64)",
+      "version": "8.6",
+      "purl": "pkg:generic/Notepad%2B%2B%20%2864-bit%20x64%29@8.6?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Notepad%2B%2B%20%2864-bit%20x64%29@8.6?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft 365 Apps for enterprise - en-us",
+      "version": "16.0.18623.20266",
+      "purl": "pkg:generic/Microsoft%20365%20Apps%20for%20enterprise%20-%20en-us@16.0.18623.20266?os=windows",
+      "bom-ref": "pkg:generic/Microsoft%20365%20Apps%20for%20enterprise%20-%20en-us@16.0.18623.20266?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft OneDrive",
+      "version": "25.095.0518.0002",
+      "purl": "pkg:generic/Microsoft%20OneDrive@25.095.0518.0002?os=windows",
+      "bom-ref": "pkg:generic/Microsoft%20OneDrive@25.095.0518.0002?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2013 x64 Additional Runtime - 12.0.40664",
+      "version": "12.0.40664",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202013%20x64%20Additional%20Runtime%20-%2012.0.40664@12.0.40664?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202013%20x64%20Additional%20Runtime%20-%2012.0.40664@12.0.40664?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Cortex XDR 8.8.0.10622",
+      "version": "8.8.0.10622",
+      "purl": "pkg:generic/Cortex%20XDR%208.8.0.10622@8.8.0.10622?os=windows",
+      "bom-ref": "pkg:generic/Cortex%20XDR%208.8.0.10622@8.8.0.10622?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "vs_Graphics_Singletonx64",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/vs_Graphics_Singletonx64@17.12.35410?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/vs_Graphics_Singletonx64@17.12.35410?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Policy Platform",
+      "version": "68.1.9086.1017",
+      "purl": "pkg:generic/Microsoft%20Policy%20Platform@68.1.9086.1017?os=windows",
+      "bom-ref": "pkg:generic/Microsoft%20Policy%20Platform@68.1.9086.1017?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "DiagnosticsHub_CollectionService",
+      "version": "17.12.35318",
+      "purl": "pkg:generic/DiagnosticsHub_CollectionService@17.12.35318?os=windows",
+      "bom-ref": "pkg:generic/DiagnosticsHub_CollectionService@17.12.35318?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Agent Client Collector",
+      "version": "3.5.5.2",
+      "purl": "pkg:generic/Agent%20Client%20Collector@3.5.5.2?os=windows",
+      "bom-ref": "pkg:generic/Agent%20Client%20Collector@3.5.5.2?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2010  x64 Redistributable - 10.0.40219",
+      "version": "10.0.40219",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202010%20%20x64%20Redistributable%20-%2010.0.40219@10.0.40219?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202010%20%20x64%20Redistributable%20-%2010.0.40219@10.0.40219?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "7-Zip 24.07 (x64 edition)",
+      "version": "24.07.00.0",
+      "purl": "pkg:generic/7-Zip%2024.07%20%28x64%20edition%29@24.07.00.0?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/7-Zip%2024.07%20%28x64%20edition%29@24.07.00.0?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "icecap_collection_x64",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/icecap_collection_x64@17.12.35410?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/icecap_collection_x64@17.12.35410?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Application Verifier x64 External Package (OnecoreUAP)",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Application%20Verifier%20x64%20External%20Package%20%28OnecoreUAP%29@10.1.22621.3233?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Application%20Verifier%20x64%20External%20Package%20%28OnecoreUAP%29@10.1.22621.3233?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Universal CRT Tools x64",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Universal%20CRT%20Tools%20x64@10.1.22621.3233?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Universal%20CRT%20Tools%20x64@10.1.22621.3233?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "vs_minshellx64msi",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/vs_minshellx64msi@17.12.35410?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/vs_minshellx64msi@17.12.35410?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2012 x64 Additional Runtime - 11.0.61030",
+      "version": "11.0.61030",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202012%20x64%20Additional%20Runtime%20-%2011.0.61030@11.0.61030?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202012%20x64%20Additional%20Runtime%20-%2011.0.61030@11.0.61030?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2022 X64 Minimum Runtime - 14.42.34433",
+      "version": "14.42.34433",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202022%20X64%20Minimum%20Runtime%20-%2014.42.34433@14.42.34433?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202022%20X64%20Minimum%20Runtime%20-%2014.42.34433@14.42.34433?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Acrobat-x64-SDL",
+      "version": "1.0.0000",
+      "purl": "pkg:generic/Acrobat-x64-SDL@1.0.0000?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Acrobat-x64-SDL@1.0.0000?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2013 x64 Minimum Runtime - 12.0.40664",
+      "version": "12.0.40664",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202013%20x64%20Minimum%20Runtime%20-%2012.0.40664@12.0.40664?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202013%20x64%20Minimum%20Runtime%20-%2012.0.40664@12.0.40664?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft System CLR Types for SQL Server 2019",
+      "version": "15.0.2000.5",
+      "purl": "pkg:generic/Microsoft%20System%20CLR%20Types%20for%20SQL%20Server%202019@15.0.2000.5?os=windows",
+      "bom-ref": "pkg:generic/Microsoft%20System%20CLR%20Types%20for%20SQL%20Server%202019@15.0.2000.5?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "VS JIT Debugger",
+      "version": "17.0.157.0",
+      "purl": "pkg:generic/VS%20JIT%20Debugger@17.0.157.0?os=windows",
+      "bom-ref": "pkg:generic/VS%20JIT%20Debugger@17.0.157.0?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual Studio Installer",
+      "version": "3.12.2149.20818",
+      "purl": "pkg:generic/Microsoft%20Visual%20Studio%20Installer@3.12.2149.20818?os=windows",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20Studio%20Installer@3.12.2149.20818?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows App Certification Kit Native Components",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20App%20Certification%20Kit%20Native%20Components@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20App%20Certification%20Kit%20Native%20Components@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "vs_minshellinteropx64msi",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/vs_minshellinteropx64msi@17.12.35410?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/vs_minshellinteropx64msi@17.12.35410?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK DirectX x64 Remote",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20DirectX%20x64%20Remote@10.1.22621.3233?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Windows%20SDK%20DirectX%20x64%20Remote@10.1.22621.3233?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Configuration Manager Client",
+      "version": "5.00.9128.1000",
+      "purl": "pkg:generic/Configuration%20Manager%20Client@5.00.9128.1000?os=windows",
+      "bom-ref": "pkg:generic/Configuration%20Manager%20Client@5.00.9128.1000?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Qualys Cloud Security Agent",
+      "version": "6.1.0.28",
+      "purl": "pkg:generic/Qualys%20Cloud%20Security%20Agent@6.1.0.28?os=windows",
+      "bom-ref": "pkg:generic/Qualys%20Cloud%20Security%20Agent@6.1.0.28?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Office 16 Click-to-Run Licensing Component",
+      "version": "16.0.18623.20266",
+      "purl": "pkg:generic/Office%2016%20Click-to-Run%20Licensing%20Component@16.0.18623.20266?os=windows",
+      "bom-ref": "pkg:generic/Office%2016%20Click-to-Run%20Licensing%20Component@16.0.18623.20266?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Office 16 Click-to-Run Extensibility Component",
+      "version": "16.0.18623.20156",
+      "purl": "pkg:generic/Office%2016%20Click-to-Run%20Extensibility%20Component@16.0.18623.20156?os=windows",
+      "bom-ref": "pkg:generic/Office%2016%20Click-to-Run%20Extensibility%20Component@16.0.18623.20156?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "PuTTY release 0.80 (64-bit)",
+      "version": "0.80.0.0",
+      "purl": "pkg:generic/PuTTY%20release%200.80%20%2864-bit%29@0.80.0.0?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/PuTTY%20release%200.80%20%2864-bit%29@0.80.0.0?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "CyberArk Endpoint Privilege Manager Agent",
+      "version": "25.6.02589",
+      "purl": "pkg:generic/CyberArk%20Endpoint%20Privilege%20Manager%20Agent@25.6.02589?os=windows",
+      "bom-ref": "pkg:generic/CyberArk%20Endpoint%20Privilege%20Manager%20Agent@25.6.02589?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "NVIDIA Graphics Driver 573.40",
+      "version": "573.40",
+      "purl": "pkg:generic/NVIDIA%20Graphics%20Driver%20573.40@573.40?os=windows",
+      "bom-ref": "pkg:generic/NVIDIA%20Graphics%20Driver%20573.40@573.40?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "NVIDIA Install Application",
+      "version": "2.1002.425.0",
+      "purl": "pkg:generic/NVIDIA%20Install%20Application@2.1002.425.0?os=windows",
+      "bom-ref": "pkg:generic/NVIDIA%20Install%20Application@2.1002.425.0?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Zoom (64-bit)",
+      "version": "5.17.28914",
+      "purl": "pkg:generic/Zoom%20%2864-bit%29@5.17.28914?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Zoom%20%2864-bit%29@5.17.28914?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Google Chrome",
+      "version": "138.0.7204.184",
+      "purl": "pkg:generic/Google%20Chrome@138.0.7204.184?os=windows",
+      "bom-ref": "pkg:generic/Google%20Chrome@138.0.7204.184?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Update Health Tools",
+      "version": "5.72.0.0",
+      "purl": "pkg:generic/Microsoft%20Update%20Health%20Tools@5.72.0.0?os=windows",
+      "bom-ref": "pkg:generic/Microsoft%20Update%20Health%20Tools@5.72.0.0?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "CrashPlan",
+      "version": "11.2.1.23",
+      "purl": "pkg:generic/CrashPlan@11.2.1.23?os=windows",
+      "bom-ref": "pkg:generic/CrashPlan@11.2.1.23?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Application Verifier x64 External Package (DesktopEditions)",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Application%20Verifier%20x64%20External%20Package%20%28DesktopEditions%29@10.1.22621.3233?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Application%20Verifier%20x64%20External%20Package%20%28DesktopEditions%29@10.1.22621.3233?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2012 x64 Minimum Runtime - 11.0.61030",
+      "version": "11.0.61030",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202012%20x64%20Minimum%20Runtime%20-%2011.0.61030@11.0.61030?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202012%20x64%20Minimum%20Runtime%20-%2011.0.61030@11.0.61030?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2022 X64 Debug Runtime - 14.42.34433",
+      "version": "14.42.34433",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202022%20X64%20Debug%20Runtime%20-%2014.42.34433@14.42.34433?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202022%20X64%20Debug%20Runtime%20-%2014.42.34433@14.42.34433?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2022 X64 Additional Runtime - 14.42.34433",
+      "version": "14.42.34433",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202022%20X64%20Additional%20Runtime%20-%2014.42.34433@14.42.34433?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202022%20X64%20Additional%20Runtime%20-%2014.42.34433@14.42.34433?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "vs_devenx64vmsi",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/vs_devenx64vmsi@17.12.35410?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/vs_devenx64vmsi@17.12.35410?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "vs_communityx64msi",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/vs_communityx64msi@17.12.35410?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/vs_communityx64msi@17.12.35410?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "VS Script Debugging Common",
+      "version": "17.0.157.0",
+      "purl": "pkg:generic/VS%20Script%20Debugging%20Common@17.0.157.0?os=windows",
+      "bom-ref": "pkg:generic/VS%20Script%20Debugging%20Common@17.0.157.0?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "GlobalProtect",
+      "version": "6.0.7",
+      "purl": "pkg:generic/GlobalProtect@6.0.7?os=windows",
+      "bom-ref": "pkg:generic/GlobalProtect@6.0.7?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Visual Studio Community 2022",
+      "version": "17.12.1",
+      "purl": "pkg:generic/Visual%20Studio%20Community%202022@17.12.1?os=windows",
+      "bom-ref": "pkg:generic/Visual%20Studio%20Community%202022@17.12.1?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Adobe Creative Cloud",
+      "version": "5.4.2.541",
+      "purl": "pkg:generic/Adobe%20Creative%20Cloud@5.4.2.541?os=windows",
+      "bom-ref": "pkg:generic/Adobe%20Creative%20Cloud@5.4.2.541?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Adobe Genuine Service",
+      "version": "9.0.0.29",
+      "purl": "pkg:generic/Adobe%20Genuine%20Service@9.0.0.29?os=windows",
+      "bom-ref": "pkg:generic/Adobe%20Genuine%20Service@9.0.0.29?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Citrix Workspace 2309",
+      "version": "23.9.1.104",
+      "purl": "pkg:generic/Citrix%20Workspace%202309@23.9.1.104?os=windows",
+      "bom-ref": "pkg:generic/Citrix%20Workspace%202309@23.9.1.104?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Dropbox",
+      "version": "231.4.5770",
+      "purl": "pkg:generic/Dropbox@231.4.5770?os=windows",
+      "bom-ref": "pkg:generic/Dropbox@231.4.5770?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Edge",
+      "version": "137.0.3296.68",
+      "purl": "pkg:generic/Microsoft%20Edge@137.0.3296.68?os=windows",
+      "bom-ref": "pkg:generic/Microsoft%20Edge@137.0.3296.68?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Edge WebView2 Runtime",
+      "version": "137.0.3296.68",
+      "purl": "pkg:generic/Microsoft%20Edge%20WebView2%20Runtime@137.0.3296.68?os=windows",
+      "bom-ref": "pkg:generic/Microsoft%20Edge%20WebView2%20Runtime@137.0.3296.68?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "ResearchSoft Direct Export Helper",
+      "version": "1.0.21.3540",
+      "purl": "pkg:generic/ResearchSoft%20Direct%20Export%20Helper@1.0.21.3540?os=windows",
+      "bom-ref": "pkg:generic/ResearchSoft%20Direct%20Export%20Helper@1.0.21.3540?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "WinSCP 6.1.2",
+      "version": "6.1.2",
+      "purl": "pkg:generic/WinSCP%206.1.2@6.1.2?os=windows",
+      "bom-ref": "pkg:generic/WinSCP%206.1.2@6.1.2?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows Mobile Extension SDK Contracts",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20Mobile%20Extension%20SDK%20Contracts@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20Mobile%20Extension%20SDK%20Contracts@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "vs_filehandler_x86",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/vs_filehandler_x86@17.12.35410?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/vs_filehandler_x86@17.12.35410?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK for Windows Store Managed Apps Libs",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20for%20Windows%20Store%20Managed%20Apps%20Libs@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20SDK%20for%20Windows%20Store%20Managed%20Apps%20Libs@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2013 Redistributable (x64) - 12.0.40664",
+      "version": "12.0.40664.0",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202013%20Redistributable%20%28x64%29%20-%2012.0.40664@12.0.40664.0?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202013%20Redistributable%20%28x64%29%20-%2012.0.40664@12.0.40664.0?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Dropbox Update Helper",
+      "version": "1.3.983.1",
+      "purl": "pkg:generic/Dropbox%20Update%20Helper@1.3.983.1?os=windows",
+      "bom-ref": "pkg:generic/Dropbox%20Update%20Helper@1.3.983.1?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "vs_CoreEditorFonts",
+      "version": "17.7.40001",
+      "purl": "pkg:generic/vs_CoreEditorFonts@17.7.40001?os=windows",
+      "bom-ref": "pkg:generic/vs_CoreEditorFonts@17.7.40001?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "WPTx64 (OnecoreUAP)",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/WPTx64%20%28OnecoreUAP%29@10.1.22621.3233?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/WPTx64%20%28OnecoreUAP%29@10.1.22621.3233?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Universal CRT Redistributable",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Universal%20CRT%20Redistributable@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Universal%20CRT%20Redistributable@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK Desktop Libs x86",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20Desktop%20Libs%20x86@10.1.22621.3233?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Windows%20SDK%20Desktop%20Libs%20x86@10.1.22621.3233?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "Windows App Certification Kit x64",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20App%20Certification%20Kit%20x64@10.1.22621.3233?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Windows%20App%20Certification%20Kit%20x64@10.1.22621.3233?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "SDK ARM Additions",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/SDK%20ARM%20Additions@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/SDK%20ARM%20Additions@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20SDK@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK Desktop Libs arm",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20Desktop%20Libs%20arm@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20SDK%20Desktop%20Libs%20arm@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK Desktop Headers arm",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20Desktop%20Headers%20arm@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20SDK%20Desktop%20Headers%20arm@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2012 Redistributable (x86) - 11.0.61030",
+      "version": "11.0.61030.0",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202012%20Redistributable%20%28x86%29%20-%2011.0.61030@11.0.61030.0?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202012%20Redistributable%20%28x86%29%20-%2011.0.61030@11.0.61030.0?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "vs_devenvsharedmsi",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/vs_devenvsharedmsi@17.12.35410?os=windows",
+      "bom-ref": "pkg:generic/vs_devenvsharedmsi@17.12.35410?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK for Windows Store Apps Tools",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20for%20Windows%20Store%20Apps%20Tools@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20SDK%20for%20Windows%20Store%20Apps%20Tools@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Universal CRT Tools x86",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Universal%20CRT%20Tools%20x86@10.1.22621.3233?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Universal%20CRT%20Tools%20x86@10.1.22621.3233?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "MSI Development Tools",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/MSI%20Development%20Tools@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/MSI%20Development%20Tools@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "BCR Plug-in",
+      "version": "23.9.1.5",
+      "purl": "pkg:generic/BCR%20Plug-in@23.9.1.5?os=windows",
+      "bom-ref": "pkg:generic/BCR%20Plug-in@23.9.1.5?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual Studio Setup Configuration",
+      "version": "3.12.29.16771",
+      "purl": "pkg:generic/Microsoft%20Visual%20Studio%20Setup%20Configuration@3.12.29.16771?os=windows",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20Studio%20Setup%20Configuration@3.12.29.16771?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK Desktop Headers x64",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20Desktop%20Headers%20x64@10.1.22621.3233?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Windows%20SDK%20Desktop%20Headers%20x64@10.1.22621.3233?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "WinRT Intellisense UAP - Other Languages",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/WinRT%20Intellisense%20UAP%20-%20Other%20Languages@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/WinRT%20Intellisense%20UAP%20-%20Other%20Languages@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK Redistributables",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20Redistributables@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20SDK%20Redistributables@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Citrix Workspace(DV)",
+      "version": "23.9.1.5",
+      "purl": "pkg:generic/Citrix%20Workspace%28DV%29@23.9.1.5?os=windows",
+      "bom-ref": "pkg:generic/Citrix%20Workspace%28DV%29@23.9.1.5?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "WinRT Intellisense IoT - en-us",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/WinRT%20Intellisense%20IoT%20-%20en-us@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/WinRT%20Intellisense%20IoT%20-%20en-us@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "MTOP Client",
+      "version": "23.9.1.5",
+      "purl": "pkg:generic/MTOP%20Client@23.9.1.5?os=windows",
+      "bom-ref": "pkg:generic/MTOP%20Client@23.9.1.5?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "vs_Graphics_Singletonx86",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/vs_Graphics_Singletonx86@17.12.35410?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/vs_Graphics_Singletonx86@17.12.35410?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK for Windows Store Apps Metadata",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20for%20Windows%20Store%20Apps%20Metadata@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20SDK%20for%20Windows%20Store%20Apps%20Metadata@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "WinRT Intellisense Desktop - Other Languages",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/WinRT%20Intellisense%20Desktop%20-%20Other%20Languages@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/WinRT%20Intellisense%20Desktop%20-%20Other%20Languages@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Citrix Authentication Manager",
+      "version": "23.8.0.5",
+      "purl": "pkg:generic/Citrix%20Authentication%20Manager@23.8.0.5?os=windows",
+      "bom-ref": "pkg:generic/Citrix%20Authentication%20Manager@23.8.0.5?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK Signing Tools",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20Signing%20Tools@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20SDK%20Signing%20Tools@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "icecap_collectionresources",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/icecap_collectionresources@17.12.35410?os=windows",
+      "bom-ref": "pkg:generic/icecap_collectionresources@17.12.35410?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Kits Configuration Installer",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Kits%20Configuration%20Installer@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Kits%20Configuration%20Installer@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2022 X86 Debug Runtime - 14.42.34433",
+      "version": "14.42.34433",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202022%20X86%20Debug%20Runtime%20-%2014.42.34433@14.42.34433?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202022%20X86%20Debug%20Runtime%20-%2014.42.34433@14.42.34433?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK for Windows Store Apps DirectX x86 Remote",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20for%20Windows%20Store%20Apps%20DirectX%20x86%20Remote@10.1.22621.3233?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Windows%20SDK%20for%20Windows%20Store%20Apps%20DirectX%20x86%20Remote@10.1.22621.3233?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "WinRT Intellisense PPI - Other Languages",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/WinRT%20Intellisense%20PPI%20-%20Other%20Languages@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/WinRT%20Intellisense%20PPI%20-%20Other%20Languages@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK for Windows Store Apps Contracts",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20for%20Windows%20Store%20Apps%20Contracts@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20SDK%20for%20Windows%20Store%20Apps%20Contracts@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK for Windows Store Apps",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20for%20Windows%20Store%20Apps@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20SDK%20for%20Windows%20Store%20Apps@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "WinRT Intellisense IoT - Other Languages",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/WinRT%20Intellisense%20IoT%20-%20Other%20Languages@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/WinRT%20Intellisense%20IoT%20-%20Other%20Languages@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft .NET Host FX Resolver - 6.0.36 (x86)",
+      "version": "48.144.23141",
+      "purl": "pkg:generic/Microsoft%20.NET%20Host%20FX%20Resolver%20-%206.0.36%20%28x86%29@48.144.23141?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Microsoft%20.NET%20Host%20FX%20Resolver%20-%206.0.36%20%28x86%29@48.144.23141?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Intune Management Extension",
+      "version": "1.93.155.0",
+      "purl": "pkg:generic/Microsoft%20Intune%20Management%20Extension@1.93.155.0?os=windows",
+      "bom-ref": "pkg:generic/Microsoft%20Intune%20Management%20Extension@1.93.155.0?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows Software Development Kit - Windows 10.0.22621.3233",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20Software%20Development%20Kit%20-%20Windows%2010.0.22621.3233@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20Software%20Development%20Kit%20-%20Windows%2010.0.22621.3233@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "vs_FileTracker_Singleton",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/vs_FileTracker_Singleton@17.12.35410?os=windows",
+      "bom-ref": "pkg:generic/vs_FileTracker_Singleton@17.12.35410?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Dell Command | Update",
+      "version": "5.1.0",
+      "purl": "pkg:generic/Dell%20Command%20%7C%20Update@5.1.0?os=windows",
+      "bom-ref": "pkg:generic/Dell%20Command%20%7C%20Update@5.1.0?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows App Certification Kit x64 (OnecoreUAP)",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20App%20Certification%20Kit%20x64%20%28OnecoreUAP%29@10.1.22621.3233?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Windows%20App%20Certification%20Kit%20x64%20%28OnecoreUAP%29@10.1.22621.3233?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK for Windows Store Apps Headers",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20for%20Windows%20Store%20Apps%20Headers@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20SDK%20for%20Windows%20Store%20Apps%20Headers@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK Modern Non-Versioned Developer Tools",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20Modern%20Non-Versioned%20Developer%20Tools@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20SDK%20Modern%20Non-Versioned%20Developer%20Tools@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK Facade Windows WinMD Versioned",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20Facade%20Windows%20WinMD%20Versioned@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20SDK%20Facade%20Windows%20WinMD%20Versioned@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows Desktop Extension SDK Contracts",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20Desktop%20Extension%20SDK%20Contracts@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20Desktop%20Extension%20SDK%20Contracts@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "WinRT Intellisense Mobile - en-us",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/WinRT%20Intellisense%20Mobile%20-%20en-us@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/WinRT%20Intellisense%20Mobile%20-%20en-us@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.42.34433",
+      "version": "14.42.34433.0",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202015-2022%20Redistributable%20%28x64%29%20-%2014.42.34433@14.42.34433.0?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202015-2022%20Redistributable%20%28x64%29%20-%2014.42.34433@14.42.34433.0?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK DirectX x86 Remote",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20DirectX%20x86%20Remote@10.1.22621.3233?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Windows%20SDK%20DirectX%20x86%20Remote@10.1.22621.3233?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2013 x86 Minimum Runtime - 12.0.40664",
+      "version": "12.0.40664",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202013%20x86%20Minimum%20Runtime%20-%2012.0.40664@12.0.40664?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202013%20x86%20Minimum%20Runtime%20-%2012.0.40664@12.0.40664?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK Desktop Libs x64",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20Desktop%20Libs%20x64@10.1.22621.3233?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Windows%20SDK%20Desktop%20Libs%20x64@10.1.22621.3233?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Online Plug-in",
+      "version": "23.9.1.5",
+      "purl": "pkg:generic/Online%20Plug-in@23.9.1.5?os=windows",
+      "bom-ref": "pkg:generic/Online%20Plug-in@23.9.1.5?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2022 X86 Additional Runtime - 14.42.34433",
+      "version": "14.42.34433",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202022%20X86%20Additional%20Runtime%20-%2014.42.34433@14.42.34433?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202022%20X86%20Additional%20Runtime%20-%2014.42.34433@14.42.34433?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "EndNote 21",
+      "version": "21.0.1.17232",
+      "purl": "pkg:generic/EndNote%2021@21.0.1.17232?os=windows",
+      "bom-ref": "pkg:generic/EndNote%2021@21.0.1.17232?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK Desktop Libs arm64",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20Desktop%20Libs%20arm64@10.1.22621.3233?os=windows&arch=arm64",
+      "bom-ref": "pkg:generic/Windows%20SDK%20Desktop%20Libs%20arm64@10.1.22621.3233?os=windows&arch=arm64"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft .NET Runtime - 6.0.36 (x86)",
+      "version": "48.144.23141",
+      "purl": "pkg:generic/Microsoft%20.NET%20Runtime%20-%206.0.36%20%28x86%29@48.144.23141?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Microsoft%20.NET%20Runtime%20-%206.0.36%20%28x86%29@48.144.23141?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "Windows IoT Extension SDK Contracts",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20IoT%20Extension%20SDK%20Contracts@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20IoT%20Extension%20SDK%20Contracts@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows Team Extension SDK",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20Team%20Extension%20SDK@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20Team%20Extension%20SDK@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Citrix Workspace Inside",
+      "version": "23.9.1.63",
+      "purl": "pkg:generic/Citrix%20Workspace%20Inside@23.9.1.63?os=windows",
+      "bom-ref": "pkg:generic/Citrix%20Workspace%20Inside@23.9.1.63?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "WinRT Intellisense UAP - en-us",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/WinRT%20Intellisense%20UAP%20-%20en-us@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/WinRT%20Intellisense%20UAP%20-%20en-us@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK ARM Desktop Tools",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20ARM%20Desktop%20Tools@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20SDK%20ARM%20Desktop%20Tools@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Windows Desktop Runtime - 6.0.36 (x86)",
+      "version": "48.144.23186",
+      "purl": "pkg:generic/Microsoft%20Windows%20Desktop%20Runtime%20-%206.0.36%20%28x86%29@48.144.23186?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Microsoft%20Windows%20Desktop%20Runtime%20-%206.0.36%20%28x86%29@48.144.23186?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2013 Redistributable (x86) - 12.0.40664",
+      "version": "12.0.40664.0",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202013%20Redistributable%20%28x86%29%20-%2012.0.40664@12.0.40664.0?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202013%20Redistributable%20%28x86%29%20-%2012.0.40664@12.0.40664.0?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "Windows Mobile Extension SDK",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20Mobile%20Extension%20SDK@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20Mobile%20Extension%20SDK@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK Desktop Tools arm64",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20Desktop%20Tools%20arm64@10.1.22621.3233?os=windows&arch=arm64",
+      "bom-ref": "pkg:generic/Windows%20SDK%20Desktop%20Tools%20arm64@10.1.22621.3233?os=windows&arch=arm64"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK Desktop Headers arm64",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20Desktop%20Headers%20arm64@10.1.22621.3233?os=windows&arch=arm64",
+      "bom-ref": "pkg:generic/Windows%20SDK%20Desktop%20Headers%20arm64@10.1.22621.3233?os=windows&arch=arm64"
+    },
+    {
+      "type": "application",
+      "name": "WPT Redistributables",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/WPT%20Redistributables@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/WPT%20Redistributables@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Adobe Refresh Manager",
+      "version": "1.8.0",
+      "purl": "pkg:generic/Adobe%20Refresh%20Manager@1.8.0?os=windows",
+      "bom-ref": "pkg:generic/Adobe%20Refresh%20Manager@1.8.0?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Adobe Acrobat",
+      "version": "25.001.20643",
+      "purl": "pkg:generic/Adobe%20Acrobat@25.001.20643?os=windows",
+      "bom-ref": "pkg:generic/Adobe%20Acrobat@25.001.20643?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Citrix Web Helper",
+      "version": "23.9.1.41",
+      "purl": "pkg:generic/Citrix%20Web%20Helper@23.9.1.41?os=windows",
+      "bom-ref": "pkg:generic/Citrix%20Web%20Helper@23.9.1.41?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2012 x86 Additional Runtime - 11.0.61030",
+      "version": "11.0.61030",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202012%20x86%20Additional%20Runtime%20-%2011.0.61030@11.0.61030?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202012%20x86%20Additional%20Runtime%20-%2011.0.61030@11.0.61030?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "vs_communitysharedmsi",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/vs_communitysharedmsi@17.12.35410?os=windows",
+      "bom-ref": "pkg:generic/vs_communitysharedmsi@17.12.35410?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "vs_tipsmsi",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/vs_tipsmsi@17.12.35410?os=windows",
+      "bom-ref": "pkg:generic/vs_tipsmsi@17.12.35410?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "vs_minshellsharedmsi",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/vs_minshellsharedmsi@17.12.35410?os=windows",
+      "bom-ref": "pkg:generic/vs_minshellsharedmsi@17.12.35410?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "WinRT Intellisense Desktop - en-us",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/WinRT%20Intellisense%20Desktop%20-%20en-us@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/WinRT%20Intellisense%20Desktop%20-%20en-us@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "SDK ARM Redistributables",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/SDK%20ARM%20Redistributables@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/SDK%20ARM%20Redistributables@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "vs_vswebprotocolselectormsi",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/vs_vswebprotocolselectormsi@17.12.35410?os=windows",
+      "bom-ref": "pkg:generic/vs_vswebprotocolselectormsi@17.12.35410?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2012 x86 Minimum Runtime - 11.0.61030",
+      "version": "11.0.61030",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202012%20x86%20Minimum%20Runtime%20-%2011.0.61030@11.0.61030?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202012%20x86%20Minimum%20Runtime%20-%2011.0.61030@11.0.61030?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "VS Immersive Activate Helper",
+      "version": "17.0.157.0",
+      "purl": "pkg:generic/VS%20Immersive%20Activate%20Helper@17.0.157.0?os=windows",
+      "bom-ref": "pkg:generic/VS%20Immersive%20Activate%20Helper@17.0.157.0?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK Desktop Tools x64",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20Desktop%20Tools%20x64@10.1.22621.3233?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Windows%20SDK%20Desktop%20Tools%20x64@10.1.22621.3233?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2022 X86 Minimum Runtime - 14.42.34433",
+      "version": "14.42.34433",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202022%20X86%20Minimum%20Runtime%20-%2014.42.34433@14.42.34433?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202022%20X86%20Minimum%20Runtime%20-%2014.42.34433@14.42.34433?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Windows Desktop Runtime - 6.0.36 (x86)",
+      "version": "6.0.36.34217",
+      "purl": "pkg:generic/Microsoft%20Windows%20Desktop%20Runtime%20-%206.0.36%20%28x86%29@6.0.36.34217?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Microsoft%20Windows%20Desktop%20Runtime%20-%206.0.36%20%28x86%29@6.0.36.34217?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "AppProtection",
+      "version": "23.8.0.13",
+      "purl": "pkg:generic/AppProtection@23.8.0.13?os=windows",
+      "bom-ref": "pkg:generic/AppProtection@23.8.0.13?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "WinRT Intellisense PPI - en-us",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/WinRT%20Intellisense%20PPI%20-%20en-us@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/WinRT%20Intellisense%20PPI%20-%20en-us@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK Modern Versioned Developer Tools",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20Modern%20Versioned%20Developer%20Tools@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20SDK%20Modern%20Versioned%20Developer%20Tools@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows App Certification Kit SupportedApiList x86",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20App%20Certification%20Kit%20SupportedApiList%20x86@10.1.22621.3233?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Windows%20App%20Certification%20Kit%20SupportedApiList%20x86@10.1.22621.3233?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "WinAppDeploy",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/WinAppDeploy@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/WinAppDeploy@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2012 Redistributable (x64) - 11.0.61030",
+      "version": "11.0.61030.0",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202012%20Redistributable%20%28x64%29%20-%2011.0.61030@11.0.61030.0?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202012%20Redistributable%20%28x64%29%20-%2011.0.61030@11.0.61030.0?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK Desktop Tools x86",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20Desktop%20Tools%20x86@10.1.22621.3233?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Windows%20SDK%20Desktop%20Tools%20x86@10.1.22621.3233?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK for Windows Store Apps Libs",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20for%20Windows%20Store%20Apps%20Libs@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20SDK%20for%20Windows%20Store%20Apps%20Libs@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows IoT Extension SDK",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20IoT%20Extension%20SDK@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20IoT%20Extension%20SDK@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "vcpp_crt.redist.clickonce",
+      "version": "14.42.34433",
+      "purl": "pkg:generic/vcpp_crt.redist.clickonce@14.42.34433?os=windows",
+      "bom-ref": "pkg:generic/vcpp_crt.redist.clickonce@14.42.34433?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Universal General MIDI DLS Extension SDK",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Universal%20General%20MIDI%20DLS%20Extension%20SDK@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Universal%20General%20MIDI%20DLS%20Extension%20SDK@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Universal CRT Headers Libraries and Sources",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Universal%20CRT%20Headers%20Libraries%20and%20Sources@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Universal%20CRT%20Headers%20Libraries%20and%20Sources@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2013 x86 Additional Runtime - 12.0.40664",
+      "version": "12.0.40664",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202013%20x86%20Additional%20Runtime%20-%2012.0.40664@12.0.40664?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202013%20x86%20Additional%20Runtime%20-%2012.0.40664@12.0.40664?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "Windows Desktop Extension SDK",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20Desktop%20Extension%20SDK@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20Desktop%20Extension%20SDK@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "vs_githubprotocolhandlermsi",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/vs_githubprotocolhandlermsi@17.12.35410?os=windows",
+      "bom-ref": "pkg:generic/vs_githubprotocolhandlermsi@17.12.35410?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "WPTx64 (DesktopEditions)",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/WPTx64%20%28DesktopEditions%29@10.1.22621.3233?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/WPTx64%20%28DesktopEditions%29@10.1.22621.3233?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "vs_communitymsires",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/vs_communitymsires@17.12.35410?os=windows",
+      "bom-ref": "pkg:generic/vs_communitymsires@17.12.35410?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual Studio Setup WMI Provider",
+      "version": "3.12.29.16771",
+      "purl": "pkg:generic/Microsoft%20Visual%20Studio%20Setup%20WMI%20Provider@3.12.29.16771?os=windows",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20Studio%20Setup%20WMI%20Provider@3.12.29.16771?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "icecap_collection_neutral",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/icecap_collection_neutral@17.12.35410?os=windows",
+      "bom-ref": "pkg:generic/icecap_collection_neutral@17.12.35410?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Citrix Workspace(USB)",
+      "version": "23.9.1.5",
+      "purl": "pkg:generic/Citrix%20Workspace%28USB%29@23.9.1.5?os=windows",
+      "bom-ref": "pkg:generic/Citrix%20Workspace%28USB%29@23.9.1.5?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK EULA",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20EULA@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20SDK%20EULA@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Self-service Plug-in",
+      "version": "23.9.1.41",
+      "purl": "pkg:generic/Self-service%20Plug-in@23.9.1.41?os=windows",
+      "bom-ref": "pkg:generic/Self-service%20Plug-in@23.9.1.41?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2015-2022 Redistributable (x86) - 14.42.34433",
+      "version": "14.42.34433.0",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202015-2022%20Redistributable%20%28x86%29%20-%2014.42.34433@14.42.34433.0?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202015-2022%20Redistributable%20%28x86%29%20-%2014.42.34433@14.42.34433.0?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "Universal CRT Extension SDK",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Universal%20CRT%20Extension%20SDK@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Universal%20CRT%20Extension%20SDK@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "vs_minshellmsires",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/vs_minshellmsires@17.12.35410?os=windows",
+      "bom-ref": "pkg:generic/vs_minshellmsires@17.12.35410?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual C++ 2010  x86 Redistributable - 10.0.40219",
+      "version": "10.0.40219",
+      "purl": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202010%20%20x86%20Redistributable%20-%2010.0.40219@10.0.40219?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20C%2B%2B%202010%20%20x86%20Redistributable%20-%2010.0.40219@10.0.40219?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "vs_filehandler_amd64",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/vs_filehandler_amd64@17.12.35410?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/vs_filehandler_amd64@17.12.35410?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK AddOn",
+      "version": "10.1.0.0",
+      "purl": "pkg:generic/Windows%20SDK%20AddOn@10.1.0.0?os=windows",
+      "bom-ref": "pkg:generic/Windows%20SDK%20AddOn@10.1.0.0?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "vs_minshellinteropsharedmsi",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/vs_minshellinteropsharedmsi@17.12.35410?os=windows",
+      "bom-ref": "pkg:generic/vs_minshellinteropsharedmsi@17.12.35410?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Windows SDK Desktop Headers x86",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20SDK%20Desktop%20Headers%20x86@10.1.22621.3233?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Windows%20SDK%20Desktop%20Headers%20x86@10.1.22621.3233?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "icecap_collectionresourcesx64",
+      "version": "17.12.35410",
+      "purl": "pkg:generic/icecap_collectionresourcesx64@17.12.35410?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/icecap_collectionresourcesx64@17.12.35410?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Windows Team Extension SDK Contracts",
+      "version": "10.1.22621.3233",
+      "purl": "pkg:generic/Windows%20Team%20Extension%20SDK%20Contracts@10.1.22621.3233?os=windows",
+      "bom-ref": "pkg:generic/Windows%20Team%20Extension%20SDK%20Contracts@10.1.22621.3233?os=windows"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft .NET Host - 6.0.36 (x86)",
+      "version": "48.144.23141",
+      "purl": "pkg:generic/Microsoft%20.NET%20Host%20-%206.0.36%20%28x86%29@48.144.23141?os=windows&arch=x86",
+      "bom-ref": "pkg:generic/Microsoft%20.NET%20Host%20-%206.0.36%20%28x86%29@48.144.23141?os=windows&arch=x86"
+    },
+    {
+      "type": "application",
+      "name": "Anaconda3 2024.06-1 (Python 3.12.4 64-bit)",
+      "version": "2024.06-1",
+      "purl": "pkg:generic/Anaconda3%202024.06-1%20%28Python%203.12.4%2064-bit%29@2024.06-1?os=windows&arch=x64",
+      "bom-ref": "pkg:generic/Anaconda3%202024.06-1%20%28Python%203.12.4%2064-bit%29@2024.06-1?os=windows&arch=x64"
+    },
+    {
+      "type": "application",
+      "name": "Microsoft Visual Studio Code (User)",
+      "version": "1.101.0",
+      "purl": "pkg:generic/Microsoft%20Visual%20Studio%20Code%20%28User%29@1.101.0?os=windows",
+      "bom-ref": "pkg:generic/Microsoft%20Visual%20Studio%20Code%20%28User%29@1.101.0?os=windows"
+    }
+  ],
+  "serialNumber": "urn:uuid:042a00c3-9136-43f2-a0c0-1874bbc8e46a"
+}

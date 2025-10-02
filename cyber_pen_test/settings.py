@@ -27,7 +27,19 @@ SECRET_KEY = 'django-insecure-e+(qsiwl=z+jizb8=ujy!+ay%r8xcpv2pz@=(c9r#bs-9%c!ov
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    '10.137.4.115',  # Specific host that needs access
+    # Subnet patterns for broader access:
+    '10.137.4.*',    # Allows all IPs in 10.137.4.x range
+    '10.137.*.*',    # Allows all IPs in 10.137.x.x range
+    # For development/testing - allows all IPv4 (less secure):
+    # '0.0.0.0',
+    # Add additional specific IPs as needed:
+    # '192.168.1.100',
+    # '10.0.0.50',
+]
 
 
 # Application definition

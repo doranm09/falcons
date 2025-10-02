@@ -66,6 +66,17 @@ class Node(models.Model):
     description = models.TextField(blank=True)
     agent_id = models.CharField(max_length=64, unique=True, null=True, blank=True)
 
+    # Cyber template data fields
+    os_info = models.TextField(blank=True, null=True, help_text="Operating system information")
+    installed_libraries = models.JSONField(blank=True, null=True, help_text="List of installed libraries/packages")
+    mac_addresses = models.JSONField(blank=True, null=True, help_text="MAC addresses of network interfaces")
+    active_ports = models.JSONField(blank=True, null=True, help_text="Active network ports")
+
+    # Additional system information
+    cpu_count = models.PositiveIntegerField(null=True, blank=True)
+    memory_total = models.BigIntegerField(null=True, blank=True)  # in bytes
+    platform_info = models.CharField(max_length=255, blank=True, null=True)
+
     class Meta:
         indexes = [
             models.Index(fields=["ip_address"]),
@@ -74,6 +85,23 @@ class Node(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.ip_address})"
+
+    def get_cyber_template_data(self):
+        """Get cyber template data in the format expected by the frontend."""
+        return {
+            "OS": self.os_info or "Unknown",
+            "lib": self.installed_libraries or [],
+            "MAC": self.mac_addresses or [],
+            "port": self.active_ports or []
+        }
+
+    def update_cyber_data(self, cyber_data):
+        """Update node with cyber template data from agent."""
+        self.os_info = cyber_data.get("OS")
+        self.installed_libraries = cyber_data.get("lib", [])
+        self.mac_addresses = cyber_data.get("MAC", [])
+        self.active_ports = cyber_data.get("port", [])
+        self.save(update_fields=["os_info", "installed_libraries", "mac_addresses", "active_ports"])
 
 
 class NodeInterface(models.Model):
@@ -155,6 +183,109 @@ class CommandResult(models.Model):
 
     def __str__(self):
         return f"Result {self.id} for {self.agent_id} @ {self.timestamp:%Y-%m-%d %H:%M:%S}"
+
+
+# -----------------------------
+# Enhanced Agent Monitoring
+# -----------------------------
+class AgentStatus(models.Model):
+    """Enhanced agent monitoring with detailed status tracking."""
+    agent_id = models.CharField(max_length=64, unique=True)
+    hostname = models.CharField(max_length=255)
+    ip_address = models.GenericIPAddressField()
+    status = models.CharField(max_length=32, choices=[
+        ("online", "Online"),
+        ("offline", "Offline"),
+        ("unknown", "Unknown"),
+        ("error", "Error")
+    ], default="unknown")
+
+    # System information
+    os_type = models.CharField(max_length=64, blank=True)
+    os_version = models.CharField(max_length=128, blank=True)
+    platform = models.CharField(max_length=128, blank=True)
+    cpu_count = models.PositiveIntegerField(null=True, blank=True)
+    memory_total = models.BigIntegerField(null=True, blank=True)  # in bytes
+
+    # Network information
+    interfaces = models.JSONField(blank=True, null=True)  # Store interface details
+    active_ports = models.JSONField(blank=True, null=True)  # Store active ports
+
+    # Timing
+    first_seen = models.DateTimeField(auto_now_add=True)
+    last_heartbeat = models.DateTimeField(auto_now=True)
+    last_command_sent = models.DateTimeField(null=True, blank=True)
+    last_command_result = models.DateTimeField(null=True, blank=True)
+
+    # Health metrics
+    heartbeat_interval = models.PositiveIntegerField(default=30)  # seconds
+    response_time_ms = models.FloatField(null=True, blank=True)
+    consecutive_failures = models.PositiveIntegerField(default=0)
+
+    # Capabilities
+    capabilities = models.JSONField(blank=True, null=True)  # Store agent capabilities
+
+    # Version information
+    agent_version = models.CharField(max_length=32, blank=True, null=True)
+    last_version_check = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["agent_id"]),
+            models.Index(fields=["status"]),
+            models.Index(fields=["last_heartbeat"]),
+            models.Index(fields=["hostname"]),
+        ]
+        ordering = ["-last_heartbeat"]
+
+    def __str__(self):
+        return f"{self.hostname} ({self.agent_id}) - {self.status}"
+
+    def is_online(self):
+        """Check if agent is considered online based on heartbeat timing."""
+        if self.status == "offline":
+            return False
+        from django.utils import timezone
+        threshold = self.heartbeat_interval * 3  # 3x heartbeat interval
+        return (timezone.now() - self.last_heartbeat).seconds < threshold
+
+    def update_status(self):
+        """Update status based on heartbeat timing."""
+        if self.is_online():
+            if self.status != "online":
+                self.status = "online"
+                self.consecutive_failures = 0
+        else:
+            self.status = "offline"
+            self.consecutive_failures += 1
+        self.save(update_fields=["status", "consecutive_failures"])
+
+    def record_heartbeat(self, data=None):
+        """Record a heartbeat with optional system data."""
+        from django.utils import timezone
+        now = timezone.now()
+
+        # Update basic info if provided
+        if data:
+            self.hostname = data.get("hostname", self.hostname)
+            self.os_type = data.get("os", self.os_type)
+            self.os_version = data.get("os_version", self.os_version)
+            self.platform = data.get("platform", self.platform)
+            self.cpu_count = data.get("cpu_count", self.cpu_count)
+            self.memory_total = data.get("memory_total", self.memory_total)
+            self.interfaces = data.get("interfaces", self.interfaces)
+
+        self.last_heartbeat = now
+        self.status = "online"
+        self.consecutive_failures = 0
+        self.save()
+
+    def get_uptime(self):
+        """Get agent uptime since first seen."""
+        if self.first_seen:
+            from django.utils import timezone
+            return timezone.now() - self.first_seen
+        return None
 
 
 class ScanVulnerability(models.Model):
@@ -299,3 +430,103 @@ class InterfaceStats(models.Model):
 
     def __str__(self):
         return f"Stats({self.iface})"
+
+
+# -----------------------------
+# Network Metadata and Monitoring (Security Onion-like)
+# -----------------------------
+class NetworkMetadata(models.Model):
+    """Store detailed network metadata from agents similar to Security Onion."""
+    agent = models.ForeignKey(AgentStatus, on_delete=models.CASCADE, related_name="network_metadata")
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    # Network connections data
+    network_connections = models.JSONField(blank=True, null=True, help_text="Detailed network connections with process info")
+    interface_statistics = models.JSONField(blank=True, null=True, help_text="Interface traffic statistics")
+    active_ports = models.JSONField(blank=True, null=True, help_text="Active ports and their status")
+    interfaces = models.JSONField(blank=True, null=True, help_text="Network interface information")
+
+    # Metadata about the collection
+    collection_duration_ms = models.FloatField(null=True, blank=True, help_text="Time taken to collect metadata")
+    total_connections = models.PositiveIntegerField(default=0, help_text="Total number of connections found")
+    total_interfaces = models.PositiveIntegerField(default=0, help_text="Total number of interfaces found")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["agent", "timestamp"]),
+            models.Index(fields=["timestamp"]),
+        ]
+        ordering = ["-timestamp"]
+
+    def __str__(self):
+        return f"Network metadata for {self.agent.hostname} at {self.timestamp}"
+
+
+class NetworkConnection(models.Model):
+    """Individual network connection records for detailed analysis."""
+    metadata = models.ForeignKey(NetworkMetadata, on_delete=models.CASCADE, related_name="connections")
+    agent = models.ForeignKey(AgentStatus, on_delete=models.CASCADE, related_name="connections")
+
+    # Connection details
+    protocol = models.CharField(max_length=10, help_text="TCP or UDP")
+    local_address = models.CharField(max_length=255, null=True, blank=True)
+    local_port = models.PositiveIntegerField(null=True, blank=True)
+    remote_address = models.CharField(max_length=255, null=True, blank=True)
+    remote_port = models.PositiveIntegerField(null=True, blank=True)
+    status = models.CharField(max_length=32, help_text="Connection status (LISTEN, ESTABLISHED, etc.)")
+
+    # Process information
+    process_pid = models.PositiveIntegerField(null=True, blank=True)
+    process_name = models.CharField(max_length=255, blank=True)
+    process_username = models.CharField(max_length=255, blank=True)
+    process_cmdline = models.TextField(blank=True)
+
+    # Timing
+    first_seen = models.DateTimeField(auto_now_add=True)
+    last_seen = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["agent", "protocol"]),
+            models.Index(fields=["local_address", "local_port"]),
+            models.Index(fields=["remote_address", "remote_port"]),
+            models.Index(fields=["process_name"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.protocol} {self.local_address}:{self.local_port} -> {self.remote_address}:{self.remote_port}"
+
+
+class NetworkFlow(models.Model):
+    """Aggregated network flow data for traffic analysis."""
+    agent = models.ForeignKey(AgentStatus, on_delete=models.CASCADE, related_name="flows")
+
+    # Flow identification
+    source_ip = models.GenericIPAddressField()
+    source_port = models.PositiveIntegerField(null=True, blank=True)
+    destination_ip = models.GenericIPAddressField()
+    destination_port = models.PositiveIntegerField(null=True, blank=True)
+    protocol = models.CharField(max_length=10)
+
+    # Flow statistics
+    bytes_sent = models.BigIntegerField(default=0)
+    bytes_received = models.BigIntegerField(default=0)
+    packets_sent = models.BigIntegerField(default=0)
+    packets_received = models.BigIntegerField(default=0)
+
+    # Timing
+    first_seen = models.DateTimeField(auto_now_add=True)
+    last_seen = models.DateTimeField(auto_now=True)
+    duration_seconds = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["agent", "protocol"]),
+            models.Index(fields=["source_ip", "destination_ip", "protocol"]),
+            models.Index(fields=["first_seen"]),
+        ]
+        unique_together = ["agent", "source_ip", "source_port", "destination_ip", "destination_port", "protocol"]
+
+    def __str__(self):
+        return f"{self.source_ip}:{self.source_port} -> {self.destination_ip}:{self.destination_port} ({self.protocol})"

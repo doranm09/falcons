@@ -1,0 +1,590 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2><i class="bi bi-diagram-3"></i> Network Monitoring Dashboard</h2>
+            <p class="text-muted">Security Onion-like network monitoring with detailed connection metadata</p>
+        </div>
+    </div>
+
+    <!-- Overview Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card border-info">
+                <div class="card-body text-center">
+                    <h4 class="card-title text-info mb-1">{{ total_agents }}</h4>
+                    <p class="card-text text-muted mb-0">Active Agents</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-success">
+                <div class="card-body text-center">
+                    <h4 class="card-title text-success mb-1">{{ total_connections }}</h4>
+                    <p class="card-text text-muted mb-0">Network Connections</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-warning">
+                <div class="card-body text-center">
+                    <h4 class="card-title text-warning mb-1">{{ total_metadata_records }}</h4>
+                    <p class="card-text text-muted mb-0">Metadata Records</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-primary">
+                <div class="card-body text-center">
+                    <h4 class="card-title text-primary mb-1" id="lastUpdate">00:00</h4>
+                    <p class="card-text text-muted mb-0">Last Update</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Network Topology Visualization -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5><i class="bi bi-graph-up"></i> Network Topology</h5>
+                    <button class="btn btn-sm btn-outline-primary" onclick="refreshTopology()">
+                        <i class="bi bi-arrow-repeat"></i> Refresh
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="networkTopology" style="height: 400px; background: #f8f9fa; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #6c757d;">
+                        <div class="text-center">
+                            <i class="bi bi-diagram-3" style="font-size: 3rem; margin-bottom: 1rem;"></i>
+                            <p>Loading network topology...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Network Connections Table -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5><i class="bi bi-router"></i> Active Network Connections</h5>
+                    <div class="btn-group" role="group">
+                        <button class="btn btn-sm btn-outline-primary" onclick="refreshConnections()">
+                            <i class="bi bi-arrow-repeat"></i> Refresh
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="toggleAutoRefresh()">
+                            <i class="bi bi-play-circle" id="autoRefreshIcon"></i> Auto Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm" id="connectionsTable">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Agent</th>
+                                    <th>Protocol</th>
+                                    <th>Local Address</th>
+                                    <th>Remote Address</th>
+                                    <th>Status</th>
+                                    <th>Process</th>
+                                    <th>User</th>
+                                    <th>Last Seen</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for conn in recent_connections %}
+                                <tr>
+                                    <td>
+                                        <span class="badge bg-secondary">{{ conn.agent.hostname }}</span>
+                                        <br><small class="text-muted">{{ conn.agent.agent_id|slice:":8" }}</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{% if conn.protocol == 'TCP' %}primary{% else %}info{% endif %}">
+                                            {{ conn.protocol }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <code class="small">
+                                            {% if conn.local_address %}
+                                                {{ conn.local_address }}{% if conn.local_port %}:{{ conn.local_port }}{% endif %}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </code>
+                                    </td>
+                                    <td>
+                                        <code class="small">
+                                            {% if conn.remote_address %}
+                                                {{ conn.remote_address }}{% if conn.remote_port %}:{{ conn.remote_port }}{% endif %}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </code>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{% if conn.status == 'ESTABLISHED' %}success{% elif conn.status == 'LISTEN' %}warning{% else %}secondary{% endif %}">
+                                            {{ conn.status }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <small>{{ conn.process_name|default:"Unknown" }}</small>
+                                        {% if conn.process_pid %}
+                                            <br><small class="text-muted">PID: {{ conn.process_pid }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small>{{ conn.process_username|default:"-" }}</small>
+                                    </td>
+                                    <td>
+                                        <small title="{{ conn.last_seen|date:'Y-m-d H:i:s' }}">
+                                            {{ conn.last_seen|timesince }} ago
+                                        </small>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="8" class="text-center text-muted py-4">
+                                        <i class="bi bi-wifi-off" style="font-size: 2rem; margin-bottom: 1rem;"></i>
+                                        <p>No network connections found. Agents will report connections here when they send network metadata.</p>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interface Statistics -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-speedometer2"></i> Interface Statistics</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Agent</th>
+                                    <th>Interface</th>
+                                    <th>Packets In/Out</th>
+                                    <th>Traffic</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for stat in interface_stats %}
+                                <tr>
+                                    <td>{{ stat.agent }}</td>
+                                    <td><code>{{ stat.interface }}</code></td>
+                                    <td>
+                                        <small>
+                                            <span class="text-success">↓{{ stat.packets_recv|floatformat:"0" }}</span>
+                                            <br>
+                                            <span class="text-primary">↑{{ stat.packets_sent|floatformat:"0" }}</span>
+                                        </small>
+                                    </td>
+                                    <td>
+                                        <small>
+                                            <span class="text-success">↓{{ stat.bytes_recv|filesizeformat }}</span>
+                                            <br>
+                                            <span class="text-primary">↑{{ stat.bytes_sent|filesizeformat }}</span>
+                                        </small>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted">
+                                        No interface statistics available
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Metadata Records -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-clock-history"></i> Recent Metadata Collection</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        {% for metadata in recent_metadata %}
+                        <div class="list-group-item">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">{{ metadata.agent.hostname }}</h6>
+                                <small>{{ metadata.timestamp|timesince }} ago</small>
+                            </div>
+                            <p class="mb-1 small">
+                                <span class="badge bg-info">{{ metadata.total_connections }} connections</span>
+                                <span class="badge bg-secondary">{{ metadata.total_interfaces }} interfaces</span>
+                            </p>
+                            {% if metadata.collection_duration_ms %}
+                                <small class="text-muted">
+                                    Collection time: {{ metadata.collection_duration_ms|floatformat:"0" }}ms
+                                </small>
+                            {% endif %}
+                        </div>
+                        {% empty %}
+                        <div class="list-group-item text-center text-muted">
+                            No metadata records yet
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-tools"></i> Network Monitoring Actions</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <button class="btn btn-success w-100" onclick="sendNetworkMetadataCommand()">
+                                <i class="bi bi-cloud-upload"></i> Request Network Metadata
+                            </button>
+                        </div>
+                        <div class="col-md-3">
+                            <a href="{% url 'agent_monitoring' %}" class="btn btn-primary w-100">
+                                <i class="bi bi-robot"></i> Agent Management
+                            </a>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-info w-100" onclick="exportNetworkData()">
+                                <i class="bi bi-download"></i> Export Data
+                            </button>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-secondary w-100" onclick="clearNetworkHistory()">
+                                <i class="bi bi-trash"></i> Clear History
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let autoRefreshInterval = null;
+    let isAutoRefreshEnabled = false;
+
+    // Initialize page
+    document.addEventListener('DOMContentLoaded', function() {
+        updateLastUpdateTime();
+        refreshTopology();
+        refreshConnections();
+
+        // Set up auto-refresh toggle
+        document.getElementById('autoRefreshIcon').classList.add('bi-play-circle');
+    });
+
+    function updateLastUpdateTime() {
+        const now = new Date();
+        document.getElementById('lastUpdate').textContent = now.toLocaleTimeString();
+    }
+
+    function refreshTopology() {
+        fetch('{% url "network_topology_api" %}')
+            .then(response => response.json())
+            .then(data => {
+                renderNetworkTopology(data);
+                updateLastUpdateTime();
+            })
+            .catch(error => {
+                console.error('Error refreshing topology:', error);
+                document.getElementById('networkTopology').innerHTML = `
+                    <div class="text-center text-danger">
+                        <i class="bi bi-exclamation-triangle" style="font-size: 3rem; margin-bottom: 1rem;"></i>
+                        <p>Error loading network topology</p>
+                        <small>${error.message}</small>
+                    </div>
+                `;
+            });
+    }
+
+    function renderNetworkTopology(data) {
+        const container = document.getElementById('networkTopology');
+
+        if (!data.nodes || data.nodes.length === 0) {
+            container.innerHTML = `
+                <div class="text-center text-muted">
+                    <i class="bi bi-diagram-3" style="font-size: 3rem; margin-bottom: 1rem;"></i>
+                    <p>No network topology data available</p>
+                    <small>Agents will appear here when they report network connections</small>
+                </div>
+            `;
+            return;
+        }
+
+        // Simple text-based topology visualization
+        let html = `
+            <div class="p-3">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Network Nodes (${data.nodes.length})</h6>
+                        <div class="mb-3">
+        `;
+
+        data.nodes.forEach(node => {
+            const statusClass = node.status === 'online' ? 'success' : 'warning';
+            html += `
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                        <strong>${node.label}</strong>
+                        <br><small class="text-muted">${node.ip_address}</small>
+                    </div>
+                    <span class="badge bg-${statusClass}">${node.status}</span>
+                </div>
+            `;
+        });
+
+        html += `
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Network Flows (${data.edges.length})</h6>
+                        <div class="mb-3">
+        `;
+
+        data.edges.forEach(edge => {
+            html += `
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                        <code>${edge.from}</code> → <code>${edge.to}</code>
+                        <br><small class="text-muted">${edge.protocol}</small>
+                    </div>
+                    <span class="badge bg-info">${edge.connection_count} conn</span>
+                </div>
+            `;
+        });
+
+        html += `
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        container.innerHTML = html;
+    }
+
+    function refreshConnections() {
+        fetch('{% url "network_connections_api" %}?limit=50')
+            .then(response => response.json())
+            .then(data => {
+                updateConnectionsTable(data.connections);
+                updateLastUpdateTime();
+            })
+            .catch(error => {
+                console.error('Error refreshing connections:', error);
+            });
+    }
+
+    function updateConnectionsTable(connections) {
+        const tbody = document.querySelector('#connectionsTable tbody');
+        tbody.innerHTML = '';
+
+        if (connections.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="text-center text-muted py-4">
+                        <i class="bi bi-wifi-off" style="font-size: 2rem; margin-bottom: 1rem;"></i>
+                        <p>No network connections found</p>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        connections.forEach(conn => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>
+                    <span class="badge bg-secondary">${conn.hostname}</span>
+                    <br><small class="text-muted">${conn.agent_id.substring(0, 8)}...</small>
+                </td>
+                <td>
+                    <span class="badge bg-${conn.protocol === 'TCP' ? 'primary' : 'info'}">
+                        ${conn.protocol}
+                    </span>
+                </td>
+                <td>
+                    <code class="small">
+                        ${conn.local_address || '-'}
+                        ${conn.local_port ? ':' + conn.local_port : ''}
+                    </code>
+                </td>
+                <td>
+                    <code class="small">
+                        ${conn.remote_address || '-'}
+                        ${conn.remote_port ? ':' + conn.remote_port : ''}
+                    </code>
+                </td>
+                <td>
+                    <span class="badge bg-${getStatusBadgeClass(conn.status)}">
+                        ${conn.status}
+                    </span>
+                </td>
+                <td>
+                    <small>${conn.process_name}</small>
+                    ${conn.process_pid ? `<br><small class="text-muted">PID: ${conn.process_pid}</small>` : ''}
+                </td>
+                <td>
+                    <small>${conn.process_username || '-'}</small>
+                </td>
+                <td>
+                    <small title="${new Date(conn.last_seen).toLocaleString()}">
+                        ${timeSince(new Date(conn.last_seen))} ago
+                    </small>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    function getStatusBadgeClass(status) {
+        switch (status) {
+            case 'ESTABLISHED': return 'success';
+            case 'LISTEN': return 'warning';
+            case 'CLOSE_WAIT': return 'danger';
+            default: return 'secondary';
+        }
+    }
+
+    function timeSince(date) {
+        const seconds = Math.floor((new Date() - date) / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+
+        if (hours > 0) return `${hours}h ${minutes % 60}m`;
+        if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+        return `${seconds}s`;
+    }
+
+    function toggleAutoRefresh() {
+        const button = document.querySelector('[onclick="toggleAutoRefresh()"]');
+        const icon = document.getElementById('autoRefreshIcon');
+
+        if (isAutoRefreshEnabled) {
+            // Disable auto-refresh
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+            isAutoRefreshEnabled = false;
+            icon.classList.remove('bi-pause-circle');
+            icon.classList.add('bi-play-circle');
+            button.classList.remove('btn-outline-danger');
+            button.classList.add('btn-outline-secondary');
+        } else {
+            // Enable auto-refresh
+            isAutoRefreshEnabled = true;
+            autoRefreshInterval = setInterval(() => {
+                refreshConnections();
+                refreshTopology();
+            }, 10000); // Refresh every 10 seconds
+            icon.classList.remove('bi-play-circle');
+            icon.classList.add('bi-pause-circle');
+            button.classList.remove('btn-outline-secondary');
+            button.classList.add('btn-outline-danger');
+        }
+    }
+
+    function sendNetworkMetadataCommand() {
+        // Send command to all agents to collect network metadata
+        fetch('{% url "send_agent_command" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || ''
+            },
+            body: JSON.stringify({
+                agent_id: 'all', // Special case for all agents
+                action: 'network_metadata',
+                parameters: {}
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'command_sent') {
+                alert('Network metadata collection requested from all agents');
+                // Refresh data after a short delay
+                setTimeout(() => {
+                    refreshConnections();
+                    refreshTopology();
+                }, 2000);
+            } else {
+                alert(`Error: ${data.error}`);
+            }
+        })
+        .catch(error => {
+            alert(`Error sending command: ${error}`);
+        });
+    }
+
+    function exportNetworkData() {
+        // Export current network data as JSON
+        Promise.all([
+            fetch('{% url "network_connections_api" %}?limit=1000').then(r => r.json()),
+            fetch('{% url "network_topology_api" %}').then(r => r.json()),
+            fetch('{% url "network_metadata_api" %}?limit=100').then(r => r.json())
+        ]).then(([connections, topology, metadata]) => {
+            const exportData = {
+                timestamp: new Date().toISOString(),
+                connections: connections.connections,
+                topology: topology,
+                metadata: metadata.metadata
+            };
+
+            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `network_data_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+    }
+
+    function clearNetworkHistory() {
+        if (confirm('Are you sure you want to clear all network monitoring history? This action cannot be undone.')) {
+            // This would need a backend endpoint to clear the data
+            alert('Clear history functionality would need to be implemented on the backend');
+        }
+    }
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', function() {
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,375 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2><i class="bi bi-robot"></i> Agent Monitoring Dashboard</h2>
+            <p class="text-muted">Monitor and manage software agents across your network</p>
+        </div>
+    </div>
+
+    <!-- Agent Status Overview Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card border-primary">
+                <div class="card-body text-center">
+                    <h4 class="card-title text-primary mb-1">{{ total_agents }}</h4>
+                    <p class="card-text text-muted mb-0">Total Agents</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-success">
+                <div class="card-body text-center">
+                    <h4 class="card-title text-success mb-1">{{ online_agents }}</h4>
+                    <p class="card-text text-muted mb-0">Online Agents</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-danger">
+                <div class="card-body text-center">
+                    <h4 class="card-title text-danger mb-1">{{ offline_agents }}</h4>
+                    <p class="card-text text-muted mb-0">Offline Agents</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-warning">
+                <div class="card-body text-center">
+                    <h4 class="card-title text-warning mb-1">{{ pending_commands.count }}</h4>
+                    <p class="card-text text-muted mb-0">Pending Commands</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-download"></i> Agent Distribution</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <a href="{% url 'agent_download_page' %}" class="btn btn-primary btn-lg w-100">
+                                <i class="bi bi-cloud-download"></i> Download Host Agent
+                            </a>
+                        </div>
+                        <div class="col-md-6">
+                            <button class="btn btn-outline-info btn-lg w-100" onclick="refreshVersionInfo()">
+                                <i class="bi bi-arrow-repeat"></i> Check Agent Versions
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Command Interface -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-terminal"></i> Send Command to Agent</h5>
+                </div>
+                <div class="card-body">
+                    <form id="commandForm">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <label for="agentSelect" class="form-label">Select Agent</label>
+                                <select class="form-select" id="agentSelect" required>
+                                    <option value="">Choose an agent...</option>
+                                    {% for agent in agents %}
+                                        <option value="{{ agent.agent_id }}">{{ agent.hostname }} ({{ agent.agent_id }})</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="commandAction" class="form-label">Action</label>
+                                <select class="form-select" id="commandAction" required>
+                                    <option value="">Choose action...</option>
+                                    <option value="ping">Ping</option>
+                                    <option value="scan">Network Scan</option>
+                                    <option value="sbom">Collect SBOM</option>
+                                    <option value="cyber">Cyber Template Data</option>
+                                    <option value="info">System Info</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="commandParams" class="form-label">Parameters (JSON)</label>
+                                <input type="text" class="form-control" id="commandParams" placeholder='{"target": "8.8.8.8"}'>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">&nbsp;</label>
+                                <button type="submit" class="btn btn-primary d-block w-100">
+                                    <i class="bi bi-send"></i> Send Command
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Agents Table -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5><i class="bi bi-server"></i> Agent Status</h5>
+                    <button class="btn btn-sm btn-outline-primary" onclick="refreshAgentStatus()">
+                        <i class="bi bi-arrow-repeat"></i> Refresh
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="agentsTable">
+                            <thead>
+                                <tr>
+                                    <th>Status</th>
+                                    <th>Agent ID</th>
+                                    <th>Hostname</th>
+                                    <th>IP Address</th>
+                                    <th>Version</th>
+                                    <th>OS</th>
+                                    <th>CPU/Memory</th>
+                                    <th>Last Heartbeat</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for agent in agents %}
+                                <tr>
+                                    <td>
+                                        <span class="badge bg-{% if agent.status == 'online' %}success{% elif agent.status == 'offline' %}danger{% else %}warning{% endif %}">
+                                            {{ agent.status|title }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <code class="small">{{ agent.agent_id }}</code>
+                                    </td>
+                                    <td>{{ agent.hostname }}</td>
+                                    <td>{{ agent.ip_address }}</td>
+                                    <td>
+                                        {% if agent.os_type %}
+                                            {{ agent.os_type }} {{ agent.os_version }}
+                                        {% else %}
+                                            <span class="text-muted">Unknown</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if agent.cpu_count %}
+                                            {{ agent.cpu_count }} CPU / {{ agent.memory_total|filesizeformat }}
+                                        {% else %}
+                                            <span class="text-muted">Unknown</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if agent.last_heartbeat %}
+                                            <span title="{{ agent.last_heartbeat|date:'Y-m-d H:i:s' }}">
+                                                {{ agent.last_heartbeat|timesince }} ago
+                                            </span>
+                                        {% else %}
+                                            <span class="text-muted">Never</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if agent.get_uptime %}
+                                            {{ agent.get_uptime|date:"d\d H\h i\m" }}
+                                        {% else %}
+                                            <span class="text-muted">Unknown</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'agent_details' agent.agent_id %}" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-eye"></i> Details
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="9" class="text-center text-muted">
+                                        No agents found. Agents will appear here when they report to the dashboard.
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-clock-history"></i> Recent Command Results</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        {% for result in recent_results %}
+                        <div class="list-group-item">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">{{ result.agent_id }}</h6>
+                                <small>{{ result.timestamp|timesince }} ago</small>
+                            </div>
+                            <p class="mb-1 small text-muted">
+                                {{ result.output|truncatechars:100 }}
+                            </p>
+                        </div>
+                        {% empty %}
+                        <div class="list-group-item text-center text-muted">
+                            No recent command results
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-list-task"></i> Pending Commands</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        {% for command in pending_commands %}
+                        <div class="list-group-item">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">{{ command.agent_id }}</h6>
+                                <small>{{ command.created|timesince }} ago</small>
+                            </div>
+                            <p class="mb-1">
+                                <span class="badge bg-primary">{{ command.action }}</span>
+                            </p>
+                        </div>
+                        {% empty %}
+                        <div class="list-group-item text-center text-muted">
+                            No pending commands
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Auto-refresh agent status every 30 seconds
+    setInterval(refreshAgentStatus, 30000);
+
+    function refreshAgentStatus() {
+        fetch('{% url "agent_status_api" %}')
+            .then(response => response.json())
+            .then(data => {
+                updateAgentsTable(data.agents);
+            })
+            .catch(error => {
+                console.error('Error refreshing agent status:', error);
+            });
+    }
+
+    function updateAgentsTable(agents) {
+        const tbody = document.querySelector('#agentsTable tbody');
+        tbody.innerHTML = '';
+
+        if (agents.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No agents found</td></tr>';
+            return;
+        }
+
+        agents.forEach(agent => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>
+                    <span class="badge bg-${agent.status === 'online' ? 'success' : agent.status === 'offline' ? 'danger' : 'warning'}">
+                        ${agent.status.charAt(0).toUpperCase() + agent.status.slice(1)}
+                    </span>
+                </td>
+                <td><code class="small">${agent.agent_id}</code></td>
+                <td>${agent.hostname}</td>
+                <td>${agent.ip_address}</td>
+                <td>
+                    <span class="badge bg-${agent.agent_version !== 'Unknown' ? 'info' : 'secondary'}">
+                        ${agent.agent_version}
+                    </span>
+                </td>
+                <td>${agent.os_type ? `${agent.os_type} ${agent.os_version}` : '<span class="text-muted">Unknown</span>'}</td>
+                <td>${agent.cpu_count ? `${agent.cpu_count} CPU / ${formatBytes(agent.memory_total)}` : '<span class="text-muted">Unknown</span>'}</td>
+                <td>${agent.last_heartbeat}</td>
+                <td>
+                    <a href="/dashboard/agent/${agent.agent_id}/" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-eye"></i> Details
+                    </a>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    // Handle command form submission
+    document.getElementById('commandForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const agentId = document.getElementById('agentSelect').value;
+        const action = document.getElementById('commandAction').value;
+        const paramsText = document.getElementById('commandParams').value;
+
+        let parameters = {};
+        if (paramsText.trim()) {
+            try {
+                parameters = JSON.parse(paramsText);
+            } catch (error) {
+                alert('Invalid JSON in parameters field');
+                return;
+            }
+        }
+
+        fetch('{% url "send_agent_command" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || ''
+            },
+            body: JSON.stringify({
+                agent_id: agentId,
+                action: action,
+                parameters: parameters
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'command_sent') {
+                alert(`Command sent successfully! Command ID: ${data.command_id}`);
+                document.getElementById('commandForm').reset();
+            } else {
+                alert(`Error: ${data.error}`);
+            }
+        })
+        .catch(error => {
+            alert(`Error sending command: ${error}`);
+        });
+    });
+</script>
+{% endblock %}

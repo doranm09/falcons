@@ -4,8 +4,8 @@
     "scanned_nodes": [
         {
             "id": "1",
-            "name": "valve",
-            "description": "",
+            "name": "GPWR Workstation",
+            "description": "Hosts the GPWR Simulator",
             "type": "PLC",
             "OS": "",
             "lib": [],

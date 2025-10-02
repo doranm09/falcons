@@ -1,0 +1,321 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2><i class="bi bi-download"></i> Agent Download Center</h2>
+            <p class="text-muted">Download and deploy the CyberTwin Host Agent to systems on your network</p>
+        </div>
+    </div>
+
+    <!-- Agent Information -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-info-circle"></i> {{ agent_name }}</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Current Version</h6>
+                            <p class="text-primary fs-5">{{ agent_version }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Release Date</h6>
+                            <p>{{ "now"|date:"F Y" }}</p>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <h6>Features</h6>
+                        <ul>
+                            <li><i class="bi bi-check-circle text-success"></i> System information collection</li>
+                            <li><i class="bi bi-check-circle text-success"></i> Network interface monitoring</li>
+                            <li><i class="bi bi-check-circle text-success"></i> Cyber template data collection</li>
+                            <li><i class="bi bi-check-circle text-success"></i> Remote command execution</li>
+                            <li><i class="bi bi-check-circle text-success"></i> SBOM (Software Bill of Materials) generation</li>
+                            <li><i class="bi bi-check-circle text-success"></i> Real-time network packet capture</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-cloud-download"></i> Download Agent</h6>
+                </div>
+                <div class="card-body text-center">
+                    <div class="mb-3">
+                        <i class="bi bi-robot fs-1 text-primary"></i>
+                    </div>
+                    <div class="dropdown">
+                        <button class="btn btn-primary btn-lg w-100 dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-download"></i> Download Host Agent (ZIP)
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ download_url }}" download onclick="showDownloadFeedback()">
+                                <i class="bi bi-download"></i> Direct Download
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ download_url }}" target="_blank">
+                                <i class="bi bi-box-arrow-up-right"></i> Open in New Tab
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" onclick="copyDownloadLink()">
+                                <i class="bi bi-clipboard"></i> Copy Download Link
+                            </a></li>
+                        </ul>
+                    </div>
+                    <div class="mt-3">
+                        <small class="text-muted">Version {{ agent_version }} • All platforms</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Installation Instructions -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-terminal"></i> Installation Instructions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Quick Install (Linux/macOS)</h6>
+                            <ol class="text-muted">
+                                <li>Download the ZIP file above</li>
+                                <li>Extract to a directory: <code>unzip cyber_host_agent.zip</code></li>
+                                <li>Navigate to the directory: <code>cd cyber_host_agent</code></li>
+                                <li>Create virtual environment: <code>python3 -m venv venv</code></li>
+                                <li>Activate environment: <code>source venv/bin/activate</code></li>
+                                <li>Install dependencies: <code>pip install -r requirements.txt</code></li>
+                                <li>Start the agent: <code>python agent.py run</code></li>
+                            </ol>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Configuration</h6>
+                            <p class="text-muted">The agent will automatically connect to this dashboard at:</p>
+                            <div class="bg-light p-2 rounded">
+                                <code>{{ request.get_host }}{% url 'agent_report' %}</code>
+                            </div>
+                            <div class="mt-3">
+                                <h6>Optional Environment Variables</h6>
+                                <ul class="text-muted small">
+                                    <li><code>AGENT_SERVER_URL</code> - Override default server URL</li>
+                                    <li><code>AGENT_ID</code> - Set custom agent identifier</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Deployed Agents -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-server"></i> Deployed Agents</h5>
+                    <button class="btn btn-sm btn-outline-primary" onclick="refreshAgentVersions()">
+                        <i class="bi bi-arrow-repeat"></i> Refresh
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Agent ID</th>
+                                    <th>Hostname</th>
+                                    <th>Version</th>
+                                    <th>Last Check</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="agentVersionsTable">
+                                {% for agent in latest_agents %}
+                                <tr>
+                                    <td><code class="small">{{ agent.agent_id }}</code></td>
+                                    <td>{{ agent.hostname }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ agent.agent_version|default:'Unknown' == agent_version|yesno:'success,warning' }}">
+                                            {{ agent.agent_version|default:"Unknown" }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if agent.last_version_check %}
+                                            {{ agent.last_version_check|timesince }} ago
+                                        {% else %}
+                                            <span class="text-muted">Never</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-success">Active</span>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted">
+                                        No agents have reported version information yet.
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Version Comparison -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-bar-chart"></i> Version Status</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-4">
+                            <div class="p-3">
+                                <h3 class="text-success">{{ latest_agents|length }}</h3>
+                                <p class="text-muted mb-0">Agents Reporting</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="p-3">
+                                <h3 class="text-primary">{{ agent_version }}</h3>
+                                <p class="text-muted mb-0">Latest Version</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="p-3">
+                                <h3 class="text-info">{{ "now"|date:"M d, Y" }}</h3>
+                                <p class="text-muted mb-0">Last Updated</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function showDownloadFeedback() {
+        // Provide user feedback that download is starting
+        const button = document.querySelector('a[href*="download"]');
+        if (button) {
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="bi bi-hourglass-split"></i> Preparing Download...';
+            button.classList.add('disabled');
+
+            // Re-enable button after a short delay
+            setTimeout(() => {
+                button.innerHTML = originalText;
+                button.classList.remove('disabled');
+            }, 2000);
+        }
+
+        // Don't prevent default - let the download proceed
+        return true;
+    }
+
+    function copyDownloadLink() {
+        const downloadUrl = '{{ download_url }}';
+        const fullUrl = window.location.origin + downloadUrl;
+
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(fullUrl).then(() => {
+                // Show success feedback
+                const button = event.target;
+                const originalText = button.innerHTML;
+                button.innerHTML = '<i class="bi bi-check-circle"></i> Copied!';
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+                // Fallback for older browsers
+                fallbackCopyTextToClipboard(fullUrl, button);
+            });
+        } else {
+            fallbackCopyTextToClipboard(fullUrl, event.target);
+        }
+
+        return false;
+    }
+
+    function fallbackCopyTextToClipboard(text, button) {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+
+        try {
+            const successful = document.execCommand('copy');
+            if (successful) {
+                const originalText = button.innerHTML;
+                button.innerHTML = '<i class="bi bi-check-circle"></i> Copied!';
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                }, 2000);
+            }
+        } catch (err) {
+            console.error('Fallback: Could not copy text', err);
+        }
+
+        document.body.removeChild(textArea);
+    }
+
+    function refreshAgentVersions() {
+        fetch('{% url "agent_version_api" %}')
+            .then(response => response.json())
+            .then(data => {
+                updateAgentVersionsTable(data.agents);
+            })
+            .catch(error => {
+                console.error('Error refreshing agent versions:', error);
+            });
+    }
+
+    function updateAgentVersionsTable(agents) {
+        const tbody = document.querySelector('#agentVersionsTable');
+        tbody.innerHTML = '';
+
+        if (agents.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No agents found</td></tr>';
+            return;
+        }
+
+        agents.forEach(agent => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><code class="small">${agent.agent_id}</code></td>
+                <td>${agent.hostname}</td>
+                <td>
+                    <span class="badge bg-${agent.agent_version !== 'Unknown' ? 'info' : 'secondary'}">
+                        ${agent.agent_version}
+                    </span>
+                </td>
+                <td>${agent.last_version_check || 'Never'}</td>
+                <td>
+                    <span class="badge bg-success">Active</span>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+</script>
+{% endblock %}

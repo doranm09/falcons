@@ -3,57 +3,181 @@
 
 {% block content %}
 <div class="container-fluid">
+  <!-- Page Header -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <h2><i class="bi bi-diagram-3"></i> Network Topology Dashboard</h2>
+      <p class="text-muted">Interactive network visualization and topology analysis</p>
+    </div>
+  </div>
 
-  <!-- KPI cards -->
+  <!-- KPI Cards for Network Overview -->
   <div class="row g-3 mb-4">
-    <div class="col-6 col-lg-3">
-      <div class="card shadow-sm">
+    <div class="col-md-3">
+      <div class="card border-primary h-100 shadow-sm">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-center">
             <div>
-              <div class="text-muted small">Nodes Online</div>
-              <div id="kpi-nodes-online" class="fs-4 fw-semibold">—</div>
+              <div class="text-muted small">Total Nodes</div>
+              <div id="kpi-total-nodes" class="fs-2 fw-bold text-primary">—</div>
             </div>
-            <i class="bi bi-hdd-network fs-2 text-primary"></i>
+            <i class="bi bi-hdd-network fs-1 text-primary opacity-75"></i>
           </div>
         </div>
       </div>
     </div>
-    <div class="col-6 col-lg-3">
-      <div class="card shadow-sm">
+    <div class="col-md-3">
+      <div class="card border-success h-100 shadow-sm">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-center">
             <div>
-              <div class="text-muted small">Open Scans</div>
-              <div id="kpi-open-scans" class="fs-4 fw-semibold">—</div>
+              <div class="text-muted small">Online Nodes</div>
+              <div id="kpi-online-nodes" class="fs-2 fw-bold text-success">—</div>
             </div>
-            <i class="bi bi-arrow-repeat fs-2 text-info"></i>
+            <i class="bi bi-check-circle fs-1 text-success opacity-75"></i>
           </div>
         </div>
       </div>
     </div>
-    <div class="col-6 col-lg-3">
-      <div class="card shadow-sm">
+    <div class="col-md-3">
+      <div class="card border-warning h-100 shadow-sm">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-center">
             <div>
-              <div class="text-muted small">Unresolved Vulns</div>
-              <div id="kpi-vulns" class="fs-4 fw-semibold">—</div>
+              <div class="text-muted small">Active Scans</div>
+              <div id="kpi-active-scans" class="fs-2 fw-bold text-warning">—</div>
             </div>
-            <i class="bi bi-shield-exclamation fs-2 text-warning"></i>
+            <i class="bi bi-activity fs-1 text-warning opacity-75"></i>
           </div>
         </div>
       </div>
     </div>
-    <div class="col-6 col-lg-3">
-      <div class="card shadow-sm">
+    <div class="col-md-3">
+      <div class="card border-danger h-100 shadow-sm">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-center">
             <div>
-              <div class="text-muted small">Avg Latency (ms)</div>
-              <div id="kpi-latency" class="fs-4 fw-semibold">—</div>
+              <div class="text-muted small">Critical Vulns</div>
+              <div id="kpi-critical-vulns" class="fs-2 fw-bold text-danger">—</div>
             </div>
-            <i class="bi bi-speedometer2 fs-2 text-secondary"></i>
+            <i class="bi bi-shield-exclamation fs-1 text-danger opacity-75"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Network Topology Visualization -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0"><i class="bi bi-diagram-3"></i> Network Topology</h5>
+          <div class="btn-group">
+            <button class="btn btn-sm btn-outline-primary" id="refresh-topology">
+              <i class="bi bi-arrow-repeat"></i> Refresh
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" id="toggle-physics">
+              <i class="bi bi-gear"></i> Physics
+            </button>
+            <button class="btn btn-sm btn-outline-info" id="export-png">
+              <i class="bi bi-download"></i> Export
+            </button>
+          </div>
+        </div>
+        <div class="card-body p-0">
+          <div id="cy" style="width: 100%; height: 600px; background-color: var(--graph-bg); border: 1px solid var(--border-color);"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Node Details Panel (initially hidden) -->
+  <div class="row mb-4" id="node-details-panel" style="display: none;">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-info-circle"></i> Node Details</h5>
+        </div>
+        <div class="card-body">
+          <div id="node-details-content">
+            <!-- Node details will be populated here -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Actions Panel -->
+  <div class="row mb-4">
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header">
+          <h6 class="mb-0"><i class="bi bi-search"></i> Reconnaissance Tools</h6>
+        </div>
+        <div class="card-body">
+          <div class="d-grid gap-2">
+            <button class="btn btn-outline-primary" onclick="window.location.href='/dashboard/agent/monitoring/'">
+              <i class="bi bi-robot"></i> Agent Monitor
+            </button>
+            <button class="btn btn-outline-info" onclick="window.open('http://127.0.0.1:9392', '_blank')">
+              <i class="bi bi-cpu"></i> OpenVAS Scanner
+            </button>
+            <button class="btn btn-outline-secondary" onclick="window.location.href='/dashboard/scan/history/'">
+              <i class="bi bi-activity"></i> Scan History
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header">
+          <h6 class="mb-0"><i class="bi bi-graph-up"></i> Analysis Tools</h6>
+        </div>
+        <div class="card-body">
+          <div class="d-grid gap-2">
+            <button class="btn btn-outline-warning" onclick="window.location.href='/dashboard/paths/'">
+              <i class="bi bi-signpost"></i> Attack Path Analysis
+            </button>
+            <button class="btn btn-outline-dark" onclick="window.open('http://127.0.0.1:9001', '_blank')">
+              <i class="bi bi-code-square"></i> Code Analysis
+            </button>
+            <button class="btn btn-outline-success" onclick="window.location.href='/dashboard/history/'">
+              <i class="bi bi-shield-check"></i> Vulnerability Report
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Activity Timeline -->
+  <div class="row">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h6 class="mb-0"><i class="bi bi-clock-history"></i> Recent Network Activity</h6>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Event</th>
+                  <th>Details</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="activity-timeline">
+                <tr>
+                  <td colspan="4" class="text-center text-muted">
+                    <i class="bi bi-hourglass-split"></i> Loading recent activity...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -309,7 +433,7 @@
           </div>
         </div>
         <div class="col-12 col-lg-9">
-          <div id="cy" style="width: 100%; height: 600px; border: 1px solid #ddd; border-radius: .5rem;"></div>
+          <div id="cy" style="width: 100%; height: 600px; background-color: var(--graph-bg); border: 1px solid var(--border-color); border-radius: .5rem;"></div>
         </div>
       </div>
     </div>

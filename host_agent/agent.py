@@ -13,6 +13,8 @@ from datetime import datetime
 from sbom.os_sbom import collect_linux_packages, collect_packages, generate_cyclonedx_sbom
 from scapy.all import sniff, IP, TCP, UDP, ICMP, Ether, ARP
 import heapq
+import netifaces
+import re
 
 # ---- Config (overridden at runtime from --url / env) ----
 SERVER_URL = "http://localhost:8000"   # will be reassigned in __main__
@@ -22,6 +24,10 @@ tcp_syn_times = {}
 network_graph = {}
 
 REQ_TIMEOUT = (3.0, 10.0)  # (connect, read) seconds
+
+# Agent version information
+AGENT_VERSION = "1.0.0"
+AGENT_NAME = "CyberTwin Host Agent"
 
 
 # ---- HTTP helper ----
@@ -94,15 +100,284 @@ def get_processes():
     ]
 
 
+# ---- Cyber Template Data Collection ----
+def get_cyber_template_data():
+    """
+    Collect data specifically formatted for the cyber template JSON fields:
+    - OS: Operating system information
+    - lib: Libraries/packages installed
+    - MAC: MAC addresses of network interfaces
+    - port: Network ports that are active/open
+    """
+    return {
+        "OS": get_detailed_os_info(),
+        "lib": get_installed_libraries(),
+        "MAC": get_mac_addresses(),
+        "port": get_active_ports()
+    }
+
+
+def get_detailed_os_info():
+    """Get detailed OS information for cyber template"""
+    try:
+        os_info = platform.platform()
+        # Try to get more specific OS details
+        if hasattr(platform, 'freedesktop_os_release'):
+            try:
+                os_release = platform.freedesktop_os_release()
+                os_name = os_release.get('PRETTY_NAME', os_info)
+                os_version = os_release.get('VERSION', platform.version())
+                return f"{os_name} {os_version}"
+            except:
+                pass
+
+        # Fallback to platform info
+        system = platform.system()
+        release = platform.release()
+        version = platform.version()
+
+        if system == "Linux":
+            return f"Linux {release} {version}"
+        elif system == "Windows":
+            return f"Windows {release} {version}"
+        elif system == "Darwin":
+            return f"macOS {release} {version}"
+        else:
+            return f"{system} {release} {version}"
+    except Exception as e:
+        print(f"[os_info] Error getting OS details: {e}")
+        return platform.platform()
+
+
+def get_installed_libraries():
+    """Get list of installed libraries/packages for cyber template"""
+    try:
+        packages = collect_packages()
+        if isinstance(packages, dict) and 'packages' in packages:
+            # Extract package names from SBOM format
+            libs = []
+            for pkg in packages.get('packages', []):
+                if isinstance(pkg, dict):
+                    name = pkg.get('name', '')
+                    version = pkg.get('version', '')
+                    if name:
+                        libs.append(f"{name}@{version}" if version else name)
+                else:
+                    libs.append(str(pkg))
+            return libs[:50]  # Limit to first 50 for template
+        elif isinstance(packages, list):
+            # Handle direct list format
+            return [str(pkg) for pkg in packages[:50]]
+        else:
+            return []
+    except Exception as e:
+        print(f"[libraries] Error collecting libraries: {e}")
+        return []
+
+
+def get_mac_addresses():
+    """Get MAC addresses of all network interfaces"""
+    macs = []
+    try:
+        for iface in netifaces.interfaces():
+            try:
+                addresses = netifaces.ifaddresses(iface)
+                if netifaces.AF_LINK in addresses:
+                    for link_addr in addresses[netifaces.AF_LINK]:
+                        mac = link_addr.get('addr')
+                        if mac and mac != '00:00:00:00:00:00':
+                            macs.append(mac)
+            except (KeyError, ValueError):
+                continue
+    except Exception as e:
+        print(f"[mac] Error getting MAC addresses: {e}")
+
+    # Fallback to psutil if netifaces fails
+    if not macs:
+        try:
+            for iface, addrs in psutil.net_if_addrs().items():
+                for addr in addrs:
+                    if hasattr(addr, 'family') and addr.family == psutil.AF_LINK:
+                        mac = addr.address
+                        if mac and mac != '00:00:00:00:00:00':
+                            macs.append(mac)
+        except Exception as e:
+            print(f"[mac] Fallback method also failed: {e}")
+
+    return macs
+
+
+def get_active_ports():
+    """Get active network ports from current connections"""
+    ports = []
+    try:
+        connections = psutil.net_connections(kind='inet')
+        for conn in connections:
+            if conn.status == psutil.CONN_LISTEN or conn.status == psutil.CONN_ESTABLISHED:
+                port_info = {
+                    "id": f"{conn.laddr.ip}:{conn.laddr.port}" if conn.laddr else f"0.0.0.0:{conn.raddr.port}" if conn.raddr else "unknown",
+                    "Protocol": "TCP" if conn.type == socket.SOCK_STREAM else "UDP",
+                    "status": conn.status,
+                    "local_address": f"{conn.laddr.ip}:{conn.laddr.port}" if conn.laddr else None,
+                    "remote_address": f"{conn.raddr.ip}:{conn.raddr.port}" if conn.raddr else None,
+                    "pid": conn.pid
+                }
+                ports.append(port_info)
+    except Exception as e:
+        print(f"[ports] Error getting active ports: {e}")
+
+    return ports
+
+
+def get_network_connections():
+    """Get detailed network connection information similar to Security Onion"""
+    connections = []
+    try:
+        net_connections = psutil.net_connections(kind='inet')
+        for conn in net_connections:
+            try:
+                # Get process information
+                process_info = {}
+                if conn.pid:
+                    try:
+                        proc = psutil.Process(conn.pid)
+                        process_info = {
+                            "pid": conn.pid,
+                            "name": proc.name(),
+                            "username": proc.username(),
+                            "cmdline": " ".join(proc.cmdline()) if proc.cmdline() else ""
+                        }
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        process_info = {"pid": conn.pid, "name": "Unknown", "username": "Unknown"}
+
+                connection = {
+                    "protocol": "TCP" if conn.type == socket.SOCK_STREAM else "UDP",
+                    "local_address": f"{conn.laddr.ip}:{conn.laddr.port}" if conn.laddr else None,
+                    "remote_address": f"{conn.raddr.ip}:{conn.raddr.port}" if conn.raddr else None,
+                    "status": conn.status,
+                    "process": process_info,
+                    "timestamp": datetime.now().isoformat()
+                }
+                connections.append(connection)
+            except Exception as e:
+                print(f"[connection] Error processing connection: {e}")
+                continue
+    except Exception as e:
+        print(f"[connections] Error getting network connections: {e}")
+
+    return connections
+
+
+def get_interface_statistics():
+    """Get detailed interface statistics"""
+    interface_stats = []
+    try:
+        net_io = psutil.net_io_counters(pernic=True)
+        for iface, stats in net_io.items():
+            interface_stats.append({
+                "interface": iface,
+                "bytes_sent": stats.bytes_sent,
+                "bytes_recv": stats.bytes_recv,
+                "packets_sent": stats.packets_sent,
+                "packets_recv": stats.packets_recv,
+                "errin": stats.errin,
+                "errout": stats.errout,
+                "dropin": stats.dropin,
+                "dropout": stats.dropout,
+                "timestamp": datetime.now().isoformat()
+            })
+    except Exception as e:
+        print(f"[interface_stats] Error getting interface statistics: {e}")
+
+    return interface_stats
+
+
+def print_cyber_template_data():
+    """Print cyber template data in a formatted way"""
+    data = get_cyber_template_data()
+
+    print("\n" + "="*60)
+    print("CYBER TEMPLATE DATA COLLECTION")
+    print("="*60)
+
+    print(f"\nOS: {data['OS']}")
+
+    print(f"\nLibraries ({len(data['lib'])} found):")
+    for lib in data['lib'][:10]:  # Show first 10
+        print(f"  - {lib}")
+    if len(data['lib']) > 10:
+        print(f"  ... and {len(data['lib']) - 10} more")
+
+    print(f"\nMAC Addresses ({len(data['MAC'])} found):")
+    for mac in data['MAC']:
+        print(f"  - {mac}")
+
+    print(f"\nActive Ports ({len(data['port'])} found):")
+    for port in data['port'][:10]:  # Show first 10
+        print(f"  - {port['id']} ({port['Protocol']})")
+    if len(data['port']) > 10:
+        print(f"  ... and {len(data['port']) - 10} more")
+
+    print("\n" + "="*60)
+
+    return data
+
+
 # ---- Agent <-> Server ----
 def send_heartbeat():
     data = get_system_info()
+    # Add version information to the heartbeat
+    data["agent_version"] = AGENT_VERSION
+
     url = f"{SERVER_URL.rstrip('/')}/agent/report/"
     res = http_post_json(url, data)
     if res is None:
         print("[heartbeat] error (request failed)")
     else:
         print(f"[heartbeat] status={res.status_code}")
+
+        # Also send cyber template data if collection is successful
+        try:
+            cyber_data = get_cyber_template_data()
+            if cyber_data and any(cyber_data.values()):  # Only send if we have data
+                cyber_url = f"{SERVER_URL.rstrip('/')}/agent/cyber_report/"
+                cyber_payload = {
+                    "agent_id": AGENT_ID,
+                    "cyber_data": cyber_data
+                }
+                cyber_res = http_post_json(cyber_url, cyber_payload)
+                if cyber_res:
+                    print(f"[cyber_data] status={cyber_res.status_code}")
+                else:
+                    print("[cyber_data] failed to send")
+        except Exception as e:
+            print(f"[cyber_data] error: {e}")
+
+
+def send_network_metadata():
+    """Send detailed network connection and interface metadata to server"""
+    try:
+        # Collect comprehensive network data
+        network_data = {
+            "agent_id": AGENT_ID,
+            "timestamp": datetime.now().isoformat(),
+            "network_connections": get_network_connections(),
+            "interface_statistics": get_interface_statistics(),
+            "active_ports": get_active_ports(),
+            "interfaces": get_interfaces()
+        }
+
+        url = f"{SERVER_URL.rstrip('/')}/agent/network_metadata/"
+        res = http_post_json(url, network_data)
+        if res:
+            print(f"[network_metadata] status={res.status_code}")
+            return True
+        else:
+            print("[network_metadata] failed to send")
+            return False
+    except Exception as e:
+        print(f"[network_metadata] error: {e}")
+        return False
 
 
 def poll_for_commands():
@@ -311,6 +586,9 @@ if __name__ == "__main__":
     sniff_parser = subparsers.add_parser("sniff", help="Sniff packets on interface")
     sniff_parser.add_argument("--interface", "-i", required=True, help="Interface to sniff on")
     subparsers.add_parser("path", help="Run Dijkstra to find shortest latency path interactively")
+    cyber_parser = subparsers.add_parser("cyber", help="Collect cyber template data (OS, libraries, MAC addresses, ports)")
+    cyber_parser.add_argument("--output", "-o", help="Write cyber template data to a JSON file")
+    cyber_parser.add_argument("--format", "-f", choices=["template", "full"], default="template", help="Output format: 'template' for cyber template format, 'full' for detailed data")
 
     args = parser.parse_args()
 
@@ -345,5 +623,25 @@ if __name__ == "__main__":
         sniff_interface(args.interface)
     elif args.command == "path":
         run_dijkstra_interactive()
+    elif args.command == "cyber":
+        data = get_cyber_template_data()
+
+        if args.format == "template":
+            # Output in cyber template format (just the 4 fields)
+            output_data = data
+        else:
+            # Full format with additional system info
+            output_data = {
+                "cyber_template_data": data,
+                "system_info": get_system_info(),
+                "collection_timestamp": datetime.now().isoformat()
+            }
+
+        if args.output:
+            with open(args.output, "w") as f:
+                json.dump(output_data, f, indent=2)
+            print(f"[cyber] Data written to {args.output}")
+        else:
+            print(json.dumps(output_data, indent=2))
     else:
         parser.print_help()

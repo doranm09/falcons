@@ -1,0 +1,379 @@
+{
+  "OS": "Ubuntu 24.04.2 LTS 24.04.2 LTS (Noble Numbat)",
+  "lib": [
+    "{'name': 'accountsservice', 'version': '23.13.9-2ubuntu6', 'type': 'deb'}",
+    "{'name': 'acl', 'version': '2.3.2-1build1.1', 'type': 'deb'}",
+    "{'name': 'adcli', 'version': '0.9.2-1ubuntu2', 'type': 'deb'}",
+    "{'name': 'adduser', 'version': '3.137ubuntu1', 'type': 'deb'}",
+    "{'name': 'adwaita-icon-theme', 'version': '46.0-1', 'type': 'deb'}",
+    "{'name': 'agent-client-collector', 'version': '4.1.1-2', 'type': 'deb'}",
+    "{'name': 'alsa-base', 'version': '1.0.25+dfsg-0ubuntu7', 'type': 'deb'}",
+    "{'name': 'alsa-topology-conf', 'version': '1.2.5.1-2', 'type': 'deb'}",
+    "{'name': 'alsa-ucm-conf', 'version': '1.2.10-1ubuntu5.7', 'type': 'deb'}",
+    "{'name': 'alsa-utils', 'version': '1.2.9-1ubuntu5', 'type': 'deb'}",
+    "{'name': 'amd64-microcode', 'version': '3.20250311.1ubuntu0.24.04.1', 'type': 'deb'}",
+    "{'name': 'anacron', 'version': '2.3-39ubuntu2', 'type': 'deb'}",
+    "{'name': 'apg', 'version': '2.2.3.dfsg.1-5build3', 'type': 'deb'}",
+    "{'name': 'apparmor', 'version': '4.0.1really4.0.1-0ubuntu0.24.04.4', 'type': 'deb'}",
+    "{'name': 'apport', 'version': '2.28.1-0ubuntu3.8', 'type': 'deb'}",
+    "{'name': 'apport-core-dump-handler', 'version': '2.28.1-0ubuntu3.8', 'type': 'deb'}",
+    "{'name': 'apport-gtk', 'version': '2.28.1-0ubuntu3.8', 'type': 'deb'}",
+    "{'name': 'apport-symptoms', 'version': '0.25', 'type': 'deb'}",
+    "{'name': 'appstream', 'version': '1.0.2-1build6', 'type': 'deb'}",
+    "{'name': 'apt', 'version': '2.8.3', 'type': 'deb'}",
+    "{'name': 'apt-config-icons', 'version': '1.0.2-1build6', 'type': 'deb'}",
+    "{'name': 'apt-config-icons-hidpi', 'version': '1.0.2-1build6', 'type': 'deb'}",
+    "{'name': 'apt-transport-go-katello', 'version': '0.1.0-1', 'type': 'deb'}",
+    "{'name': 'apt-transport-https', 'version': '2.8.3', 'type': 'deb'}",
+    "{'name': 'apt-utils', 'version': '2.8.3', 'type': 'deb'}",
+    "{'name': 'aptdaemon', 'version': '1.1.1+bzr982-0ubuntu44', 'type': 'deb'}",
+    "{'name': 'aptdaemon-data', 'version': '1.1.1+bzr982-0ubuntu44', 'type': 'deb'}",
+    "{'name': 'aptitude', 'version': '0.8.13-5ubuntu5', 'type': 'deb'}",
+    "{'name': 'aptitude-common', 'version': '0.8.13-5ubuntu5', 'type': 'deb'}",
+    "{'name': 'aspell', 'version': '0.60.8.1-1build1', 'type': 'deb'}",
+    "{'name': 'aspell-en', 'version': '2020.12.07-0-1', 'type': 'deb'}",
+    "{'name': 'at-spi2-common', 'version': '2.52.0-1build1', 'type': 'deb'}",
+    "{'name': 'at-spi2-core', 'version': '2.52.0-1build1', 'type': 'deb'}",
+    "{'name': 'avahi-daemon', 'version': '0.8-13ubuntu6', 'type': 'deb'}",
+    "{'name': 'baobab', 'version': '46.0-1build1', 'type': 'deb'}",
+    "{'name': 'base-files', 'version': '13ubuntu10.2', 'type': 'deb'}",
+    "{'name': 'base-passwd', 'version': '3.6.3build1', 'type': 'deb'}",
+    "{'name': 'bash', 'version': '5.2.21-2ubuntu4', 'type': 'deb'}",
+    "{'name': 'bash-completion', 'version': '1:2.11-8', 'type': 'deb'}",
+    "{'name': 'bc', 'version': '1.07.1-3ubuntu4', 'type': 'deb'}",
+    "{'name': 'bind9-dnsutils', 'version': '1:9.18.30-0ubuntu0.24.04.2', 'type': 'deb'}",
+    "{'name': 'bind9-host', 'version': '1:9.18.30-0ubuntu0.24.04.2', 'type': 'deb'}",
+    "{'name': 'bind9-libs', 'version': '1:9.18.30-0ubuntu0.24.04.2', 'type': 'deb'}",
+    "{'name': 'binutils', 'version': '2.42-4ubuntu2.5', 'type': 'deb'}",
+    "{'name': 'binutils-common', 'version': '2.42-4ubuntu2.5', 'type': 'deb'}",
+    "{'name': 'binutils-x86-64-linux-gnu', 'version': '2.42-4ubuntu2.5', 'type': 'deb'}",
+    "{'name': 'bluez', 'version': '5.72-0ubuntu5.3', 'type': 'deb'}",
+    "{'name': 'bluez-cups', 'version': '5.72-0ubuntu5.3', 'type': 'deb'}",
+    "{'name': 'bluez-obexd', 'version': '5.72-0ubuntu5.3', 'type': 'deb'}",
+    "{'name': 'bolt', 'version': '0.9.7-1', 'type': 'deb'}"
+  ],
+  "MAC": [
+    "b0:4f:13:05:c6:90",
+    "80:6d:97:56:e5:e3",
+    "80:6d:97:42:4b:c3",
+    "80:6d:97:56:e3:73",
+    "2a:95:f9:2d:95:28",
+    "6e:6b:67:16:82:4d",
+    "52:54:00:c0:cb:44",
+    "ba:97:22:ad:c4:b8",
+    "42:91:6a:28:cf:7c",
+    "6a:98:bc:19:82:b3",
+    "22:ff:b0:8d:4d:07",
+    "46:93:bc:41:a2:7e",
+    "3a:91:c7:83:26:22",
+    "f2:c0:44:5e:99:20",
+    "be:9f:c8:b8:38:73",
+    "36:69:e3:6a:35:50"
+  ],
+  "port": [
+    {
+      "id": "128.61.144.211:35922",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "fe80::f0c0:44ff:fe5e:9920:10001",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:58336",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:36284",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:55576",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:39552",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:34072",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:52944",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "172.19.0.1:10001",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:54016",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "fe80::3469:e3ff:fe6a:3550:10001",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:59612",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "127.0.0.1:3031",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "fe80::4493:bcff:fe41:a27e:10001",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:41346",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:34374",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:55798",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:52050",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:33052",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "127.0.0.1:9392",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:60674",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "127.0.0.54:53",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:60634",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:48670",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:58064",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "172.17.0.1:10001",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:39196",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "10.137.4.115:10001",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:38304",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:46892",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:60678",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:33246",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "::1:10001",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "127.0.0.1:631",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "fe80::b0f8:1ccc:8979:c318:10001",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:60188",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "0.0.0.0:33221",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:42764",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "::1:631",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:60670",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:60642",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:60630",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "fe80::4091:6aff:fe28:cf7c:10001",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:54010",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "fe80::3891:c7ff:fe83:2622:10001",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "127.0.0.53:53",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:43774",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:48702",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:42350",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:46004",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:34966",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "192.168.122.1:53",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:10001",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "127.0.0.1:10001",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:57234",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:49142",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:54062",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:60328",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "127.0.0.1:53",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:57476",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "fe80::b24f:13ff:fe05:c690:10001",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "172.18.0.1:10001",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:44612",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:46818",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "::ffff:127.0.0.1:4243",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:60654",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:41340",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "::1:53",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "fe80::20ff:b0ff:fe8d:4d07:10001",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "fe80::bc9f:c8ff:feb8:3873:10001",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "127.0.0.1:11434",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:45902",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "127.0.0.1:4304",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "192.168.122.1:10001",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:36176",
+      "Protocol": "TCP"
+    },
+    {
+      "id": "128.61.144.211:49974",
+      "Protocol": "TCP"
+    }
+  ]
+}

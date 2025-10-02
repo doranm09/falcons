@@ -43,6 +43,7 @@ python agent.py <command> [options]
 | `sbom`        | Generate SBOM and send it to the server                      |
 | `sniff`       | Start packet capture on a specific interface                 |
 | `path`        | Interactively compute shortest path between IPs using RTT    |
+| `cyber`       | Collect cyber template data (OS, libraries, MAC addresses, ports) |
 
 ## Capabilities
 
@@ -129,6 +130,36 @@ Enter end IP: 10.0.0.5
 [path] 10.0.0.1 -> 10.0.0.5 in 4.32 ms via: 10.0.0.1 -> 10.0.0.3 -> 10.0.0.5
 ```
 
+### Cyber Template Data Collection
+
+```bash
+python agent.py cyber --format template --output cyber_data.json
+```
+
+Collects system data specifically formatted for cyber security testing templates:
+
+**OS Information**: Detailed operating system information (e.g., "Ubuntu 24.04.2 LTS")
+**Libraries**: Installed packages and libraries from SBOM data (first 50 packages)
+**MAC Addresses**: All network interface MAC addresses
+**Active Ports**: Currently listening and established network connections
+
+**Output Formats**:
+- `template` (default): Just the 4 cyber template fields (OS, lib, MAC, port)
+- `full`: Includes additional system information and collection timestamp
+
+**Example Output**:
+```json
+{
+  "OS": "Ubuntu 24.04.2 LTS 24.04.2 LTS (Noble Numbat)",
+  "lib": ["package1@1.0.0", "package2@2.1.0", ...],
+  "MAC": ["aa:bb:cc:dd:ee:ff", "11:22:33:44:55:66", ...],
+  "port": [
+    {"id": "192.168.1.1:8080", "Protocol": "TCP"},
+    {"id": "192.168.1.1:443", "Protocol": "TCP"}
+  ]
+}
+```
+
 ## Server Endpoints
 
 Default `SERVER_URL = http://localhost:8000`
@@ -161,4 +192,9 @@ python agent.py sniff --interface eth0
 ```bash
 python agent.py path
 # shortest latency path between nodes
+```
+
+```bash
+python agent.py cyber --format template --output cyber_data.json
+# collect cyber template data for penetration testing
 ```

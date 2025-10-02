@@ -1,0 +1,357 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{% url 'dashboard-home' %}">Dashboard</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'agent_monitoring' %}">Agent Monitor</a></li>
+                    <li class="breadcrumb-item active">{{ agent.hostname }}</li>
+                </ol>
+            </nav>
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2><i class="bi bi-robot"></i> {{ agent.hostname }}</h2>
+                    <p class="text-muted">Agent ID: <code>{{ agent.agent_id }}</code></p>
+                </div>
+                <div>
+                    <span class="badge fs-6 bg-{% if agent.status == 'online' %}success{% elif agent.status == 'offline' %}danger{% else %}warning{% endif %}">
+                        {{ agent.status|title }}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Agent Overview Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">IP Address</h6>
+                    <h4>{{ agent.ip_address }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">Operating System</h6>
+                    <h4>
+                        {% if agent.os_type %}
+                            {{ agent.os_type }} {{ agent.os_version }}
+                        {% else %}
+                            <span class="text-muted">Unknown</span>
+                        {% endif %}
+                    </h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">Last Heartbeat</h6>
+                    <h4>
+                        {% if agent.last_heartbeat %}
+                            {{ agent.last_heartbeat|timesince }} ago
+                        {% else %}
+                            <span class="text-muted">Never</span>
+                        {% endif %}
+                    </h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">Uptime</h6>
+                    <h4>
+                        {% if agent.get_uptime %}
+                            {{ agent.get_uptime|date:"d\d H\h i\m" }}
+                        {% else %}
+                            <span class="text-muted">Unknown</span>
+                        {% endif %}
+                    </h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Information -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-info-circle"></i> System Information</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm">
+                        <tr>
+                            <td><strong>Platform:</strong></td>
+                            <td>{{ agent.platform|default:"Unknown" }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>CPU Count:</strong></td>
+                            <td>{{ agent.cpu_count|default:"Unknown" }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Memory:</strong></td>
+                            <td>
+                                {% if agent.memory_total %}
+                                    {{ agent.memory_total|filesizeformat }}
+                                {% else %}
+                                    Unknown
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Heartbeat Interval:</strong></td>
+                            <td>{{ agent.heartbeat_interval }} seconds</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Consecutive Failures:</strong></td>
+                            <td>{{ agent.consecutive_failures }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-wifi"></i> Network Interfaces</h5>
+                </div>
+                <div class="card-body">
+                    {% if agent.interfaces %}
+                        <div class="small">
+                            {% for iface in agent.interfaces %}
+                                <div class="mb-2">
+                                    <strong>{{ iface.name }}:</strong> {{ iface.ip }} ({{ iface.mac }})
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">No interface information available</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Command Interface for this Agent -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-terminal"></i> Send Command to This Agent</h5>
+                </div>
+                <div class="card-body">
+                    <form id="agentCommandForm">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <label for="agentCommandAction" class="form-label">Action</label>
+                                <select class="form-select" id="agentCommandAction" required>
+                                    <option value="">Choose action...</option>
+                                    <option value="ping">Ping</option>
+                                    <option value="scan">Network Scan</option>
+                                    <option value="sbom">Collect SBOM</option>
+                                    <option value="cyber">Cyber Template Data</option>
+                                    <option value="info">System Info</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="agentCommandParams" class="form-label">Parameters (JSON)</label>
+                                <input type="text" class="form-control" id="agentCommandParams" placeholder='{"target": "8.8.8.8"}'>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">&nbsp;</label>
+                                <button type="submit" class="btn btn-primary d-block w-100">
+                                    <i class="bi bi-send"></i> Send Command
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Command History Tabs -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-clock-history"></i> Command History</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="nav nav-tabs" id="historyTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="commands-tab" data-bs-toggle="tab" data-bs-target="#commands" type="button" role="tab">
+                                Commands ({{ commands.count }})
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="results-tab" data-bs-toggle="tab" data-bs-target="#results" type="button" role="tab">
+                                Results ({{ results.count }})
+                            </button>
+                        </li>
+                    </ul>
+                    <div class="tab-content mt-3">
+                        <div class="tab-pane fade show active" id="commands" role="tabpanel">
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Action</th>
+                                            <th>Parameters</th>
+                                            <th>Created</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for command in commands %}
+                                        <tr>
+                                            <td><span class="badge bg-primary">{{ command.action }}</span></td>
+                                            <td>
+                                                {% if command.parameters %}
+                                                    <code class="small">{{ command.parameters }}</code>
+                                                {% else %}
+                                                    <span class="text-muted">None</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ command.created|date:"Y-m-d H:i:s" }}</td>
+                                            <td>
+                                                {% if command.acknowledged %}
+                                                    <span class="badge bg-success">Acknowledged</span>
+                                                {% else %}
+                                                    <span class="badge bg-warning">Pending</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% empty %}
+                                        <tr>
+                                            <td colspan="4" class="text-center text-muted">No commands sent yet</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="results" role="tabpanel">
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Command</th>
+                                            <th>Output</th>
+                                            <th>Timestamp</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for result in results %}
+                                        <tr>
+                                            <td><span class="badge bg-secondary">{{ result.command.action }}</span></td>
+                                            <td>
+                                                <div class="small">
+                                                    {% if result.output|length > 100 %}
+                                                        <details>
+                                                            <summary>Click to expand ({{ result.output|length }} chars)</summary>
+                                                            <pre class="mt-2 small">{{ result.output }}</pre>
+                                                        </details>
+                                                    {% else %}
+                                                        <pre class="small">{{ result.output }}</pre>
+                                                    {% endif %}
+                                                </div>
+                                            </td>
+                                            <td>{{ result.timestamp|date:"Y-m-d H:i:s" }}</td>
+                                        </tr>
+                                        {% empty %}
+                                        <tr>
+                                            <td colspan="3" class="text-center text-muted">No results received yet</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Handle agent-specific command form submission
+    document.getElementById('agentCommandForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const action = document.getElementById('agentCommandAction').value;
+        const paramsText = document.getElementById('agentCommandParams').value;
+
+        let parameters = {};
+        if (paramsText.trim()) {
+            try {
+                parameters = JSON.parse(paramsText);
+            } catch (error) {
+                alert('Invalid JSON in parameters field');
+                return;
+            }
+        }
+
+        fetch('{% url "send_agent_command" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || ''
+            },
+            body: JSON.stringify({
+                agent_id: '{{ agent.agent_id }}',
+                action: action,
+                parameters: parameters
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'command_sent') {
+                alert(`Command sent successfully! Command ID: ${data.command_id}`);
+                document.getElementById('agentCommandForm').reset();
+                // Refresh the page to show the new command
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                alert(`Error: ${data.error}`);
+            }
+        })
+        .catch(error => {
+            alert(`Error sending command: ${error}`);
+        });
+    });
+
+    // Auto-refresh every 30 seconds
+    setInterval(function() {
+        // Refresh command history
+        fetch(`{% url 'agent_command_history' agent.agent_id %}`)
+            .then(response => response.json())
+            .then(data => {
+                updateCommandHistory(data.history);
+            })
+            .catch(error => {
+                console.error('Error refreshing command history:', error);
+            });
+    }, 30000);
+
+    function updateCommandHistory(history) {
+        // This could be enhanced to dynamically update the tables
+        // For now, we'll just refresh the page
+        if (history.length > 0) {
+            // Optional: Add visual indicator that new data is available
+            console.log('New command history available');
+        }
+    }
+</script>
+{% endblock %}

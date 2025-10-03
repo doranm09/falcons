@@ -1,0 +1,11 @@
+pytest
+pytest-django
+pytest-playwright
+pytest-cov
+coverage
+playwright
+factory_boy
+faker
+responses
+requests
+django-extensions

@@ -40,14 +40,14 @@
       </div>
     </div>
     <div class="col-md-3">
-      <div class="card border-warning h-100 shadow-sm">
+      <div class="card border-success h-100 shadow-sm">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-center">
             <div>
-              <div class="text-muted small">Active Scans</div>
-              <div id="kpi-active-scans" class="fs-2 fw-bold text-warning">—</div>
+              <div class="text-muted small">Online Agents</div>
+              <div id="kpi-online-agents" class="fs-2 fw-bold text-success">—</div>
             </div>
-            <i class="bi bi-activity fs-1 text-warning opacity-75"></i>
+            <i class="bi bi-router fs-1 text-success opacity-75"></i>
           </div>
         </div>
       </div>
@@ -210,6 +210,45 @@
     </div>
   </div>
 
+  <!-- Current Running Processes Table -->
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h5 class="mb-0">Current Running Processes</h5>
+    <div>
+      <button class="btn btn-sm btn-outline-primary" id="refresh-processes">Refresh</button>
+    </div>
+  </div>
+  <div class="row g-3 mb-4">
+    <div class="table-responsive">
+      <table class="table table-striped align-middle" id="process-table">
+        <thead>
+          <tr>
+            <th>Agent Hostname</th>
+            <th>Agent ID</th>
+            <th>PID</th>
+            <th>Process Name</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="processes-body">
+          {% for process in current_processes %}
+          <tr>
+            <td>{{ process.hostname }}</td>
+            <td>{{ process.agent_id }}</td>
+            <td>{{ process.pid }}</td>
+            <td>{{ process.name }}</td>
+            <td>
+              <span class="badge bg-{% if process.agent_status == 'online' %}success{% elif process.agent_status == 'offline' %}danger{% else %}secondary{% endif %}">
+                {{ process.agent_status }}
+              </span>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5" class="text-center">No running processes found. Agents may need to connect.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 
   <!-- Tabs -->
   <ul class="nav nav-tabs" id="dashTabs" role="tablist">
@@ -459,4 +498,5 @@
 {% block extra_scripts %}
   <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
   <script src="{% static 'js/scan.js' %}"></script>
+  <script src="{% static 'js/home.js' %}"></script>
 {% endblock %}

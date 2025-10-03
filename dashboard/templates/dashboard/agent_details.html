@@ -7,8 +7,8 @@
         <div class="col-12">
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb">
-                    <li class="breadcrumb-item"><a href="{% url 'dashboard-home' %}">Dashboard</a></li>
-                    <li class="breadcrumb-item"><a href="{% url 'agent_monitoring' %}">Agent Monitor</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'dashboard:dashboard-home' %}">Dashboard</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'dashboard:agent_monitoring' %}">Agent Monitor</a></li>
                     <li class="breadcrumb-item active">{{ agent.hostname }}</li>
                 </ol>
             </nav>
@@ -17,7 +17,10 @@
                     <h2><i class="bi bi-robot"></i> {{ agent.hostname }}</h2>
                     <p class="text-muted">Agent ID: <code>{{ agent.agent_id }}</code></p>
                 </div>
-                <div>
+                <div class="d-flex align-items-center gap-2">
+                    <a href="{% url 'dashboard:agent_analysis' agent.agent_id %}" class="btn btn-outline-primary">
+                        <i class="bi bi-graph-up"></i> Analysis
+                    </a>
                     <span class="badge fs-6 bg-{% if agent.status == 'online' %}success{% elif agent.status == 'offline' %}danger{% else %}warning{% endif %}">
                         {{ agent.status|title }}
                     </span>
@@ -140,6 +143,176 @@
             </div>
         </div>
     </div>
+
+    <!-- Running Processes -->
+    {% if agent.processes %}
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-cpu"></i> Current Running Processes ({{ agent.processes|length }})</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <input type="text" id="processSearch" class="form-control" placeholder="Search processes...">
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover" id="processesTable">
+                            <thead>
+                                <tr>
+                                    <th class="sortable" data-column="pid" data-type="number">
+                                        PID <i class="bi bi-chevron-expand sort-icon"></i>
+                                    </th>
+                                    <th class="sortable" data-column="name" data-type="string">
+                                        Name <i class="bi bi-chevron-expand sort-icon"></i>
+                                    </th>
+                                    <th class="sortable" data-column="username" data-type="string">
+                                        User <i class="bi bi-chevron-expand sort-icon"></i>
+                                    </th>
+                                    <th class="sortable" data-column="cpu_percent" data-type="number">
+                                        CPU % <i class="bi bi-chevron-expand sort-icon"></i>
+                                    </th>
+                                    <th class="sortable" data-column="memory_percent" data-type="number">
+                                        Memory % <i class="bi bi-chevron-expand sort-icon"></i>
+                                    </th>
+                                    <th class="sortable" data-column="status" data-type="string">
+                                        Status <i class="bi bi-chevron-expand sort-icon"></i>
+                                    </th>
+                                    <th class="sortable" data-column="cmdline" data-type="string">
+                                        Command <i class="bi bi-chevron-expand sort-icon"></i>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for process in agent.processes %}
+                                <tr>
+                                    <td>{{ process.pid|default:"N/A" }}</td>
+                                    <td>
+                                        <strong>{{ process.name|default:"Unknown" }}</strong>
+                                    </td>
+                                    <td>{{ process.username|default:"N/A" }}</td>
+                                    <td>
+                                        {% if process.cpu_percent %}
+                                            {{ process.cpu_percent|floatformat:2 }}%
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if process.memory_percent %}
+                                            {{ process.memory_percent|floatformat:2 }}%
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{% if process.status == 'running' %}success{% elif process.status == 'sleeping' %}warning{% else %}secondary{% endif %}">
+                                            {{ process.status|default:"unknown"|title }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <code class="small">{{ process.cmdline|truncatechars:50|default:"N/A" }}</code>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted">No process information available</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% if agent.processes|length > 20 %}
+                    <div class="mt-2 text-muted small">
+                        Showing first {{ agent.processes|length }} processes. Total processes may be higher.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card border-warning">
+                <div class="card-body text-center">
+                    <i class="bi bi-exclamation-triangle text-warning fs-1 mb-2"></i>
+                    <h6 class="text-warning">Process Information Not Available</h6>
+                    <p class="text-muted mb-0">This agent hasn't reported running processes yet.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Cyber Template Data -->
+    {% if node %}
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-shield"></i> Cyber Template Data</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Operating System</h6>
+                            <p>{{ node.os_info|default:"Not collected" }}</p>
+
+                            <h6>Installed Libraries ({{ node.installed_libraries|length }})</h6>
+                            <div class="d-flex flex-wrap gap-1">
+                                {% for lib in node.installed_libraries|slice:":20" %}
+                                    <span class="badge bg-secondary">{{ lib }}</span>
+                                {% empty %}
+                                    <p class="text-muted small">None collected</p>
+                                {% endfor %}
+                            </div>
+                            {% if node.installed_libraries|length > 20 %}
+                                <p class="text-muted small mt-1">... and {{ node.installed_libraries|length|add:"-20" }} more</p>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <h6>MAC Addresses ({{ node.mac_addresses|length }})</h6>
+                            <div class="mb-3">
+                                {% for mac in node.mac_addresses %}
+                                    <code class="d-block">{{ mac }}</code>
+                                {% empty %}
+                                    <p class="text-muted small">None collected</p>
+                                {% endfor %}
+                            </div>
+
+                            <h6>Active Network Ports ({{ node.active_ports|length }})</h6>
+                            <div class="d-flex flex-wrap gap-1">
+                                {% for port in node.active_ports|slice:":20" %}
+                                    <span class="badge bg-info" title="{{ port.status|default:'N/A' }}">
+                                        {{ port.id }} <span class="text-muted">({{ port.Protocol|default:'UNKNOWN' }})</span>
+                                    </span>
+                                {% empty %}
+                                    <p class="text-muted small">None collected</p>
+                                {% endfor %}
+                            </div>
+                            {% if node.active_ports|length > 20 %}
+                                <p class="text-muted small mt-1">... and {{ node.active_ports|length|add:"-20" }} more</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card border-warning">
+                <div class="card-body text-center">
+                    <i class="bi bi-exclamation-triangle text-warning fs-1 mb-2"></i>
+                    <h6 class="text-warning">Cyber Template Data Not Available</h6>
+                    <p class="text-muted small">This agent hasn't sent cyber template data yet. Send a "cyber" command to collect it.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Command Interface for this Agent -->
     <div class="row mb-4">
@@ -304,7 +477,7 @@
             }
         }
 
-        fetch('{% url "send_agent_command" %}', {
+        fetch('{% url "dashboard:send_agent_command" %}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -335,7 +508,7 @@
     // Auto-refresh every 30 seconds
     setInterval(function() {
         // Refresh command history
-        fetch(`{% url 'agent_command_history' agent.agent_id %}`)
+        fetch(`{% url 'dashboard:agent_command_history' agent.agent_id %}`)
             .then(response => response.json())
             .then(data => {
                 updateCommandHistory(data.history);
@@ -353,5 +526,144 @@
             console.log('New command history available');
         }
     }
+
+    // Table sorting functionality
+    let currentSortColumn = '';
+    let currentSortDirection = 'asc';
+
+    function updateSortIcons() {
+        // Reset all sort icons
+        document.querySelectorAll('.sortable .sort-icon').forEach(icon => {
+            icon.className = 'bi bi-chevron-expand sort-icon';
+        });
+
+        // Update current sort column icon
+        if (currentSortColumn) {
+            const header = document.querySelector(`[data-column="${currentSortColumn}"] .sort-icon`);
+            if (header) {
+                header.className = `bi bi-chevron-${currentSortDirection === 'asc' ? 'up' : 'down'} sort-icon`;
+            }
+        }
+    }
+
+    function sortTable(column, type) {
+        const table = document.getElementById('processesTable');
+        const tbody = table.getElementsByTagName('tbody')[0];
+        const rows = Array.from(tbody.getElementsByTagName('tr'));
+
+        // Don't sort if it's the "no results" row
+        const filteredRows = rows.filter(row => !row.textContent.includes('No processes found') && !row.textContent.includes('No process information available'));
+
+        filteredRows.sort((a, b) => {
+            let aVal, bVal;
+
+            if (column === 'pid') {
+                aVal = parseInt(a.cells[0].textContent) || 0;
+                bVal = parseInt(b.cells[0].textContent) || 0;
+            } else if (column === 'name') {
+                aVal = a.cells[1].textContent.toLowerCase();
+                bVal = b.cells[1].textContent.toLowerCase();
+            } else if (column === 'username') {
+                aVal = a.cells[2].textContent.toLowerCase();
+                bVal = b.cells[2].textContent.toLowerCase();
+            } else if (column === 'cpu_percent') {
+                aVal = parseFloat(a.cells[3].textContent.replace('%', '')) || 0;
+                bVal = parseFloat(b.cells[3].textContent.replace('%', '')) || 0;
+            } else if (column === 'memory_percent') {
+                aVal = parseFloat(a.cells[4].textContent.replace('%', '')) || 0;
+                bVal = parseFloat(b.cells[4].textContent.replace('%', '')) || 0;
+            } else if (column === 'status') {
+                aVal = a.cells[5].textContent.toLowerCase();
+                bVal = b.cells[5].textContent.toLowerCase();
+            } else if (column === 'cmdline') {
+                aVal = a.cells[6].textContent.toLowerCase();
+                bVal = b.cells[6].textContent.toLowerCase();
+            }
+
+            if (aVal === bVal) return 0;
+
+            if (type === 'number') {
+                return currentSortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+            } else {
+                return currentSortDirection === 'asc' ?
+                    (aVal < bVal ? -1 : 1) :
+                    (aVal < bVal ? 1 : -1);
+            }
+        });
+
+        // Reappend sorted rows
+        filteredRows.forEach(row => tbody.appendChild(row));
+    }
+
+    // Handle sortable column header clicks
+    document.querySelectorAll('.sortable').forEach(header => {
+        header.addEventListener('click', function() {
+            const column = this.getAttribute('data-column');
+            const type = this.getAttribute('data-type');
+
+            if (column === currentSortColumn) {
+                // Toggle sort direction
+                currentSortDirection = currentSortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                // New column sort
+                currentSortColumn = column;
+                currentSortDirection = 'asc';
+            }
+
+            sortTable(column, type);
+            updateSortIcons();
+        });
+
+        // Make headers look clickable
+        header.style.cursor = 'pointer';
+        header.title = 'Click to sort';
+    });
+
+    // Process search functionality
+    document.getElementById('processSearch').addEventListener('input', function() {
+        const searchTerm = this.value.toLowerCase();
+        const tableBody = document.getElementById('processesTable').getElementsByTagName('tbody')[0];
+        const rows = tableBody.getElementsByTagName('tr');
+
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            const cells = row.getElementsByTagName('td');
+            let found = false;
+
+            for (let j = 0; j < cells.length; j++) {
+                const cellText = cells[j].textContent.toLowerCase();
+                if (cellText.includes(searchTerm)) {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (found) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        }
+
+        // Show/hide "no results" row if all rows are hidden
+        const noResultsRow = tableBody.querySelector('tr[colspan="7"]');
+        if (noResultsRow) {
+            let visibleRows = 0;
+            for (let i = 0; i < rows.length; i++) {
+                if (rows[i].style.display !== 'none') {
+                    visibleRows++;
+                }
+            }
+            if (visibleRows === 0 && searchTerm !== '') {
+                noResultsRow.cells[0].textContent = `No processes found matching "${searchTerm}"`;
+                noResultsRow.style.display = '';
+            } else {
+                if (searchTerm === '') {
+                    noResultsRow.cells[0].textContent = 'No process information available';
+                }
+                noResultsRow.style.display = 'none';
+            }
+        }
+    });
 </script>
 {% endblock %}

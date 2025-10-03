@@ -4,4 +4,5 @@ from django.urls import path, include  # ✅ include is required
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('dashboard.urls', namespace='dashboard')),  # ✅ route root path to dashboard
+    path('sliver/', include('sliver.urls', namespace='sliver')),  # Sliver C2 operations
 ]

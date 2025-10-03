@@ -46,6 +46,15 @@
       </div>
     </div>
 
+    <!-- Home Button -->
+    <div class="mb-3">
+      <nav class="nav flex-column">
+        <a class="nav-link btn btn-primary text-white w-100 text-start" href="{% url 'dashboard:dashboard-home' %}">
+          <i class="bi bi-house"></i> Home
+        </a>
+      </nav>
+    </div>
+
     <hr />
 
     <!-- Penetration Testing Workflow Sections -->
@@ -77,7 +86,7 @@
         <a class="nav-link" href="http://127.0.0.1:9392" target="_blank">
           <i class="bi bi-cpu"></i> OpenVAS Scanner
         </a>
-        <a class="nav-link" href="{% url 'dashboard:history' %}">
+        <a class="nav-link" href="{% url 'dashboard:agent_report' %}">
           <i class="bi bi-shield-exclamation"></i> Vulnerabilities
         </a>
       </nav>
@@ -93,6 +102,29 @@
         </a>
         <a class="nav-link" href="http://127.0.0.1:9001">
           <i class="bi bi-code-square"></i> Code Analysis
+        </a>
+      </nav>
+    </div>
+
+    <div class="workflow-section mb-3">
+      <h6 class="sidebar-heading">
+        <i class="bi bi-shield-check"></i> C2 Operations
+      </h6>
+      <nav class="nav flex-column">
+        <a class="nav-link" href="{% url 'sliver:dashboard' %}">
+          <i class="bi bi-shield-check"></i> Sliver C2
+        </a>
+        <a class="nav-link" href="{% url 'sliver:engagement_list' %}">
+          <i class="bi bi-gear"></i> Engagements
+        </a>
+        <a class="nav-link" href="{% url 'sliver:session_list' %}">
+          <i class="bi bi-robot"></i> Active Sessions
+        </a>
+        <a class="nav-link" href="{% url 'sliver:job_list' %}">
+          <i class="bi bi-activity"></i> Job Queue
+        </a>
+        <a class="nav-link" href="{% url 'sliver:loot_list' %}">
+          <i class="bi bi-gift"></i> Collected Loot
         </a>
       </nav>
     </div>

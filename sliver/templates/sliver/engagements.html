@@ -1,0 +1,172 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid p-4">
+  <div class="row mb-4">
+    <div class="col-12">
+      <h2>
+        <i class="bi bi-gear"></i>
+        Engagements - Operation Management
+      </h2>
+      <p class="text-muted">Manage red team campaigns and C2 operations</p>
+    </div>
+  </div>
+
+  <!-- Action Buttons -->
+  <div class="row mb-3">
+    <div class="col-12">
+      <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createEngagementModal">
+        <i class="bi bi-plus-circle"></i> Create New Engagement
+      </button>
+    </div>
+  </div>
+
+  <!-- Engagements Grid -->
+  <div class="row">
+    {% for engagement in engagements %}
+    <div class="col-xl-4 col-lg-6 col-md-6 mb-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h6 class="mb-0">{{ engagement.name }}</h6>
+          <span class="badge bg-{% if engagement.status == 'ACTIVE' %}success{% elif engagement.status == 'COMPLETED' %}secondary{% else %}warning{% endif %}">
+            {{ engagement.status }}
+          </span>
+        </div>
+        <div class="card-body">
+          <p class="card-text">{{ engagement.description|truncatewords:20 }}</p>
+
+          <!-- Stats -->
+          <div class="row text-center mb-3">
+            <div class="col-6">
+              <div class="border rounded p-2">
+                <i class="bi bi-robot h5 text-info"></i>
+                <div class="h6 mb-0">{{ engagement.active_sessions_count }}</div>
+                <small class="text-muted">Active Sessions</small>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="border rounded p-2">
+                <i class="bi bi-check-circle h5 text-success"></i>
+                <div class="h6 mb-0">{{ engagement.completed_jobs_count }}</div>
+                <small class="text-muted">Completed Jobs</small>
+              </div>
+            </div>
+          </div>
+
+          <!-- Teamserver Info -->
+          <div class="mb-3">
+            <small class="text-muted">
+              <i class="bi bi-server"></i> Teamserver: {{ engagement.teamserver.name }}
+            </small>
+            <br>
+            <small class="text-muted">
+              Started: {{ engagement.start_date|date:"M j, Y H:i" }}
+              {% if engagement.end_date %} - {{ engagement.end_date|date:"M j, Y H:i" }}{% endif %}
+            </small>
+          </div>
+
+          {% if engagement.tags %}
+          <div class="mb-3">
+            {% for tag in engagement.tags %}
+            <span class="badge bg-light text-muted">{{ tag }}</span>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        <div class="card-footer">
+          <div class="btn-group w-100" role="group">
+            <a href="{% url 'sliver:engagement_detail' engagement.id %}" class="btn btn-outline-primary btn-sm">
+              <i class="bi bi-eye"></i> View
+            </a>
+            <a href="{% url 'sliver:engagement_sessions' engagement.id %}" class="btn btn-outline-info btn-sm">
+              <i class="bi bi-robot"></i> Sessions
+            </a>
+            <div class="btn-group" role="group">
+              <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="bi bi-three-dots"></i>
+              </button>
+              <ul class="dropdown-menu">
+                {% if engagement.status == 'ACTIVE' %}
+                <li><a class="dropdown-item text-danger" href="{% url 'sliver:stop_engagement' engagement.id %}">
+                  <i class="bi bi-stop-circle"></i> Stop Engagement
+                </a></li>
+                {% else %}
+                <li><a class="dropdown-item text-success" href="{% url 'sliver:start_engagement' engagement.id %}">
+                  <i class="bi bi-play-circle"></i> Start Engagement
+                </a></li>
+                {% endif %}
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{% url 'sliver:engagement_loot' engagement.id %}">
+                  <i class="bi bi-gift"></i> View Loot
+                </a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% empty %}
+    <div class="col-12">
+      <div class="text-center py-5">
+        <i class="bi bi-inbox h1 text-muted"></i>
+        <h4 class="text-muted">No Engagements Found</h4>
+        <p class="text-muted">Start by creating your first engagement to manage C2 operations.</p>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createEngagementModal">
+          <i class="bi bi-plus-circle"></i> Create Your First Engagement
+        </button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Create Engagement Modal -->
+<div class="modal fade" id="createEngagementModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Create New Engagement</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{% url 'sliver:create_engagement' %}">
+        {% csrf_token %}
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="engagementName" class="form-label">Engagement Name *</label>
+            <input type="text" class="form-control" id="engagementName" name="name" required>
+            <div class="form-text">A unique name for this engagement</div>
+          </div>
+
+          <div class="mb-3">
+            <label for="description" class="form-label">Description</label>
+            <textarea class="form-control" id="description" name="description" rows="3"></textarea>
+          </div>
+
+          <div class="mb-3">
+            <label for="teamserverSelect" class="form-label">Teamserver *</label>
+            <select class="form-select" id="teamserverSelect" name="teamserver_id" required>
+              <option value="">Select a teamserver...</option>
+              <!-- These would be populated from Teamserver.objects.all() -->
+              <option value="1">Local Teamserver (192.168.1.100:31337)</option>
+              <option value="2">Production Teamserver (example.com:31337)</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label for="targetScope" class="form-label">Target Scope</label>
+            <input type="text" class="form-control" id="targetScope" name="target_scope"
+                   placeholder="192.168.1.0/24, 10.0.0.0/8, example.com" />
+            <div class="form-text">Networks or targets for this engagement</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create Engagement</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

@@ -266,7 +266,7 @@
                             </button>
                         </div>
                         <div class="col-md-3">
-                            <a href="{% url 'agent_monitoring' %}" class="btn btn-primary w-100">
+                            <a href="{% url 'dashboard:agent_monitoring' %}" class="btn btn-primary w-100">
                                 <i class="bi bi-robot"></i> Agent Management
                             </a>
                         </div>
@@ -309,7 +309,7 @@
     }
 
     function refreshTopology() {
-        fetch('{% url "network_topology_api" %}')
+        fetch('{% url "dashboard:network_topology_api" %}')
             .then(response => response.json())
             .then(data => {
                 renderNetworkTopology(data);
@@ -394,7 +394,7 @@
     }
 
     function refreshConnections() {
-        fetch('{% url "network_connections_api" %}?limit=50')
+        fetch('{% url "dashboard:network_connections_api" %}?limit=50')
             .then(response => response.json())
             .then(data => {
                 updateConnectionsTable(data.connections);
@@ -517,7 +517,7 @@
 
     function sendNetworkMetadataCommand() {
         // Send command to all agents to collect network metadata
-        fetch('{% url "send_agent_command" %}', {
+        fetch('{% url "dashboard:send_agent_command" %}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -550,9 +550,9 @@
     function exportNetworkData() {
         // Export current network data as JSON
         Promise.all([
-            fetch('{% url "network_connections_api" %}?limit=1000').then(r => r.json()),
-            fetch('{% url "network_topology_api" %}').then(r => r.json()),
-            fetch('{% url "network_metadata_api" %}?limit=100').then(r => r.json())
+            fetch('{% url "dashboard:network_connections_api" %}?limit=1000').then(r => r.json()),
+            fetch('{% url "dashboard:network_topology_api" %}').then(r => r.json()),
+            fetch('{% url "dashboard:network_metadata_api" %}?limit=100').then(r => r.json())
         ]).then(([connections, topology, metadata]) => {
             const exportData = {
                 timestamp: new Date().toISOString(),

@@ -94,10 +94,24 @@ def get_mac_address(iface):
 
 
 def get_processes():
-    return [
-        {"pid": p.info['pid'], "name": p.info['name']}
-        for p in psutil.process_iter(attrs=['pid', 'name'])
-    ]
+    """Get detailed process information for the agent."""
+    processes = []
+    for p in psutil.process_iter(attrs=['pid', 'name', 'username', 'cpu_percent', 'memory_percent', 'status', 'cmdline']):
+        try:
+            process_info = {
+                "pid": p.info['pid'],
+                "name": p.info['name'],
+                "username": p.info.get('username') or "unknown",
+                "cpu_percent": round(p.info.get('cpu_percent', 0) or 0, 2),
+                "memory_percent": round(p.info.get('memory_percent', 0) or 0, 2),
+                "status": p.info.get('status') or "unknown",
+                "cmdline": " ".join(p.info.get('cmdline', [])) if p.info.get('cmdline') else ""
+            }
+            processes.append(process_info)
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            # Skip processes that disappear or we can't access
+            continue
+    return processes
 
 
 # ---- Cyber Template Data Collection ----

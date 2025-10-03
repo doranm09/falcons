@@ -92,6 +92,215 @@ python agent.py
 
 ---
 
+## Running the Test Suite
+
+The project includes a comprehensive unit test suite covering all major features of the cybersecurity dashboard. The test suite consists of 60+ tests with ~83% pass rate, covering models, views, APIs, utilities, and background tasks.
+
+### Prerequisites for Testing
+- Python 3.10+
+- All Django dependencies installed (see requirements.txt)
+- SQLite (automatically used for tests instead of PostgreSQL)
+
+### Running All Tests
+
+```bash
+# Install test dependencies
+pip install -r requirements.txt
+
+# Navigate to project root
+cd cyber_pen_test
+
+# Run all tests with test settings
+python manage.py test dashboard --settings=cyber_pen_test.test_settings --verbosity=2
+```
+
+### Running Specific Test Categories
+
+```bash
+# Run only model tests
+python manage.py test dashboard.tests -k "ModelTest" --settings=cyber_pen_test.test_settings
+
+# Run only view tests
+python manage.py test dashboard.tests -k "ViewTests" --settings=cyber_pen_test.test_settings
+
+# Run only utility tests
+python manage.py test dashboard.tests.UtilsTestCase --settings=cyber_pen_test.test_settings
+```
+
+### Test Coverage Summary
+
+The test suite covers:
+
+- **Model Tests (9 classes)**
+  - ScanRun, Node, Link models and their methods
+  - AgentStatus and heartbeat handling
+  - Vulnerability and AgentCommand models
+  - NetworkMetadata and Connection models
+
+- **View Tests (8 classes)**
+  - Dashboard home and graph visualization
+  - Agent monitoring and command sending
+  - Network monitoring and topology APIs
+  - History, download, and analysis views
+
+- **API Endpoint Tests (3 classes)**
+  - Agent report, cyber data, and command result handling
+  - Network metadata upload and retrieval
+  - Real-time agent status APIs
+
+- **Utility Tests (1 class)**
+  - Dijkstra shortest path algorithm
+  - Network interface detection
+
+- **Task Tests (1 class)**
+  - Celery background tasks for scanning
+  - OpenVAS integration and vulnerability processing
+
+### Troubleshooting Tests
+
+If tests fail with database connection errors:
+```bash
+# Ensure PostgreSQL is running or use test settings
+export POSTGRES_NAME=test
+export POSTGRES_USER=user
+export POSTGRES_PASSWORD=pass
+```
+
+For template rendering issues during tests, verify all dashboard templates exist in `dashboard/templates/dashboard/`.
+
+## Running the Comprehensive Test Suite
+
+The project now includes a comprehensive test suite covering server-side functional tests and browser-based E2E tests. The test suite includes deterministic mocks for outbound HTTP, comprehensive fixtures, and factory boys for test data.
+
+### Test Structure
+
+```
+tests/
+├── conftest.py                    # Common fixtures and settings
+├── factories/                     # Factory Boy factories
+│   ├── __init__.py
+│   └── user_factory.py           # User factory with faker
+├── server/                        # Server-side functional tests
+│   ├── test_download_view.py      # Download view tests (API, fallback, cache, security)
+│   ├── test_auth_and_redirects.py # Auth/permission tests
+│   └── test_crud_examples.py      # CRUD operations tests
+└── e2e/                          # Browser E2E tests with Playwright
+    ├── test_download_e2e.py       # Download flow E2E tests
+    └── test_auth_flow_e2e.py      # Auth flow E2E tests
+```
+
+### Prerequisites for Testing
+- Python 3.10+
+- Docker & Docker Compose (for CI)
+- All dependencies installed: `pip install -r requirements.txt && pip install -r requirements-dev.txt`
+- Playwright browsers: `python -m playwright install --with-deps chromium`
+
+### Running Tests Locally
+
+#### Using pytest directly:
+
+```bash
+# Run all tests
+pytest -q --settings=cyber_pen_test.test_settings
+
+# Run server tests only
+pytest tests/server -q --settings=cyber_pen_test.test_settings
+
+# Run E2E tests only
+pytest tests/e2e -q --settings=cyber_pen_test.test_settings
+
+# Run with verbose output
+pytest --settings=cyber_pen_test.test_settings -v
+```
+
+#### Using Makefile (preferred):
+
+```bash
+# Install development dependencies
+make install-deps
+
+# Run all tests
+make test
+
+# Run server tests only
+make test-server
+
+# Run E2E tests only
+make test-e2e
+
+# Run migrations first (if needed)
+make migrate
+
+# Clean test artifacts
+make clean
+```
+
+### CI/CD Testing
+
+Tests run automatically on GitHub Actions for pushes and pull requests to `main` and `develop` branches. The CI:
+
+- Sets up PostgreSQL and Redis services
+- Installs all dependencies and Playwright browsers
+- Runs migrations
+- Executes server tests, E2E tests, and full test suite
+- Uploads Playwright traces on failure
+
+### Test Coverage
+
+The test suite covers:
+
+**Server Tests:**
+- **Download View**: GitHub API success/fallback, caching (<1h), security (no path traversal)
+- **Authentication**: Public access verification (no global auth middleware)
+- **CRUD Operations**: Node model create/list/detail/update/delete with form validation
+- **Permission Checks**: Admin/staff-only routes and API endpoints
+
+**E2E Tests:**
+- **Download Flow**: Navigate to `/agent/download/`, click `[data-testid="download-agent"]`, verify ZIP download
+- **Auth Flow**: Verify public pages accessible without login
+- **UI Interactions**: Dropdown menus, navigation, and interactive elements
+
+**Key Features:**
+- ✅ Deterministic mocks (responses library for GitHub API)
+- ✅ Isolated test database (SQLite for fast tests)
+- ✅ Factory Boy + Faker for realistic test data
+- ✅ Playwright for browser automation
+- ✅ Comprehensive fixtures (user, admin_user, client variants)
+- ✅ Stable selectors (`data-testid="download-agent"`)
+- ✅ No external network dependencies during tests
+- ✅ ZIP file validation using `zipfile.ZipFile`
+
+### Test Configuration
+
+- **pytest.ini**: Settings for Django tests with `cyber_pen_test.test_settings`
+- **conftest.py**: Autouse media root isolation, user factories, client fixtures
+- **requirements-dev.txt**: Test dependencies (pytest, playwright, factory-boy, faker, responses)
+
+### Troubleshooting Tests
+
+**Database Issues:**
+```bash
+# For local testing, ensure migrations are run
+python manage.py migrate --settings=cyber_pen_test.test_settings
+```
+
+**E2E Test Failures:**
+```bash
+# Reinstall Playwright browsers
+playwright install --with-deps chromium
+
+# Run with visible browser for debugging
+pytest tests/e2e::TestDownloadE2E::test_download_agent_zip_e2e --headed
+```
+
+**Permission Issues:**
+```bash
+# Ensure proper permissions for test files
+chmod -R 755 host_agent/
+```
+
+---
+
 ## Testing Agent Commands
 
 From the Django Admin:

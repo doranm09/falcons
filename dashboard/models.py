@@ -211,6 +211,9 @@ class AgentStatus(models.Model):
     interfaces = models.JSONField(blank=True, null=True)  # Store interface details
     active_ports = models.JSONField(blank=True, null=True)  # Store active ports
 
+    # Process information
+    processes = models.JSONField(blank=True, null=True)  # Store running processes
+
     # Timing
     first_seen = models.DateTimeField(auto_now_add=True)
     last_heartbeat = models.DateTimeField(auto_now=True)

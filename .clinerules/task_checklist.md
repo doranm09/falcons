@@ -1,0 +1,5 @@
+- [ ] Check which navigation URLs are missing or incorrect
+- [ ] Verify URL patterns in dashboard/urls.py against template links
+- [ ] Fix any incorrect URL references in templates
+- [ ] Add missing URL patterns as needed
+- [ ] Test all sidebar navigation buttons resolve correctly

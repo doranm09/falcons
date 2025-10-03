@@ -51,7 +51,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'dashboard'
+    'dashboard',
+    'sliver',
 ]
 
 MIDDLEWARE = [
@@ -63,6 +64,19 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+# ASGI Application for WebSocket support
+ASGI_APPLICATION = 'cyber_pen_test.asgi.application'
+
+# Channels configuration
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],  # Redis for channel layer
+        },
+    },
+}
 
 ROOT_URLCONF = 'cyber_pen_test.urls'
 

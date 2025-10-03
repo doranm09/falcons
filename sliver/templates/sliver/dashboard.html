@@ -1,0 +1,197 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid p-4">
+  <div class="row mb-4">
+    <div class="col-12">
+      <h1 class="display-4">
+        <i class="bi bi-shield-check"></i>
+        Sliver C2 Operations
+      </h1>
+      <p class="lead text-muted">Command & Control Platform Management</p>
+    </div>
+  </div>
+
+  <!-- Quick Stats Row -->
+  <div class="row mb-4">
+    <div class="col-md-3">
+      <div class="card shadow-sm">
+        <div class="card-body text-center">
+          <i class="bi bi-gear h2 text-primary mb-3"></i>
+          <h3 class="card-title">{{ total_engagements }}</h3>
+          <p class="card-text text-muted">Total Engagements</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card shadow-sm">
+        <div class="card-body text-center">
+          <i class="bi bi-play-circle h2 text-success mb-3"></i>
+          <h3 class="card-title">{{ active_engagements }}</h3>
+          <p class="card-text text-muted">Active Engagements</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card shadow-sm">
+        <div class="card-body text-center">
+          <i class="bi bi-robot h2 text-info mb-3"></i>
+          <h3 class="card-title">{{ active_sessions }}</h3>
+          <p class="card-text text-muted">Active Sessions</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card shadow-sm">
+        <div class="card-body text-center">
+          <i class="bi bi-check-circle h2 text-success mb-3"></i>
+          <h3 class="card-title">{{ completed_jobs }}</h3>
+          <p class="card-text text-muted">Completed Jobs</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Activity Section -->
+  <div class="row">
+    <div class="col-lg-8">
+      <div class="card shadow-sm mb-4">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-list-ul"></i> Recent Engagements</h5>
+        </div>
+        <div class="card-body">
+          {% for engagement in engagements|slice:":5" %}
+          <div class="d-flex justify-content-between align-items-center mb-2 p-2 border rounded">
+            <div>
+              <h6 class="mb-1">{{ engagement.name }}</h6>
+              <small class="text-muted">
+                {{ engagement.start_date|date:"M j, Y H:i" }}
+                {% if engagement.end_date %}
+                  - {{ engagement.end_date|date:"M j, Y H:i" }}
+                {% endif %}
+              </small>
+            </div>
+            <div>
+              <span class="badge bg-{% if engagement.status == 'ACTIVE' %}success{% else %}secondary{% endif %}">
+                {{ engagement.status }}
+              </span>
+            </div>
+          </div>
+          {% empty %}
+          <div class="text-center text-muted py-4">
+            <i class="bi bi-inbox h1"></i>
+            <p>No engagements found</p>
+            <a href="{% url 'sliver:engagement_list' %}" class="btn btn-primary btn-sm">
+              Create First Engagement
+            </a>
+          </div>
+          {% endfor %}
+          <div class="text-center mt-3">
+            <a href="{% url 'sliver:engagement_list' %}" class="btn btn-outline-primary">
+              View All Engagements
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card shadow-sm mb-4">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-activity"></i> Recent Jobs</h5>
+        </div>
+        <div class="card-body">
+          {% for job in recent_jobs %}
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div>
+              <small class="fw-bold">{{ job.session.name }}</small><br>
+              <small class="text-muted">{{ job.command|truncatechars:30 }}</small>
+            </div>
+            <span class="badge bg-{% if job.status == 'COMPLETED' %}success{% elif job.status == 'RUNNING' %}info{% elif job.status == 'FAILED' %}danger{% else %}secondary{% endif %} small">
+              {{ job.status }}
+            </span>
+          </div>
+          {% empty %}
+          <div class="text-center text-muted py-3">
+            <i class="bi bi-dash-circle"></i>
+            <p class="mb-0">No recent jobs</p>
+          </div>
+          {% endfor %}
+          <div class="text-center mt-3">
+            <a href="{% url 'sliver:job_list' %}" class="btn btn-outline-primary btn-sm">
+              View All Jobs
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-gift"></i> Recent Loot</h5>
+        </div>
+        <div class="card-body">
+          {% for loot_item in recent_loot %}
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div>
+              <small class="fw-bold">{{ loot_item.session.name }}</small><br>
+              <small class="text-muted">{{ loot_item.loot_type }}</small>
+            </div>
+            <small class="text-muted">{{ loot_item.collected_at|timesince }}</small>
+          </div>
+          {% empty %}
+          <div class="text-center text-muted py-3">
+            <i class="bi bi-dash-circle"></i>
+            <p class="mb-0">No recent loot</p>
+          </div>
+          {% endfor %}
+          <div class="text-center mt-3">
+            <a href="{% url 'sliver:loot_list' %}" class="btn btn-outline-primary btn-sm">
+              View All Loot
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Actions Row -->
+  <div class="row mt-4">
+    <div class="col-12">
+      <div class="card shadow-sm">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-lightning"></i> Quick Actions</h5>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-md-3">
+              <a href="{% url 'sliver:engagement_list' %}" class="btn btn-outline-primary w-100 mb-2">
+                <i class="bi bi-plus-circle"></i>
+                New Engagement
+              </a>
+            </div>
+            <div class="col-md-3">
+              <a href="{% url 'sliver:session_list' %}" class="btn btn-outline-info w-100 mb-2">
+                <i class="bi bi-robot"></i>
+                View Sessions
+              </a>
+            </div>
+            <div class="col-md-3">
+              <a href="{% url 'sliver:generate_implant' %}" class="btn btn-outline-warning w-100 mb-2">
+                <i class="bi bi-hammer"></i>
+                Generate Implant
+              </a>
+            </div>
+            <div class="col-md-3">
+              <a href="{% url 'sliver:task_templates' %}" class="btn btn-outline-dark w-100 mb-2">
+                <i class="bi bi-list-check"></i>
+                Task Templates
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

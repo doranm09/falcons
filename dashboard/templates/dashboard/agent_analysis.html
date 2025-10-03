@@ -1,0 +1,419 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{% url 'dashboard:dashboard-home' %}">Dashboard</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'dashboard:agent_monitoring' %}">Agent Monitor</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'dashboard:agent_details' agent.agent_id %}">{{ agent.hostname }}</a></li>
+                    <li class="breadcrumb-item active">Analysis</li>
+                </ol>
+            </nav>
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2><i class="bi bi-graph-up"></i> Analysis: {{ agent.hostname }}</h2>
+                    <p class="text-muted">Agent ID: <code>{{ agent.agent_id }}</code></p>
+                </div>
+                <div>
+                    <span class="badge fs-6 bg-{% if agent.status == 'online' %}success{% elif agent.status == 'offline' %}danger{% else %}warning{% endif %}">
+                        {{ agent.status|title }}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Stats -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-bar-chart"></i> Summary Statistics</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h4 class="text-primary">{{ summary_stats.total_commands_sent }}</h4>
+                                    <p class="card-text text-muted">Commands Sent</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h4 class="text-success">{{ summary_stats.total_command_results }}</h4>
+                                    <p class="card-text text-muted">Command Results</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h4 class="text-info">{{ summary_stats.total_network_metadata_records }}</h4>
+                                    <p class="card-text text-muted">Network Metadata Records</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h4 class="text-warning">{{ summary_stats.active_network_sessions }}</h4>
+                                    <p class="card-text text-muted">Active Sessions</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Information -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-info-circle"></i> System Information</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>System Details</h6>
+                            <table class="table table-sm table-borderless">
+                                <tr>
+                                    <td><strong>Operating System:</strong></td>
+                                    <td>{{ system_info.os_type|default:"Unknown" }} {{ system_info.os_version|default:"" }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Platform:</strong></td>
+                                    <td>{{ system_info.platform|default:"Unknown" }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>CPU Cores:</strong></td>
+                                    <td>{{ system_info.cpu_count|default:"Unknown" }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Memory:</strong></td>
+                                    <td>{{ system_info.memory_total|filesizeformat|default:"Unknown" }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Agent Version:</strong></td>
+                                    <td><code>{{ system_info.agent_version|default:"Unknown" }}</code></td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Health Status</h6>
+                            <table class="table table-sm table-borderless">
+                                <tr>
+                                    <td><strong>Uptime:</strong></td>
+                                    <td>{{ heartbeat_analysis.uptime }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Last Heartbeat:</strong></td>
+                                    <td>{{ heartbeat_analysis.last_heartbeat }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Heartbeat Interval:</strong></td>
+                                    <td>{{ heartbeat_analysis.heartbeat_interval }} seconds</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Consecutive Failures:</strong></td>
+                                    <td>
+                                        <span class="badge bg-{% if heartbeat_analysis.consecutive_failures == 0 %}success{% else %}danger{% endif %}">
+                                            {{ heartbeat_analysis.consecutive_failures }}
+                                        </span>
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Network Analysis Column -->
+        <div class="col-md-6">
+            <!-- Network Connections Analysis -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5><i class="bi bi-diagram-3"></i> Network Connections</h5>
+                </div>
+                <div class="card-body">
+                    {% if network_analysis.connection_stats.total_connections %}
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Connection Overview</h6>
+                                <p><strong>Total Connections:</strong> {{ network_analysis.connection_stats.total_connections }}</p>
+                                <p><strong>External Connections:</strong> {{ network_analysis.connection_stats.external_connections }}</p>
+                                <p><strong>Recent (1h):</strong> {{ network_analysis.connection_stats.recent_connections }}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>By Protocol</h6>
+                                {% for protocol, count in network_analysis.connection_stats.by_protocol.items %}
+                                    <div class="mb-1">
+                                        <small class="text-muted">{{ protocol }}:</small>
+                                        <span class="badge bg-secondary">{{ count }}</span>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <h6 class="mt-3">Top Processes</h6>
+                        {% for process, count in network_analysis.connection_stats.by_process.items|slice:":5" %}
+                            <div class="mb-1">
+                                <small class="text-muted">{{ process }}:</small>
+                                <span class="badge bg-info">{{ count }}</span>
+                            </div>
+                        {% empty %}
+                            <p class="text-muted small">No process data available</p>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-muted">No network connection data available</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Command Analysis -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5><i class="bi bi-terminal"></i> Command Analysis</h5>
+                </div>
+                <div class="card-body">
+                    {% if command_analysis.action_counts %}
+                        <h6>Command Types</h6>
+                        {% for action, count in command_analysis.action_counts.items %}
+                            <div class="mb-1">
+                                <small class="text-muted">{{ action }}:</small>
+                                <span class="badge bg-primary">{{ count }}</span>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-muted small">No command data available</p>
+                    {% endif %}
+
+                    {% if command_analysis.recent_commands %}
+                        <h6 class="mt-3">Recent Commands</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-borderless">
+                                <thead>
+                                    <tr>
+                                        <th>Action</th>
+                                        <th>Time</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for cmd in command_analysis.recent_commands %}
+                                    <tr>
+                                        <td><span class="badge bg-secondary">{{ cmd.action }}</span></td>
+                                        <td><small>{{ cmd.created|date:"Y-m-d H:i" }}</small></td>
+                                        <td>
+                                            <span class="badge bg-{% if cmd.acknowledged %}success{% else %}warning{% endif %}">
+                                                {% if cmd.acknowledged %}Acknowledged{% else %}Pending{% endif %}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Cyber Template Analysis Column -->
+        <div class="col-md-6">
+            <!-- Cyber Template Data -->
+            {% if cyber_template_analysis.total_libraries or cyber_template_analysis.total_ports %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5><i class="bi bi-shield-check"></i> Cyber Template Analysis</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Libraries Analysis -->
+                    {% if cyber_template_analysis.total_libraries %}
+                        <div class="row">
+                            <div class="col-md-12">
+                                <h6>Installed Libraries ({{ cyber_template_analysis.total_libraries }})</h6>
+                                {% if cyber_template_analysis.categories %}
+                                    <div class="mb-3">
+                                        {% for category, count in cyber_template_analysis.categories.items %}
+                                            <div class="mb-1">
+                                                <small class="text-muted">{{ category }}:</small>
+                                                <span class="badge bg-secondary">{{ count }}</span>
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+
+                                <div class="d-flex flex-wrap gap-1 mb-3">
+                                    {% for lib in cyber_template_analysis.libraries %}
+                                        <span class="badge bg-light text-dark">{{ lib }}</span>
+                                    {% empty %}
+                                        <p class="text-muted small">None collected</p>
+                                    {% endfor %}
+                                </div>
+                                {% if cyber_template_analysis.total_libraries > 20 %}
+                                    <p class="text-muted small">... and {{ cyber_template_analysis.total_libraries|add:"-20" }} more</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    <!-- Ports Analysis -->
+                    {% if cyber_template_analysis.total_ports %}
+                        <div class="row">
+                            <div class="col-md-12">
+                                <h6 class="mt-{% if cyber_template_analysis.total_libraries %}4{% else %}0{% endif %}">Active Network Ports ({{ cyber_template_analysis.total_ports }})</h6>
+                                {% if cyber_template_analysis.port_categories %}
+                                    <div class="mb-2">
+                                        {% for category, count in cyber_template_analysis.port_categories.items %}
+                                            <div class="mb-1">
+                                                <small class="text-muted">{{ category }}:</small>
+                                                <span class="badge bg-info">{{ count }}</span>
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+
+                                <div class="d-flex flex-wrap gap-1">
+                                    {% for port in cyber_template_analysis.ports %}
+                                        <span class="badge bg-info" title="{{ port.status|default:'N/A' }}">
+                                            {{ port.id }}
+                                            {% if port.Protocol %}
+                                                <span class="text-muted">({{ port.Protocol }})</span>
+                                            {% endif %}
+                                        </span>
+                                    {% empty %}
+                                        <p class="text-muted small">None collected</p>
+                                    {% endfor %}
+                                </div>
+                                {% if cyber_template_analysis.total_ports > 20 %}
+                                    <p class="text-muted small mt-1">... and {{ cyber_template_analysis.total_ports|add:"-20" }} more</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <div class="card mb-4 border-warning">
+                <div class="card-body text-center">
+                    <i class="bi bi-exclamation-triangle text-warning fs-1 mb-2"></i>
+                    <h6 class="text-warning">Cyber Template Data Not Available</h6>
+                    <p class="text-muted small">Send a "cyber" command to this agent to collect cyber template data.</p>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- MAC Addresses (if available) -->
+            {% if node.mac_addresses %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5><i class="bi bi-ethernet"></i> MAC Addresses</h5>
+                </div>
+                <div class="card-body">
+                    {% for mac in node.mac_addresses %}
+                        <code class="d-block mb-1">{{ mac }}</code>
+                    {% empty %}
+                        <p class="text-muted small">None collected</p>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Network Interface Stats (if available) -->
+            {% if network_analysis.interface_stats_history %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5><i class="bi bi-graph-up-arrow"></i> Interface Statistics</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Interface</th>
+                                    <th>Bytes In/Out</th>
+                                    <th>Packets In/Out</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for stat in network_analysis.interface_stats_history %}
+                                <tr>
+                                    <td><small>{{ stat.timestamp|date:"m-d H:i" }}</small></td>
+                                    <td><code>{{ stat.interface }}</code></td>
+                                    <td><small>{{ stat.bytes_recv|filesizeformat }} / {{ stat.bytes_sent|filesizeformat }}</small></td>
+                                    <td><small>{{ stat.packets_recv }} / {{ stat.packets_sent }}</small></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Network Metadata Details (if available) -->
+    {% if network_analysis.metadata_records %}
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-router"></i> Network Metadata History</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Connections</th>
+                                    <th>Interfaces</th>
+                                    <th>Duration (ms)</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for record in network_analysis.metadata_records %}
+                                <tr>
+                                    <td>{{ record.timestamp|date:"Y-m-d H:i:s" }}</td>
+                                    <td>{{ record.total_connections }}</td>
+                                    <td>{{ record.total_interfaces }}</td>
+                                    <td>{{ record.collection_duration_ms|default:"-" }}</td>
+                                    <td>
+                                        <span class="badge bg-success">Collected</span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Auto-refresh capability (optional - can be added later if needed)
+    // For now, this page is static but could be enhanced with real-time updates
+    console.log('Agent analysis page loaded for agent {{ agent.agent_id }}');
+</script>
+{% endblock %}

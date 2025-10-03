@@ -1,10 +1,10 @@
 from django.shortcuts import render, redirect
 from django.contrib import messages
-from .models import Node, ScanRun, AgentCommand, CommandResult, NodeInterface, AgentStatus
+from .models import Node, ScanRun, AgentCommand, CommandResult, NodeInterface, AgentStatus, NetworkMetadata, NetworkConnection
 import ipaddress
 import subprocess
 import requests
-from django.http import JsonResponse
+from django.http import JsonResponse, FileResponse, Http404
 from .tasks import scan_network_task, launch_openvas_scan_task
 from celery.result import AsyncResult
 from .models import Node, Link
@@ -18,9 +18,11 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 import json
 import os
+from collections import defaultdict
 from django.conf import settings
 from django.db import transaction
 from ipaddress import ip_network
+from pathlib import Path
 import time
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
@@ -28,9 +30,26 @@ SNIFFER_BASE_URL = 'http://localhost:5050'
 def home(request):
     nodes = Node.objects.all().values('ip_address', 'name')
     scan_history = ScanRun.objects.all().order_by('-timestamp')[:10]  # limit to last 10
+
+    # Get process information from all agents
+    agents = AgentStatus.objects.filter(processes__isnull=False).order_by('-last_heartbeat')[:10]
+    current_processes = []
+
+    for agent in agents:
+        if agent.processes:
+            for process in agent.processes[:5]:  # Limit to 5 processes per agent
+                current_processes.append({
+                    'hostname': agent.hostname,
+                    'agent_id': agent.agent_id,
+                    'pid': process.get('pid'),
+                    'name': process.get('name'),
+                    'agent_status': agent.status
+                })
+
     return render(request, 'dashboard/home.html', {
         'nodes': nodes,
         'scan_history': scan_history,
+        'current_processes': current_processes[:20],  # Show top 20 processes
         'timestamp': now().timestamp()
     })
 
@@ -245,7 +264,21 @@ def agent_report(request):
     agent_id = data.get("agent_id")
     hostname = data.get("hostname")
     interfaces = data.get("interfaces", [])
-    ip = interfaces[0].get("ip", "127.0.0.1") if interfaces else "127.0.0.1"
+
+    # Filter out loopback interface and localhost IPs
+    external_interfaces = [
+        iface for iface in interfaces
+        if iface.get("ip") and
+           not iface.get("ip", "").startswith("127.") and
+           iface.get("ip", "") != "127.0.0.1" and
+           iface.get("ip", "") != "localhost" and
+           iface.get("ip", "") != "::1"
+    ]
+
+    # Use external interface IP, fallback to first interface, then fallback IP
+    ip = (external_interfaces[0].get("ip")
+          if external_interfaces
+          else (interfaces[0].get("ip", "192.168.0.1") if interfaces else "192.168.0.1"))
 
     # Update or create AgentStatus record
     agent_status, created = AgentStatus.objects.update_or_create(
@@ -260,6 +293,7 @@ def agent_report(request):
             "cpu_count": data.get("cpu_count"),
             "memory_total": data.get("memory_total"),
             "interfaces": interfaces,
+            "processes": data.get("processes", []),
             "agent_version": data.get("agent_version", ""),
             "last_version_check": now(),
         }
@@ -465,12 +499,20 @@ def agent_details(request, agent_id):
         messages.error(request, f"Agent {agent_id} not found")
         return redirect('dashboard:agent_monitoring')
 
+    # Get associated Node for cyber template data (if it exists)
+    node = None
+    try:
+        node = Node.objects.get(agent_id=agent_id)
+    except Node.DoesNotExist:
+        pass  # Some agents might not have sent cyber reports yet
+
     # Get command history for this agent
     commands = AgentCommand.objects.filter(agent_id=agent_id).order_by('-created')[:20]
     results = CommandResult.objects.filter(agent_id=agent_id).order_by('-timestamp')[:20]
 
     return render(request, 'dashboard/agent_details.html', {
         'agent': agent,
+        'node': node,
         'commands': commands,
         'results': results,
     })
@@ -506,6 +548,186 @@ def agent_command_history(request, agent_id):
     history.sort(key=lambda x: x.get('created') or x.get('timestamp'), reverse=True)
 
     return JsonResponse({"history": history[:50]})
+
+
+@require_GET
+def agent_analysis(request, agent_id):
+    """Analysis view for aggregated node data from a specific agent."""
+    try:
+        agent = AgentStatus.objects.get(agent_id=agent_id)
+        agent.update_status()
+    except AgentStatus.DoesNotExist:
+        messages.error(request, f"Agent {agent_id} not found")
+        return redirect('dashboard:agent_monitoring')
+
+    # Get associated Node for cyber template data
+    node = None
+    try:
+        node = Node.objects.get(agent_id=agent_id)
+    except Node.DoesNotExist:
+        pass
+
+    # ====================
+    # SYSTEM INFO ANALYSIS
+    # ====================
+    system_info = {
+        'cpu_count': agent.cpu_count,
+        'memory_total': agent.memory_total,
+        'os_type': agent.os_type,
+        'os_version': agent.os_version,
+        'platform': agent.platform,
+        'agent_version': agent.agent_version,
+    }
+
+    # ====================
+    # COMMAND HISTORY ANALYSIS
+    # ====================
+    total_commands = AgentCommand.objects.filter(agent_id=agent_id).count()
+    total_command_results = CommandResult.objects.filter(agent_id=agent_id).count()
+
+    # Command success/error analysis
+    command_action_counts = defaultdict(int)
+    recent_commands = AgentCommand.objects.filter(agent_id=agent_id).order_by('-created')[:50]
+
+    for cmd in recent_commands:
+        command_action_counts[cmd.action] += 1
+
+    # ====================
+    # NETWORK METADATA ANALYSIS
+    # ====================
+    network_metadata = NetworkMetadata.objects.filter(agent=agent).order_by('-timestamp')[:20]
+
+    # Connection patterns analysis
+    all_connections = NetworkConnection.objects.filter(agent=agent).order_by('-last_seen')[:100]
+
+    connection_stats = {
+        'total_connections': len(all_connections),
+        'by_protocol': defaultdict(int),
+        'by_status': defaultdict(int),
+        'by_process': defaultdict(int),
+        'external_connections': 0,
+        'recent_connections': len([c for c in all_connections if c.last_seen and (now() - c.last_seen).seconds < 3600]),  # Last hour
+    }
+
+    # Analyze connections
+    for conn in all_connections:
+        connection_stats['by_protocol'][conn.protocol] += 1
+        connection_stats['by_status'][conn.status] += 1
+        if conn.process_name:
+            connection_stats['by_process'][conn.process_name] += 1
+
+        # Count external connections (not localhost)
+        if conn.remote_address and conn.remote_address not in ['127.0.0.1', 'localhost', '::1']:
+            connection_stats['external_connections'] += 1
+
+    # Interface statistics over time
+    interface_stats_over_time = []
+    for metadata in network_metadata:
+        if metadata.interface_statistics:
+            for iface_stat in metadata.interface_statistics:
+                interface_stats_over_time.append({
+                    'timestamp': metadata.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+                    'interface': iface_stat.get('interface', 'Unknown'),
+                    'bytes_sent': iface_stat.get('bytes_sent', 0),
+                    'bytes_recv': iface_stat.get('bytes_recv', 0),
+                    'packets_sent': iface_stat.get('packets_sent', 0),
+                    'packets_recv': iface_stat.get('packets_recv', 0),
+                })
+
+    # ====================
+    # CYBER TEMPLATE ANALYSIS
+    # ====================
+    cyber_template_analysis = {}
+    if node and node.installed_libraries:
+        # Libraries analysis
+        libraries = node.installed_libraries
+        cyber_template_analysis['total_libraries'] = len(libraries)
+        cyber_template_analysis['libraries'] = libraries[:20]  # First 20 for display
+
+        # Categorize libraries by common patterns
+        library_categories = defaultdict(int)
+        for lib in libraries:
+            lib_lower = lib.lower()
+            if any(keyword in lib_lower for keyword in ['python', 'pip', 'setuptools']):
+                library_categories['Python Packages'] += 1
+            elif any(keyword in lib_lower for keyword in ['openssl', 'libssl', 'crypto']):
+                library_categories['Cryptographic Libraries'] += 1
+            elif any(keyword in lib_lower for keyword in ['systemd', 'dbus', 'udev']):
+                library_categories['System Libraries'] += 1
+            else:
+                library_categories['Other'] += 1
+
+        cyber_template_analysis['categories'] = dict(library_categories)
+
+    # Ports analysis
+    if node and node.active_ports:
+        active_ports = node.active_ports
+        cyber_template_analysis['total_ports'] = len(active_ports)
+        cyber_template_analysis['ports'] = active_ports[:20]  # First 20 for display
+
+        # Categorize ports
+        port_categories = defaultdict(int)
+        well_known_ports = {
+            22: 'SSH', 80: 'HTTP', 443: 'HTTPS', 21: 'FTP', 25: 'SMTP',
+            53: 'DNS', 3306: 'MySQL', 5432: 'PostgreSQL', 6379: 'Redis'
+        }
+
+    for port_info in active_ports:
+        try:
+            port_id = int(port_info.get('id', 0))
+        except (ValueError, TypeError):
+            port_id = 0
+
+        if port_id in well_known_ports:
+            port_categories[well_known_ports[port_id]] += 1
+        elif port_id < 1024:
+            port_categories['System (<1024)'] += 1
+        elif port_id < 49152:
+            port_categories['User (1024-49151)'] += 1
+        else:
+            port_categories['Dynamic (49152+)'] += 1
+    # ====================
+    # HEARTBEAT/UPTIME ANALYSIS
+    # ====================
+    heartbeat_analysis = {
+        'uptime': str(agent.get_uptime()) if agent.get_uptime() else "Unknown",
+        'last_heartbeat': agent.last_heartbeat.strftime('%Y-%m-%d %H:%M:%S') if agent.last_heartbeat else "Never",
+        'consecutive_failures': agent.consecutive_failures,
+        'heartbeat_interval': agent.heartbeat_interval,
+    }
+
+    # ====================
+    # AGGREGATE SUMMARY
+    # ====================
+    summary_stats = {
+        'total_commands_sent': total_commands,
+        'total_command_results': total_command_results,
+        'total_network_metadata_records': network_metadata.count(),
+        'total_connections_tracked': connection_stats['total_connections'],
+        'active_network_sessions': len([1 for conn in all_connections if conn.status == 'ESTABLISHED']),
+        'has_cyber_data': bool(node and (node.installed_libraries or node.active_ports or node.mac_addresses)),
+        'has_network_data': bool(network_metadata.exists()),
+    }
+
+    return render(request, 'dashboard/agent_analysis.html', {
+        'agent': agent,
+        'node': node,
+        'system_info': system_info,
+        'command_analysis': {
+            'total_commands': total_commands,
+            'total_results': total_command_results,
+            'action_counts': dict(command_action_counts),
+            'recent_commands': recent_commands[:10],  # Last 10 commands
+        },
+        'network_analysis': {
+            'metadata_records': network_metadata,
+            'connection_stats': connection_stats,
+            'interface_stats_history': interface_stats_over_time[:20],  # Last 20 interface readings
+        },
+        'cyber_template_analysis': cyber_template_analysis,
+        'heartbeat_analysis': heartbeat_analysis,
+        'summary_stats': summary_stats,
+    })
 
 
 def vulnerability_detail(request, scan_id):
@@ -559,6 +781,7 @@ def vuln_scan_status(request, task_id):
 def agent_download_page(request):
     """Page for downloading the host agent software."""
     from host_agent.agent import AGENT_VERSION, AGENT_NAME
+    from django.urls import reverse
 
     # Get the latest agent information
     latest_agents = AgentStatus.objects.filter(
@@ -569,19 +792,42 @@ def agent_download_page(request):
         'agent_version': AGENT_VERSION,
         'agent_name': AGENT_NAME,
         'latest_agents': latest_agents,
-        'download_url': '/agent/download/host_agent.zip'
+        'download_url': reverse("download_host_agent")
     })
 
 
-@require_GET
+@require_http_methods(["GET", "HEAD"])
 def download_host_agent(request):
-    """Download the host agent as a ZIP file."""
+    """Download the host agent as a ZIP file using FileResponse for efficient streaming."""
     import zipfile
-    import io
-    from django.http import HttpResponse
+    import tempfile
+    import shutil
 
     print(f"[DEBUG] Download request from {request.META.get('REMOTE_ADDR', 'unknown')}")
 
+    # Define a temporary directory for ZIP files (or use media root if configured)
+    zips_dir = Path(settings.MEDIA_ROOT) / "exports" if hasattr(settings, 'MEDIA_ROOT') and settings.MEDIA_ROOT else Path("/tmp/cyber_agent_zips")
+    zips_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = "host_agent.zip"
+    file_path = (zips_dir / filename).resolve()
+
+    # Basic safety check: ensure it's inside the folder we expect
+    if not str(file_path).startswith(str(zips_dir.resolve())):
+        raise Http404("Invalid path")
+
+    # Check if ZIP already exists and is recent (within 1 hour)
+    if file_path.exists():
+        file_age = time.time() - file_path.stat().st_mtime
+        if file_age < 3600:  # 1 hour
+            # File exists and is recent, stream it
+            response = FileResponse(open(file_path, "rb"), as_attachment=True, filename=file_path.name)
+            response["Content-Type"] = "application/zip"
+            response['Cache-Control'] = 'no-cache'
+            print(f"[DEBUG] Serving cached ZIP file")
+            return response
+
+    # ZIP doesn't exist or is old, create it
     # Try to download from GitHub repo release first
     try:
         repo_url = 'https://github.gatech.edu/api/v3/repos/iFAN-Lab/cyber_pen_test/releases/latest'
@@ -596,59 +842,65 @@ def download_host_agent(request):
                 if zip_response.status_code == 200:
                     print("[DEBUG] Downloaded latest agent ZIP from repo release")
                     tag_name = release_data.get('tag_name', 'latest')
-                    response = HttpResponse(zip_response.content, content_type='application/zip')
-                    response['Content-Disposition'] = f'attachment; filename="{tag_name}_cyber_host_agent.zip"'
+                    # Save to file
+                    with open(file_path, 'wb') as f:
+                        f.write(zip_response.content)
+                    # Stream it using FileResponse
+                    response = FileResponse(open(file_path, "rb"), as_attachment=True, filename=f"{tag_name}_cyber_host_agent.zip" if tag_name != 'latest' else filename)
+                    response["Content-Type"] = "application/zip"
                     response['Cache-Control'] = 'no-cache'
-                    print(f"[DEBUG] Download response prepared with repo ZIP")
+                    print(f"[DEBUG] Download response prepared with repo ZIP via FileResponse")
                     return response
-        print("[DEBUG] Could not download from repo release, falling back to local ZIP")
+        print("[DEBUG] Could not download from repo release, falling back to local ZIP creation")
 
     except Exception as e:
-        print(f"[DEBUG] Error downloading from repo: {e}, falling back to local ZIP")
+        print(f"[DEBUG] Error downloading from repo: {e}, falling back to local ZIP creation")
 
     # Fallback to creating ZIP with local agent files
-    zip_buffer = io.BytesIO()
-
     try:
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            # Add agent files
-            agent_files = [
-                os.path.join(settings.BASE_DIR, 'host_agent', 'agent.py'),
-                os.path.join(settings.BASE_DIR, 'host_agent', 'requirements.txt'),
-                os.path.join(settings.BASE_DIR, 'host_agent', 'README.md'),
-                os.path.join(settings.BASE_DIR, 'host_agent', 'cyber_data.json'),
-                os.path.join(settings.BASE_DIR, 'host_agent', 'agent.spec'),
-            ]
+        with zipfile.ZipFile(file_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            # Base agent directory
+            agent_base = os.path.join(settings.BASE_DIR, 'host_agent')
 
             files_added = 0
-            for file_path in agent_files:
-                try:
-                    with open(file_path, 'rb') as f:
-                        zip_file.write(file_path, os.path.basename(file_path))
+            # Walk through all files in host_agent directory recursively
+            for root, dirs, files in os.walk(agent_base):
+                # Skip venv directory if it exists
+                dirs[:] = [d for d in dirs if d != 'venv']
+
+                for file in files:
+                    # Skip __pycache__ directories and .pyc files
+                    if '__pycache__' in root or file.endswith('.pyc') or file.startswith('.'):
+                        continue
+
+                    file_path_src = os.path.join(root, file)
+                    # Calculate relative path for ZIP file
+                    rel_path = os.path.relpath(file_path_src, agent_base)
+
+                    try:
+                        zip_file.write(file_path_src, rel_path)
                         files_added += 1
-                        print(f"[DEBUG] Added {file_path} to ZIP")
-                except FileNotFoundError as e:
-                    print(f"[DEBUG] File not found: {file_path} - {e}")
-                    continue
+                        print(f"[DEBUG] Added {rel_path} to ZIP")
+                    except Exception as e:
+                        print(f"[DEBUG] Failed to add {rel_path}: {e}")
+                        continue
 
             if files_added == 0:
                 print("[ERROR] No agent files found for download")
                 return HttpResponse("Error: No agent files found", status=404)
 
-        zip_buffer.seek(0)
-        print(f"[DEBUG] ZIP file created successfully, size: {len(zip_buffer.getvalue())} bytes")
+        print(f"[DEBUG] ZIP file created and saved to {file_path}")
 
-        # Create HTTP response with ZIP file
-        response = HttpResponse(zip_buffer.read(), content_type='application/zip')
-        response['Content-Disposition'] = 'attachment; filename="cyber_host_agent.zip"'
+        # FileResponse streams efficiently
+        response = FileResponse(open(file_path, "rb"), as_attachment=True, filename=file_path.name)
+        response["Content-Type"] = "application/zip"
         response['Cache-Control'] = 'no-cache'
-
-        print(f"[DEBUG] Download response prepared with local files")
+        print(f"[DEBUG] Download response prepared with local files via FileResponse")
         return response
 
     except Exception as e:
         print(f"[ERROR] Failed to create download ZIP: {e}")
-        return HttpResponse(f"Error creating download: {str(e)}", status=500)
+        raise Http404("Error creating download")
 
 
 @require_GET

@@ -1,0 +1,51 @@
+[
+  {
+    "agent_id": "193853668050576",
+    "hostname": "MEL05280D.me.gatech.edu",
+    "ip_address": "127.0.0.1",
+    "status": "offline",
+    "os_type": "Linux",
+    "os_version": "#32~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue Sep  2 14:21:04 UTC 2",
+    "platform": "Linux-6.14.0-32-generic-x86_64-with-glibc2.39",
+    "active_ports": [],
+    "interfaces": [
+      {
+        "ip": "127.0.0.1",
+        "mac": "00:00:00:00:00:00",
+        "name": "lo"
+      },
+      {
+        "ip": "128.61.144.211",
+        "mac": "b0:4f:13:05:c6:90",
+        "name": "eno1"
+      },
+      {
+        "ip": "10.137.4.115",
+        "mac": "80:6d:97:42:4b:c3",
+        "name": "enx806d97424bc3"
+      },
+      {
+        "ip": "192.168.122.1",
+        "mac": "52:54:00:c0:cb:44",
+        "name": "virbr0"
+      },
+      {
+        "ip": "172.18.0.1",
+        "mac": "42:91:6a:28:cf:7c",
+        "name": "br-8a91549d7ba3"
+      },
+      {
+        "ip": "172.17.0.1",
+        "mac": "6a:98:bc:19:82:b3",
+        "name": "docker0"
+      },
+      {
+        "ip": "172.19.0.1",
+        "mac": "96:84:4d:22:d8:97",
+        "name": "br-f914b7e3c464"
+      }
+    ],
+    "last_heartbeat": "2025-10-02T15:58:41.316989+00:00",
+    "agent_version": null
+  }
+]

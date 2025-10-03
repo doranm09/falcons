@@ -1,0 +1,352 @@
+[
+  {
+    "ip_address": "10.137.4.102",
+    "port": "2221/tcp",
+    "finding_count": 1,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for 2221/tcp"
+  },
+  {
+    "ip_address": "10.137.4.102",
+    "port": "44818/tcp",
+    "finding_count": 1,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for 44818/tcp"
+  },
+  {
+    "ip_address": "10.137.4.102",
+    "port": "general/CPE-T",
+    "finding_count": 1,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for general/CPE-T"
+  },
+  {
+    "ip_address": "10.137.4.102",
+    "port": "general/icmp",
+    "finding_count": 1,
+    "max_severity": 2.1,
+    "descriptions": "Vulnerability findings for general/icmp"
+  },
+  {
+    "ip_address": "10.137.4.102",
+    "port": "general/tcp",
+    "finding_count": 4,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for general/tcp"
+  },
+  {
+    "ip_address": "10.137.4.109",
+    "port": "135/tcp",
+    "finding_count": 2,
+    "max_severity": 5.0,
+    "descriptions": "Vulnerability findings for 135/tcp"
+  },
+  {
+    "ip_address": "10.137.4.109",
+    "port": "139/tcp",
+    "finding_count": 1,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for 139/tcp"
+  },
+  {
+    "ip_address": "10.137.4.109",
+    "port": "2179/tcp",
+    "finding_count": 1,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for 2179/tcp"
+  },
+  {
+    "ip_address": "10.137.4.109",
+    "port": "3389/tcp",
+    "finding_count": 11,
+    "max_severity": 4.3,
+    "descriptions": "Vulnerability findings for 3389/tcp"
+  },
+  {
+    "ip_address": "10.137.4.109",
+    "port": "4000/tcp",
+    "finding_count": 2,
+    "max_severity": 10.0,
+    "descriptions": "Vulnerability findings for 4000/tcp"
+  },
+  {
+    "ip_address": "10.137.4.109",
+    "port": "445/tcp",
+    "finding_count": 2,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for 445/tcp"
+  },
+  {
+    "ip_address": "10.137.4.109",
+    "port": "7680/tcp",
+    "finding_count": 1,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for 7680/tcp"
+  },
+  {
+    "ip_address": "10.137.4.109",
+    "port": "general/CPE-T",
+    "finding_count": 1,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for general/CPE-T"
+  },
+  {
+    "ip_address": "10.137.4.109",
+    "port": "general/tcp",
+    "finding_count": 7,
+    "max_severity": 2.6,
+    "descriptions": "Vulnerability findings for general/tcp"
+  },
+  {
+    "ip_address": "10.137.4.110",
+    "port": "135/tcp",
+    "finding_count": 2,
+    "max_severity": 5.0,
+    "descriptions": "Vulnerability findings for 135/tcp"
+  },
+  {
+    "ip_address": "10.137.4.110",
+    "port": "139/tcp",
+    "finding_count": 1,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for 139/tcp"
+  },
+  {
+    "ip_address": "10.137.4.110",
+    "port": "3000/tcp",
+    "finding_count": 28,
+    "max_severity": 9.8,
+    "descriptions": "Vulnerability findings for 3000/tcp"
+  },
+  {
+    "ip_address": "10.137.4.110",
+    "port": "3389/tcp",
+    "finding_count": 11,
+    "max_severity": 4.3,
+    "descriptions": "Vulnerability findings for 3389/tcp"
+  },
+  {
+    "ip_address": "10.137.4.110",
+    "port": "445/tcp",
+    "finding_count": 2,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for 445/tcp"
+  },
+  {
+    "ip_address": "10.137.4.110",
+    "port": "8086/tcp",
+    "finding_count": 6,
+    "max_severity": 5.0,
+    "descriptions": "Vulnerability findings for 8086/tcp"
+  },
+  {
+    "ip_address": "10.137.4.110",
+    "port": "general/CPE-T",
+    "finding_count": 1,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for general/CPE-T"
+  },
+  {
+    "ip_address": "10.137.4.110",
+    "port": "general/tcp",
+    "finding_count": 7,
+    "max_severity": 2.6,
+    "descriptions": "Vulnerability findings for general/tcp"
+  },
+  {
+    "ip_address": "10.137.4.112",
+    "port": "135/tcp",
+    "finding_count": 2,
+    "max_severity": 5.0,
+    "descriptions": "Vulnerability findings for 135/tcp"
+  },
+  {
+    "ip_address": "10.137.4.112",
+    "port": "2179/tcp",
+    "finding_count": 1,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for 2179/tcp"
+  },
+  {
+    "ip_address": "10.137.4.112",
+    "port": "3389/tcp",
+    "finding_count": 11,
+    "max_severity": 4.3,
+    "descriptions": "Vulnerability findings for 3389/tcp"
+  },
+  {
+    "ip_address": "10.137.4.112",
+    "port": "4000/tcp",
+    "finding_count": 2,
+    "max_severity": 10.0,
+    "descriptions": "Vulnerability findings for 4000/tcp"
+  },
+  {
+    "ip_address": "10.137.4.112",
+    "port": "445/tcp",
+    "finding_count": 2,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for 445/tcp"
+  },
+  {
+    "ip_address": "10.137.4.112",
+    "port": "7680/tcp",
+    "finding_count": 1,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for 7680/tcp"
+  },
+  {
+    "ip_address": "10.137.4.112",
+    "port": "general/CPE-T",
+    "finding_count": 1,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for general/CPE-T"
+  },
+  {
+    "ip_address": "10.137.4.112",
+    "port": "general/tcp",
+    "finding_count": 6,
+    "max_severity": 2.6,
+    "descriptions": "Vulnerability findings for general/tcp"
+  },
+  {
+    "ip_address": "10.137.4.115",
+    "port": "10001/tcp",
+    "finding_count": 5,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for 10001/tcp"
+  },
+  {
+    "ip_address": "10.137.4.115",
+    "port": "3067/tcp",
+    "finding_count": 6,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for 3067/tcp"
+  },
+  {
+    "ip_address": "10.137.4.115",
+    "port": "8000/tcp",
+    "finding_count": 12,
+    "max_severity": 7.8,
+    "descriptions": "Vulnerability findings for 8000/tcp"
+  },
+  {
+    "ip_address": "10.137.4.115",
+    "port": "9001/tcp",
+    "finding_count": 7,
+    "max_severity": 6.1,
+    "descriptions": "Vulnerability findings for 9001/tcp"
+  },
+  {
+    "ip_address": "10.137.4.115",
+    "port": "general/CPE-T",
+    "finding_count": 1,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for general/CPE-T"
+  },
+  {
+    "ip_address": "10.137.4.115",
+    "port": "general/icmp",
+    "finding_count": 1,
+    "max_severity": 2.1,
+    "descriptions": "Vulnerability findings for general/icmp"
+  },
+  {
+    "ip_address": "10.137.4.115",
+    "port": "general/tcp",
+    "finding_count": 8,
+    "max_severity": 2.6,
+    "descriptions": "Vulnerability findings for general/tcp"
+  },
+  {
+    "ip_address": "10.137.4.116",
+    "port": "22/tcp",
+    "finding_count": 13,
+    "max_severity": 8.1,
+    "descriptions": "Vulnerability findings for 22/tcp"
+  },
+  {
+    "ip_address": "10.137.4.116",
+    "port": "general/CPE-T",
+    "finding_count": 1,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for general/CPE-T"
+  },
+  {
+    "ip_address": "10.137.4.116",
+    "port": "general/icmp",
+    "finding_count": 1,
+    "max_severity": 2.1,
+    "descriptions": "Vulnerability findings for general/icmp"
+  },
+  {
+    "ip_address": "10.137.4.116",
+    "port": "general/tcp",
+    "finding_count": 5,
+    "max_severity": 2.6,
+    "descriptions": "Vulnerability findings for general/tcp"
+  },
+  {
+    "ip_address": "10.137.4.120",
+    "port": "22/tcp",
+    "finding_count": 19,
+    "max_severity": 9.8,
+    "descriptions": "Vulnerability findings for 22/tcp"
+  },
+  {
+    "ip_address": "10.137.4.120",
+    "port": "general/CPE-T",
+    "finding_count": 1,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for general/CPE-T"
+  },
+  {
+    "ip_address": "10.137.4.120",
+    "port": "general/icmp",
+    "finding_count": 1,
+    "max_severity": 2.1,
+    "descriptions": "Vulnerability findings for general/icmp"
+  },
+  {
+    "ip_address": "10.137.4.120",
+    "port": "general/tcp",
+    "finding_count": 5,
+    "max_severity": 2.6,
+    "descriptions": "Vulnerability findings for general/tcp"
+  },
+  {
+    "ip_address": "10.137.4.8",
+    "port": "23/tcp",
+    "finding_count": 3,
+    "max_severity": 4.8,
+    "descriptions": "Vulnerability findings for 23/tcp"
+  },
+  {
+    "ip_address": "10.137.4.8",
+    "port": "80/tcp",
+    "finding_count": 5,
+    "max_severity": 4.8,
+    "descriptions": "Vulnerability findings for 80/tcp"
+  },
+  {
+    "ip_address": "10.137.4.8",
+    "port": "general/CPE-T",
+    "finding_count": 1,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for general/CPE-T"
+  },
+  {
+    "ip_address": "10.137.4.8",
+    "port": "general/icmp",
+    "finding_count": 2,
+    "max_severity": 2.1,
+    "descriptions": "Vulnerability findings for general/icmp"
+  },
+  {
+    "ip_address": "10.137.4.8",
+    "port": "general/tcp",
+    "finding_count": 5,
+    "max_severity": 0.0,
+    "descriptions": "Vulnerability findings for general/tcp"
+  }
+]

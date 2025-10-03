@@ -18,6 +18,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 import json
 import os
+from django.conf import settings
 from django.db import transaction
 from ipaddress import ip_network
 import time
@@ -462,7 +463,7 @@ def agent_details(request, agent_id):
         agent.update_status()  # Update status before displaying
     except AgentStatus.DoesNotExist:
         messages.error(request, f"Agent {agent_id} not found")
-        return redirect('agent_monitoring')
+        return redirect('dashboard:agent_monitoring')
 
     # Get command history for this agent
     commands = AgentCommand.objects.filter(agent_id=agent_id).order_by('-created')[:20]
@@ -581,16 +582,42 @@ def download_host_agent(request):
 
     print(f"[DEBUG] Download request from {request.META.get('REMOTE_ADDR', 'unknown')}")
 
-    # Create a ZIP file in memory containing the host agent files
+    # Try to download from GitHub repo release first
+    try:
+        repo_url = 'https://github.gatech.edu/api/v3/repos/iFAN-Lab/cyber_pen_test/releases/latest'
+        release_response = requests.get(repo_url, timeout=10)
+
+        if release_response.status_code == 200:
+            release_data = release_response.json()
+            zipball_url = release_data.get('zipball_url')
+
+            if zipball_url:
+                zip_response = requests.get(zipball_url, timeout=30)
+                if zip_response.status_code == 200:
+                    print("[DEBUG] Downloaded latest agent ZIP from repo release")
+                    tag_name = release_data.get('tag_name', 'latest')
+                    response = HttpResponse(zip_response.content, content_type='application/zip')
+                    response['Content-Disposition'] = f'attachment; filename="{tag_name}_cyber_host_agent.zip"'
+                    response['Cache-Control'] = 'no-cache'
+                    print(f"[DEBUG] Download response prepared with repo ZIP")
+                    return response
+        print("[DEBUG] Could not download from repo release, falling back to local ZIP")
+
+    except Exception as e:
+        print(f"[DEBUG] Error downloading from repo: {e}, falling back to local ZIP")
+
+    # Fallback to creating ZIP with local agent files
     zip_buffer = io.BytesIO()
 
     try:
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
             # Add agent files
             agent_files = [
-                'host_agent/agent.py',
-                'host_agent/requirements.txt',
-                'host_agent/README.md',
+                os.path.join(settings.BASE_DIR, 'host_agent', 'agent.py'),
+                os.path.join(settings.BASE_DIR, 'host_agent', 'requirements.txt'),
+                os.path.join(settings.BASE_DIR, 'host_agent', 'README.md'),
+                os.path.join(settings.BASE_DIR, 'host_agent', 'cyber_data.json'),
+                os.path.join(settings.BASE_DIR, 'host_agent', 'agent.spec'),
             ]
 
             files_added = 0
@@ -616,7 +643,7 @@ def download_host_agent(request):
         response['Content-Disposition'] = 'attachment; filename="cyber_host_agent.zip"'
         response['Cache-Control'] = 'no-cache'
 
-        print(f"[DEBUG] Download response prepared for {request.META.get('REMOTE_ADDR', 'unknown')}")
+        print(f"[DEBUG] Download response prepared with local files")
         return response
 
     except Exception as e:

@@ -56,7 +56,7 @@
                 <div class="card-body">
                     <div class="row">
                         <div class="col-md-6">
-                            <a href="{% url 'agent_download_page' %}" class="btn btn-primary btn-lg w-100">
+                            <a href="{% url 'dashboard:agent_download_page' %}" class="btn btn-primary btn-lg w-100">
                                 <i class="bi bi-cloud-download"></i> Download Host Agent
                             </a>
                         </div>
@@ -188,7 +188,7 @@
                                         {% endif %}
                                     </td>
                                     <td>
-                                        <a href="{% url 'agent_details' agent.agent_id %}" class="btn btn-sm btn-outline-primary">
+                                        <a href="{% url 'dashboard:agent_details' agent.agent_id %}" class="btn btn-sm btn-outline-primary">
                                             <i class="bi bi-eye"></i> Details
                                         </a>
                                     </td>
@@ -272,7 +272,7 @@
     setInterval(refreshAgentStatus, 30000);
 
     function refreshAgentStatus() {
-        fetch('{% url "agent_status_api" %}')
+        fetch('{% url "dashboard:agent_status_api" %}')
             .then(response => response.json())
             .then(data => {
                 updateAgentsTable(data.agents);
@@ -311,7 +311,7 @@
                 <td>${agent.cpu_count ? `${agent.cpu_count} CPU / ${formatBytes(agent.memory_total)}` : '<span class="text-muted">Unknown</span>'}</td>
                 <td>${agent.last_heartbeat}</td>
                 <td>
-                    <a href="/dashboard/agent/${agent.agent_id}/" class="btn btn-sm btn-outline-primary">
+                    <a href="/agent/${agent.agent_id}/" class="btn btn-sm btn-outline-primary">
                         <i class="bi bi-eye"></i> Details
                     </a>
                 </td>
@@ -346,7 +346,7 @@
             }
         }
 
-        fetch('{% url "send_agent_command" %}', {
+        fetch('{% url "dashboard:send_agent_command" %}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

@@ -54,13 +54,13 @@
         <i class="bi bi-search"></i> Reconnaissance
       </h6>
       <nav class="nav flex-column">
-        <a class="nav-link" href="{% url 'agent_monitoring' %}">
+        <a class="nav-link" href="{% url 'dashboard:agent_monitoring' %}">
           <i class="bi bi-robot"></i> Agent Monitor
         </a>
-        <a class="nav-link" href="{% url 'network_monitoring' %}">
+        <a class="nav-link" href="{% url 'dashboard:network_monitoring' %}">
           <i class="bi bi-activity"></i> Network Monitor
         </a>
-        <a class="nav-link" href="{% url 'dashboard-home' %}">
+        <a class="nav-link" href="{% url 'dashboard:dashboard-home' %}">
           <i class="bi bi-diagram-3"></i> Network Topology
         </a>
       </nav>
@@ -71,13 +71,13 @@
         <i class="bi bi-binoculars"></i> Vulnerability Assessment
       </h6>
       <nav class="nav flex-column">
-        <a class="nav-link" href="{% url 'scan-history' %}">
+        <a class="nav-link" href="{% url 'dashboard:scan-history' %}">
           <i class="bi bi-activity"></i> Scan History
         </a>
         <a class="nav-link" href="http://127.0.0.1:9392" target="_blank">
           <i class="bi bi-cpu"></i> OpenVAS Scanner
         </a>
-        <a class="nav-link" href="{% url 'history' %}">
+        <a class="nav-link" href="{% url 'dashboard:history' %}">
           <i class="bi bi-shield-exclamation"></i> Vulnerabilities
         </a>
       </nav>
@@ -88,7 +88,7 @@
         <i class="bi bi-graph-up"></i> Risk Analysis
       </h6>
       <nav class="nav flex-column">
-        <a class="nav-link" href="{% url 'shortest-paths' %}">
+        <a class="nav-link" href="{% url 'dashboard:shortest-paths' %}">
           <i class="bi bi-signpost"></i> Attack Paths
         </a>
         <a class="nav-link" href="http://127.0.0.1:9001">
@@ -102,10 +102,10 @@
         <i class="bi bi-tools"></i> Tools & Configuration
       </h6>
       <nav class="nav flex-column">
-        <a class="nav-link" href="{% url 'sniffer-interfaces' %}">
+        <a class="nav-link" href="{% url 'dashboard:sniffer-interfaces' %}">
           <i class="bi bi-ethernet"></i> Network Sniffer
         </a>
-        <a class="nav-link" href="{% url 'agent_download_page' %}">
+        <a class="nav-link" href="{% url 'dashboard:agent_download_page' %}">
           <i class="bi bi-download"></i> Agent Downloads
         </a>
         <a class="nav-link" href="/admin/">

@@ -1,0 +1,159 @@
+{
+  "cyber_template_data": {
+    "OS": "Ubuntu 24.04 24.04 (ubuntu)",
+    "lib": [
+      "{'name': 'accountsservice', 'version': '23.13.9-2ubuntu6', 'type': 'deb'}",
+      "{'name': 'acl', 'version': '2.3.2-1build1.1', 'type': 'deb'}",
+      "{'name': 'adcli', 'version': '0.9.2-1ubuntu2', 'type': 'deb'}",
+      "{'name': 'adduser', 'version': '3.137ubuntu1', 'type': 'deb'}",
+      "{'name': 'adwaita-icon-theme', 'version': '46.0-1', 'type': 'deb'}",
+      "{'name': 'agent-client-collector', 'version': '4.1.1-2', 'type': 'deb'}",
+      "{'name': 'alsa-base', 'version': '1.0.25+dfsg-0ubuntu7', 'type': 'deb'}",
+      "{'name': 'alsa-topology-conf', 'version': '1.2.5.1-2', 'type': 'deb'}",
+      "{'name': 'alsa-ucm-conf', 'version': '1.2.10-1ubuntu5.7', 'type': 'deb'}",
+      "{'name': 'alsa-utils', 'version': '1.2.9-1ubuntu5', 'type': 'deb'}",
+      "{'name': 'amd64-microcode', 'version': '3.20250311.1ubuntu0.24.04.1', 'type': 'deb'}",
+      "{'name': 'anacron', 'version': '2.3-39ubuntu2', 'type': 'deb'}",
+      "{'name': 'apg', 'version': '2.2.3.dfsg.1-5build3', 'type': 'deb'}",
+      "{'name': 'apparmor', 'version': '4.0.1really4.0.1-0ubuntu0.24.04.4', 'type': 'deb'}",
+      "{'name': 'apport', 'version': '2.28.1-0ubuntu3.8', 'type': 'deb'}",
+      "{'name': 'apport-core-dump-handler', 'version': '2.28.1-0ubuntu3.8', 'type': 'deb'}",
+      "{'name': 'apport-gtk', 'version': '2.28.1-0ubuntu3.8', 'type': 'deb'}",
+      "{'name': 'apport-symptoms', 'version': '0.25', 'type': 'deb'}",
+      "{'name': 'appstream', 'version': '1.0.2-1build6', 'type': 'deb'}",
+      "{'name': 'apt', 'version': '2.8.3', 'type': 'deb'}",
+      "{'name': 'apt-config-icons', 'version': '1.0.2-1build6', 'type': 'deb'}",
+      "{'name': 'apt-config-icons-hidpi', 'version': '1.0.2-1build6', 'type': 'deb'}",
+      "{'name': 'apt-transport-go-katello', 'version': '0.1.0-1', 'type': 'deb'}",
+      "{'name': 'apt-transport-https', 'version': '2.8.3', 'type': 'deb'}",
+      "{'name': 'apt-utils', 'version': '2.8.3', 'type': 'deb'}",
+      "{'name': 'aptdaemon', 'version': '1.1.1+bzr982-0ubuntu44', 'type': 'deb'}",
+      "{'name': 'aptdaemon-data', 'version': '1.1.1+bzr982-0ubuntu44', 'type': 'deb'}",
+      "{'name': 'aptitude', 'version': '0.8.13-5ubuntu5', 'type': 'deb'}",
+      "{'name': 'aptitude-common', 'version': '0.8.13-5ubuntu5', 'type': 'deb'}",
+      "{'name': 'aspell', 'version': '0.60.8.1-1build1', 'type': 'deb'}",
+      "{'name': 'aspell-en', 'version': '2020.12.07-0-1', 'type': 'deb'}",
+      "{'name': 'at-spi2-common', 'version': '2.52.0-1build1', 'type': 'deb'}",
+      "{'name': 'at-spi2-core', 'version': '2.52.0-1build1', 'type': 'deb'}",
+      "{'name': 'avahi-daemon', 'version': '0.8-13ubuntu6', 'type': 'deb'}",
+      "{'name': 'baobab', 'version': '46.0-1build1', 'type': 'deb'}",
+      "{'name': 'base-files', 'version': '13ubuntu10.2', 'type': 'deb'}",
+      "{'name': 'base-passwd', 'version': '3.6.3build1', 'type': 'deb'}",
+      "{'name': 'bash', 'version': '5.2.21-2ubuntu4', 'type': 'deb'}",
+      "{'name': 'bash-completion', 'version': '1:2.11-8', 'type': 'deb'}",
+      "{'name': 'bc', 'version': '1.07.1-3ubuntu4', 'type': 'deb'}",
+      "{'name': 'bind9-dnsutils', 'version': '1:9.18.30-0ubuntu0.24.04.2', 'type': 'deb'}",
+      "{'name': 'bind9-host', 'version': '1:9.18.30-0ubuntu0.24.04.2', 'type': 'deb'}",
+      "{'name': 'bind9-libs', 'version': '1:9.18.30-0ubuntu0.24.04.2', 'type': 'deb'}",
+      "{'name': 'binutils', 'version': '2.42-4ubuntu2.5', 'type': 'deb'}",
+      "{'name': 'binutils-common', 'version': '2.42-4ubuntu2.5', 'type': 'deb'}",
+      "{'name': 'binutils-x86-64-linux-gnu', 'version': '2.42-4ubuntu2.5', 'type': 'deb'}",
+      "{'name': 'bluez', 'version': '5.72-0ubuntu5.3', 'type': 'deb'}",
+      "{'name': 'bluez-cups', 'version': '5.72-0ubuntu5.3', 'type': 'deb'}",
+      "{'name': 'bluez-obexd', 'version': '5.72-0ubuntu5.3', 'type': 'deb'}",
+      "{'name': 'bolt', 'version': '0.9.7-1', 'type': 'deb'}",
+      "{'name': 'bpfcc-tools', 'version': '0.29.1+ds-1ubuntu7', 'type': 'deb'}",
+      "{'name': 'bpftrace', 'version': '0.20.2-1ubuntu4.3', 'type': 'deb'}",
+      "{'name': 'bridge-utils', 'version': '1.7.1-1ubuntu2', 'type': 'deb'}",
+      "{'name': 'brltty', 'version': '6.6-4ubuntu5', 'type': 'deb'}",
+      "{'name': 'bsdextrautils', 'version': '2.39.3-9ubuntu6.3', 'type': 'deb'}",
+      "{'name': 'bsdutils', 'version': '1:2.39.3-9ubuntu6.3', 'type': 'deb'}",
+      "{'name': 'bubblewrap', 'version': '0.9.0-1ubuntu0.1', 'type': 'deb'}",
+      "{'name': 'build-essential', 'version': '12.10ubuntu1', 'type': 'deb'}",
+      "{'name': 'busybox-initramfs', 'version': '1:1.36.1-6ubuntu3.1', 'type': 'deb'}",
+      "{'name': 'busybox-static', 'version': '1:1.36.1-6ubuntu3.1', 'type': 'deb'}",
+      "{'name': 'bzip2', 'version': '1.0.8-5.1build0.1', 'type': 'deb'}",
+      "{'name': 'ca-certificates', 'version': '20240203', 'type': 'deb'}",
+      "{'name': 'checkpolicy', 'version': '3.5-1', 'type': 'deb'}",
+      "{'name': 'cloud-guest-utils', 'version': '0.33-1', 'type': 'deb'}",
+      "{'name': 'cloud-init', 'version': '25.1.4-0ubuntu0~24.04.1', 'type': 'deb'}",
+      "{'name': 'cmake', 'version': '3.28.3-1build7', 'type': 'deb'}",
+      "{'name': 'cmake-data', 'version': '3.28.3-1build7', 'type': 'deb'}",
+      "{'name': 'code', 'version': '1.102.3-1753759567', 'type': 'deb'}",
+      "{'name': 'colord', 'version': '1.4.7-1build2', 'type': 'deb'}",
+      "{'name': 'colord-data', 'version': '1.4.7-1build2', 'type': 'deb'}",
+      "{'name': 'command-not-found', 'version': '23.04.0', 'type': 'deb'}",
+      "{'name': 'console-setup', 'version': '1.226ubuntu1', 'type': 'deb'}",
+      "{'name': 'console-setup-linux', 'version': '1.226ubuntu1', 'type': 'deb'}",
+      "{'name': 'containerd.io', 'version': '1.7.27-1', 'type': 'deb'}",
+      "{'name': 'coreutils', 'version': '9.4-3ubuntu6', 'type': 'deb'}",
+      "{'name': 'cortex-agent', 'version': '8.8.0.133595', 'type': 'deb'}",
+      "{'name': 'cpio', 'version': '2.15+dfsg-1ubuntu2', 'type': 'deb'}",
+      "{'name': 'cpp', 'version': '4:13.2.0-7ubuntu1', 'type': 'deb'}",
+      "{'name': 'cpp-13', 'version': '13.3.0-6ubuntu2~24.04', 'type': 'deb'}",
+      "{'name': 'cpp-13-x86-64-linux-gnu', 'version': '13.3.0-6ubuntu2~24.04', 'type': 'deb'}",
+      "{'name': 'cpp-x86-64-linux-gnu', 'version': '4:13.2.0-7ubuntu1', 'type': 'deb'}",
+      "{'name': 'cpu-checker', 'version': '0.7-1.3build2', 'type': 'deb'}",
+      "{'name': 'cracklib-runtime', 'version': '2.9.6-5.1build2', 'type': 'deb'}",
+      "{'name': 'cron', 'version': '3.0pl1-184ubuntu2', 'type': 'deb'}",
+      "{'name': 'cron-daemon-common', 'version': '3.0pl1-184ubuntu2', 'type': 'deb'}",
+      "{'name': 'cryptsetup', 'version': '2:2.7.0-1ubuntu4.2', 'type': 'deb'}",
+      "{'name': 'cryptsetup-bin', 'version': '2:2.7.0-1ubuntu4.2', 'type': 'deb'}",
+      "{'name': 'cryptsetup-initramfs', 'version': '2:2.7.0-1ubuntu4.2', 'type': 'deb'}",
+      "{'name': 'cups', 'version': '2.4.7-1.2ubuntu7.3', 'type': 'deb'}",
+      "{'name': 'cups-browsed', 'version': '2.0.0-0ubuntu10.3', 'type': 'deb'}",
+      "{'name': 'cups-bsd', 'version': '2.4.7-1.2ubuntu7.3', 'type': 'deb'}",
+      "{'name': 'cups-client', 'version': '2.4.7-1.2ubuntu7.3', 'type': 'deb'}",
+      "{'name': 'cups-common', 'version': '2.4.7-1.2ubuntu7.3', 'type': 'deb'}",
+      "{'name': 'cups-core-drivers', 'version': '2.4.7-1.2ubuntu7.3', 'type': 'deb'}",
+      "{'name': 'cups-daemon', 'version': '2.4.7-1.2ubuntu7.3', 'type': 'deb'}",
+      "{'name': 'cups-filters', 'version': '2.0.0-0ubuntu4', 'type': 'deb'}",
+      "{'name': 'cups-filters-core-drivers', 'version': '2.0.0-0ubuntu4', 'type': 'deb'}",
+      "{'name': 'cups-ipp-utils', 'version': '2.4.7-1.2ubuntu7.3', 'type': 'deb'}",
+      "{'name': 'cups-pk-helper', 'version': '0.2.6-1ubuntu8', 'type': 'deb'}",
+      "{'name': 'cups-ppdc', 'version': '2.4.7-1.2ubuntu7.3', 'type': 'deb'}"
+    ],
+    "MAC": [
+      "b0:4f:13:05:c6:90",
+      "80:6d:97:56:e5:e3",
+      "80:6d:97:42:4b:c3",
+      "80:6d:97:56:e3:73"
+    ],
+    "port": [
+      {
+        "id": "128.61.144.211:52944",
+        "Protocol": "TCP"
+      },
+      {
+        "id": "127.0.0.1:9392",
+        "Protocol": "TCP"
+      },
+      {
+        "id": "::1:53",
+        "Protocol": "TCP"
+      }
+    ]
+  },
+  "system_info": {
+    "agent_id": "193853668050576",
+    "hostname": "MEL05280D.me.gatech.edu",
+    "os": "Linux",
+    "os_version": "#32~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue Sep  2 14:21:04 UTC 2",
+    "platform": "Linux-6.14.0-32-generic-x86_64-with-glibc2.39",
+    "cpu_count": 36,
+    "memory_total": 134758199296,
+    "interfaces": [
+      {
+        "name": "lo",
+        "ip": "127.0.0.1",
+        "mac": "00:00:00:00:00:00"
+      },
+      {
+        "name": "eno1",
+        "ip": "128.61.144.211",
+        "mac": "b0:4f:13:05:c6:90"
+      }
+    ],
+    "processes": [
+      {
+        "pid": 1,
+        "name": "systemd"
+      },
+      {
+        "pid": 2,
+        "name": "kthreadd"
+      }
+    ]
+  },
+  "collection_timestamp": "2025-10-03T08:06:07.459269"
+}

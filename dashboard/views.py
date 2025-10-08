@@ -24,6 +24,7 @@ from django.db import transaction
 from ipaddress import ip_network
 from pathlib import Path
 import time
+from datetime import timedelta
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 
@@ -1112,7 +1113,7 @@ def network_topology_api(request):
     # Get recent connections to build edges
     recent_connections = NetworkConnection.objects.filter(
         agent__status='online',
-        last_seen__gte=now().replace(hours=-1)  # Last hour
+        last_seen__gte=now() - timedelta(hours=1)  # Last hour
     ).select_related('agent')
 
     # Group connections by source/destination to create flows

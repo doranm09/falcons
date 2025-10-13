@@ -1,0 +1,117 @@
+{
+  "meta": {
+    "format": "dashboard",
+    "input_file": "host_agent/cyber_data_full.json",
+    "host_count": 6
+  },
+  "hosts": [
+    {
+      "host_id": "193853668050576_eno1",
+      "ip": "128.61.144.211",
+      "mac": "b0:4f:13:05:c6:90",
+      "os_family": "Linux",
+      "services": [
+        "dns",
+        "dns",
+        "dns",
+        "dns",
+        "ipp",
+        "ipp",
+        "dns"
+      ],
+      "tags": [],
+      "vlan": null
+    },
+    {
+      "host_id": "193853668050576_enx806d97424bc3",
+      "ip": "10.137.4.115",
+      "mac": "80:6d:97:42:4b:c3",
+      "os_family": "Linux",
+      "services": [
+        "dns",
+        "dns",
+        "dns",
+        "dns",
+        "ipp",
+        "ipp",
+        "dns"
+      ],
+      "tags": [
+        "usb"
+      ],
+      "vlan": null
+    },
+    {
+      "host_id": "193853668050576_virbr0",
+      "ip": "192.168.122.1",
+      "mac": "52:54:00:c0:cb:44",
+      "os_family": "Linux",
+      "services": [
+        "dns",
+        "dns",
+        "dns",
+        "dns",
+        "ipp",
+        "ipp",
+        "dns"
+      ],
+      "tags": [],
+      "vlan": null
+    },
+    {
+      "host_id": "193853668050576_br-50c8324db825",
+      "ip": "172.19.0.1",
+      "mac": "ba:97:22:ad:c4:b8",
+      "os_family": "Linux",
+      "services": [
+        "dns",
+        "dns",
+        "dns",
+        "dns",
+        "ipp",
+        "ipp",
+        "dns"
+      ],
+      "tags": [
+        "docker"
+      ],
+      "vlan": null
+    },
+    {
+      "host_id": "193853668050576_br-8a91549d7ba3",
+      "ip": "172.18.0.1",
+      "mac": "42:91:6a:28:cf:7c",
+      "os_family": "Linux",
+      "services": [
+        "dns",
+        "dns",
+        "dns",
+        "dns",
+        "ipp",
+        "ipp",
+        "dns"
+      ],
+      "tags": [
+        "docker"
+      ],
+      "vlan": null
+    },
+    {
+      "host_id": "193853668050576_docker0",
+      "ip": "172.17.0.1",
+      "mac": "6a:98:bc:19:82:b3",
+      "os_family": "Linux",
+      "services": [
+        "dns",
+        "dns",
+        "dns",
+        "dns",
+        "ipp",
+        "ipp",
+        "dns"
+      ],
+      "tags": [],
+      "vlan": null
+    }
+  ]
+}

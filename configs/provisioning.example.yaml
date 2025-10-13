@@ -1,0 +1,59 @@
+defaults:
+  memory_mb: 2048
+  vcpus: 2
+  vlan: 200
+  ovs_bridge: "br-int"
+  enable_virtio_serial: true
+  base_image_dir: "/var/lib/minimega/images"
+  snapshot_dir: "/var/lib/minimega/snapshots"
+  mm_output_dir: "./out/mm"
+  run_label: "scan-provision"
+  virtio_ports:
+    - "miniccc=ch0"
+    - "telemetry=ch1"
+
+templates:
+  # map by role, OS, or service signature
+  "ubuntu-server":
+    image: "base-ubuntu-22.04.qcow2"
+    memory_mb: 4096
+    vcpus: 2
+  "windows-base":
+    image: "base-win2019.qcow2"
+    memory_mb: 8192
+    vcpus: 4
+  "plc":
+    image: "base-ics-plc.qcow2"
+    memory_mb: 2048
+    vcpus: 1
+
+mapping_rules:
+  # precedence from top to bottom - first match wins
+  - match:
+      os_family: "Linux"
+      services_any: ["ssh", "http"]
+    template: "ubuntu-server"
+  - match:
+      os_family: "Linux"
+      services_any: ["dns"]  # Default Linux systems that show network activity
+    template: "ubuntu-server"
+  - match:
+      os_family: "Linux"  # Fallback for any Linux system
+    template: "ubuntu-server"
+  - match:
+      os_family: "Windows"
+    template: "windows-base"
+  - match:
+      tags_any: ["PLC","RTU"]
+    template: "plc"
+
+networking:
+  # if scan gives VLANs/subnets, respect them; else use defaults
+  reserve_static_ips: true
+  ip_plan:
+    subnet: "10.200.0.0/16"
+    start_offset: 100
+
+safety:
+  require_sudo: true
+  dry_run: true

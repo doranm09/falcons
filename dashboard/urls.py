@@ -41,5 +41,6 @@ urlpatterns = [
 
     # MiniMega Provisioning
     path('minimega/provisions/', views.minimega_provisions, name='minimega_provisions'),
+    path('minimega/deploy/', views.deploy_minimega_script, name='deploy_minimega_script'),
 
 ]

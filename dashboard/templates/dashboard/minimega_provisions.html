@@ -121,6 +121,18 @@
                                             </summary>
                                             <div class="code-block">{{ script.content }}</div>
                                         </details>
+                                        <div class="btn-group" role="group">
+                                            <button class="btn btn-sm btn-success deploy-btn"
+                                                    data-script="{{ script.filename }}"
+                                                    title="Deploy this script">
+                                                <i class="bi bi-play-fill"></i> Deploy
+                                            </button>
+                                            <button class="btn btn-sm btn-warning dry-run-btn"
+                                                    data-script="{{ script.filename }}"
+                                                    title="Dry run this script">
+                                                <i class="bi bi-eye"></i> Dry Run
+                                            </button>
+                                        </div>
                                         <div class="mt-2">
                                             <small class="text-muted">Path: {{ script.filepath }}</small>
                                         </div>
@@ -366,6 +378,88 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Refresh every 30 seconds when page is visible
     setInterval(refreshPage, 30000);
+
+    // Handle script deployment
+    document.querySelectorAll('.deploy-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const scriptFilename = this.getAttribute('data-script');
+            deployScript(scriptFilename, false);
+        });
+    });
+
+    // Handle dry run
+    document.querySelectorAll('.dry-run-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const scriptFilename = this.getAttribute('data-script');
+            deployScript(scriptFilename, true);
+        });
+    });
+
+    function deployScript(scriptFilename, isDryRun) {
+        const action = isDryRun ? 'dry run' : 'deploy';
+
+        if (!confirm(`Are you sure you want to ${action} the script "${scriptFilename}"?`)) {
+            return;
+        }
+
+        // Show loading state
+        const buttons = document.querySelectorAll(`[data-script="${scriptFilename}"]`);
+        buttons.forEach(btn => {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="bi bi-hourglass-split"></i> ' + (isDryRun ? 'Running...' : 'Deploying...');
+        });
+
+        // Send deployment request
+        fetch('/dashboard/minimega/deploy/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken') || ''
+            },
+            body: JSON.stringify({
+                script_filename: scriptFilename,
+                label: 'dashboard-deploy-' + new Date().toISOString().slice(0, 19),
+                dry_run: isDryRun
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`Script ${scriptFilename} ${action} successful!`);
+                // Refresh the page to show updated logs
+                location.reload();
+            } else {
+                alert(`Script ${action} failed: ${data.error || 'Unknown error'}`);
+                buttons.forEach(btn => {
+                    btn.disabled = false;
+                    btn.innerHTML = isDryRun ? '<i class="bi bi-eye"></i> Dry Run' : '<i class="bi bi-play-fill"></i> Deploy';
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert(`Error during ${action}: ${error.message}`);
+            buttons.forEach(btn => {
+                btn.disabled = false;
+                btn.innerHTML = isDryRun ? '<i class="bi bi-eye"></i> Dry Run' : '<i class="bi bi-play-fill"></i> Deploy';
+            });
+        });
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
 });
 </script>
 {% endblock %}

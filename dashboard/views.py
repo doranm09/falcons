@@ -9,7 +9,7 @@ from .tasks import scan_network_task, launch_openvas_scan_task
 from celery.result import AsyncResult
 from .models import Node, Link
 from .utils import dijkstra, list_interfaces
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_POST
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
 from django.http import JsonResponse
@@ -1243,3 +1243,64 @@ def minimega_provisions(request):
     }
 
     return render(request, 'dashboard/minimega_provisions.html', context)
+
+
+@csrf_exempt
+def deploy_minimega_script(request):
+    """Deploy a MiniMega script by executing it."""
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    script_filename = data.get("script_filename")
+    label = data.get("label", "dashboard-deploy")
+    dry_run = data.get("dry_run", False)
+
+    if not script_filename:
+        return JsonResponse({"error": "script_filename is required"}, status=400)
+
+    # Security: validate script filename
+    from pathlib import Path
+    output_base = Path(settings.BASE_DIR) / "out"
+    mm_scripts_dir = output_base / "mm"
+    script_path = (mm_scripts_dir / script_filename).resolve()
+
+    # Ensure script is within expected directory
+    if not str(script_path).startswith(str(mm_scripts_dir.resolve())):
+        return JsonResponse({"error": "Invalid script path"}, status=400)
+
+    if not script_path.exists():
+        return JsonResponse({"error": f"Script {script_filename} not found"}, status=404)
+
+    try:
+        # Use the MiniMegaRunner to execute the script
+        from ..provisioning.executor.run_minimega import MiniMegaRunner
+        from configs.provisioning import load_config
+
+        config = load_config()
+        runner = MiniMegaRunner(config)
+        result = runner.run_script(str(script_path), label, dry_run)
+
+        if result["success"]:
+            # Refresh the page data after successful deployment
+            request._messages = []
+            messages.success(request, f"Script {script_filename} deployed successfully")
+            return JsonResponse({
+                "success": True,
+                "message": f"Script {script_filename} deployed successfully",
+                "result": result,
+                "timestamp": result["timestamp"]
+            })
+        else:
+            messages.error(request, f"Script deployment failed: {result.get('stderr', 'Unknown error')}")
+            return JsonResponse({
+                "success": False,
+                "error": f"Deployment failed: {result.get('stderr', 'Unknown error')}",
+                "result": result
+            })
+
+    except Exception as e:
+        error_msg = f"Error deploying script: {str(e)}"
+        print(error_msg)
+        return JsonResponse({"error": error_msg}, status=500)

@@ -39,4 +39,7 @@ urlpatterns = [
     path('network/connections/', views.network_connections_api, name='network_connections_api'),
     path('network/topology/', views.network_topology_api, name='network_topology_api'),
 
+    # MiniMega Provisioning
+    path('minimega/provisions/', views.minimega_provisions, name='minimega_provisions'),
+
 ]

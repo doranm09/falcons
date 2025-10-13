@@ -1146,3 +1146,100 @@ def network_topology_api(request):
         'edges': edges,
         'timestamp': now().strftime('%Y-%m-%d %H:%M:%S')
     })
+
+
+# -----------------------------
+# MiniMega Provisioning Views
+# -----------------------------
+@require_GET
+def minimega_provisions(request):
+    """View for displaying MiniMega VM provisioning status and scripts."""
+    import os
+    from pathlib import Path
+
+    # Directories to check
+    output_base = Path(settings.BASE_DIR) / "out"
+    mm_scripts_dir = output_base / "mm"
+    state_dir = output_base / "state"
+    runs_dir = output_base / "runs"
+
+    # Get minimega scripts
+    mm_scripts = []
+    if mm_scripts_dir.exists():
+        for mm_file in mm_scripts_dir.glob("*.mm"):
+            try:
+                content = mm_file.read_text()
+                lines = content.split('\n')
+                vm_count = sum(1 for line in lines if line.strip().startswith('vm launch'))
+
+                mm_scripts.append({
+                    'filename': mm_file.name,
+                    'filepath': str(mm_file),
+                    'content': content[:500] + '...' if len(content) > 500 else content,
+                    'vm_count': vm_count,
+                    'size': len(content),
+                    'created': datetime.fromtimestamp(mm_file.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+                })
+            except Exception as e:
+                print(f"Error reading {mm_file}: {e}")
+
+    # Sort by creation time (newest first)
+    mm_scripts.sort(key=lambda x: x['created'], reverse=True)
+
+    # Get provisioning inventory
+    inventory = {}
+    inventory_file = state_dir / "inventory.json"
+    if inventory_file.exists():
+        try:
+            import json
+            with open(inventory_file, 'r') as f:
+                inventory = json.load(f)
+        except Exception as e:
+            print(f"Error reading inventory: {e}")
+
+    # Flatten inventory for template
+    provisioned_runs = []
+    for run_label, runs in inventory.items():
+        for run in runs:
+            run_data = run.copy()
+            run_data['label'] = run_label
+            provisioned_runs.append(run_data)
+
+    # Sort runs by timestamp
+    provisioned_runs.sort(key=lambda x: x['timestamp'], reverse=True)
+
+    # Get execution logs
+    execution_logs = []
+    if runs_dir.exists():
+        for log_file in runs_dir.glob("*.json"):
+            try:
+                import json
+                with open(log_file, 'r') as f:
+                    log_data = json.load(f)
+
+                execution_logs.append({
+                    'filename': log_file.name,
+                    'filepath': str(log_file),
+                    'data': log_data,
+                    'success': log_data.get('success', False),
+                    'label': log_data.get('label', 'unknown'),
+                    'timestamp': log_data.get('timestamp', ''),
+                    'exit_code': log_data.get('exit_code', None)
+                })
+            except Exception as e:
+                print(f"Error reading execution log {log_file}: {e}")
+
+    # Sort logs by timestamp
+    execution_logs.sort(key=lambda x: x['timestamp'], reverse=True)
+
+    context = {
+        'mm_scripts': mm_scripts,
+        'provisioned_runs': provisioned_runs,
+        'execution_logs': execution_logs,
+        'total_scripts': len(mm_scripts),
+        'total_runs': len(provisioned_runs),
+        'total_logs': len(execution_logs),
+        'timestamp': now().timestamp()
+    }
+
+    return render(request, 'dashboard/minimega_provisions.html', context)

@@ -1,0 +1,371 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+<style>
+.mm-script-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+    border-left: 4px solid #007bff;
+}
+.mm-script-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,123,255,0.3);
+}
+
+.run-card {
+    border-left: 4px solid #28a745;
+}
+
+.execution-log-card {
+    border-left: 4px solid #ffc107;
+}
+
+.code-block {
+    background-color: #f8f9fa;
+    color: #212529;
+    font-family: 'Courier New', monospace;
+    font-size: 0.875rem;
+    padding: 1rem;
+    border-radius: 0.375rem;
+    border: 1px solid #dee2e6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.status-badge {
+    font-size: 0.75rem;
+}
+
+.stats-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+</style>
+
+<div class="container-fluid p-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="mb-4">
+                <i class="bi bi-hdd-network"></i> MiniMega VM Provisioning
+            </h2>
+            <p class="text-muted">Monitor and manage Minimega VM provisioning scripts, execution logs, and inventory state.</p>
+        </div>
+    </div>
+
+    <!-- Statistics Row -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card stats-card">
+                <div class="card-body text-center">
+                    <h3 class="card-title mb-2">{{ total_scripts }}</h3>
+                    <p class="mb-0">MiniMega Scripts</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card">
+                <div class="card-body text-center">
+                    <h3 class="card-title mb-2">{{ total_runs }}</h3>
+                    <p class="mb-0">Provisioned Runs</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card">
+                <div class="card-body text-center">
+                    <h3 class="card-title mb-2">{{ total_logs }}</h3>
+                    <p class="mb-0">Execution Logs</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card">
+                <div class="card-body text-center">
+                    <h3 class="card-title mb-2">{{ timestamp|date:"m/d/Y H:i" }}</h3>
+                    <p class="mb-0">Last Updated</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MiniMega Scripts Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-file-earmark-code"></i> MiniMega Scripts
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if mm_scripts %}
+                        <div class="row">
+                            {% for script in mm_scripts %}
+                            <div class="col-md-6 col-lg-4 mb-3">
+                                <div class="card h-100 mm-script-card">
+                                    <div class="card-body">
+                                        <h6 class="card-title">
+                                            <i class="bi bi-file-earmark-code"></i> {{ script.filename }}
+                                        </h6>
+                                        <p class="card-text">
+                                            <small class="text-muted">
+                                                Created: {{ script.created }}<br>
+                                                VMs: {{ script.vm_count }} | Size: {{ script.size }} bytes
+                                            </small>
+                                        </p>
+                                        <details>
+                                            <summary class="btn btn-sm btn-outline-primary mb-2">
+                                                <i class="bi bi-eye"></i> View Script
+                                            </summary>
+                                            <div class="code-block">{{ script.content }}</div>
+                                        </details>
+                                        <div class="mt-2">
+                                            <small class="text-muted">Path: {{ script.filepath }}</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="text-center py-4">
+                            <i class="bi bi-file-earmark-x display-4 text-muted"></i>
+                            <p class="mt-2 text-muted">No MiniMega scripts found in output directory.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Provisioned Runs Section -->
+    {% if provisioned_runs %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-check-circle"></i> Provisioned VM Inventory
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Run Label</th>
+                                    <th>Timestamp</th>
+                                    <th>VMs Count</th>
+                                    <th>VM Names</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for run in provisioned_runs %}
+                                <tr>
+                                    <td>{{ run.label }}</td>
+                                    <td>{{ run.timestamp|date:"m/d/Y H:i" }}</td>
+                                    <td>
+                                        <span class="badge bg-info">{{ run.vms|length }}</span>
+                                    </td>
+                                    <td>
+                                        {% for vm in run.vms|slice:":3" %}
+                                            <code class="me-1">{{ vm.name }}</code>
+                                        {% endfor %}
+                                        {% if run.vms|length > 3 %}
+                                            <small class="text-muted">+{{ run.vms|length|add:"-3" }} more...</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#vmDetailsModal" data-run="{{ forloop.counter }}">
+                                            <i class="bi bi-info-circle"></i> Details
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Execution Logs Section -->
+    {% if execution_logs %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">
+                        <i class="bi bi-journal-text"></i> Execution Logs
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        {% for log in execution_logs %}
+                        <div class="col-md-6 col-lg-4 mb-3">
+                            <div class="card h-100 execution-log-card">
+                                <div class="card-body">
+                                    <h6 class="card-title">
+                                        <i class="bi bi-journal-text"></i> {{ log.filename }}
+                                    </h6>
+                                    <p class="card-text">
+                                        <small class="text-muted">
+                                            Label: {{ log.label }}<br>
+                                            Timestamp: {{ log.timestamp|date:"m/d/Y H:i" }}<br>
+                                            Status: <span class="status-badge badge bg-{% if log.success %}success{% else %}danger{% endif %}">{{ log.success|yesno:"Success,Failed" }}</span><br>
+                                            Exit Code: {{ log.exit_code|default:"N/A" }}
+                                        </small>
+                                    </p>
+                                    <details>
+                                        <summary class="btn btn-sm btn-outline-warning mb-2">
+                                            <i class="bi bi-eye"></i> View Log Details
+                                        </summary>
+                                        <div class="small">
+                                            <strong>Script:</strong> {{ log.data.mm_file|default:"N/A" }}<br>
+                                            <strong>Duration:</strong> {% if log.data.commands %}{{ log.data.commands|length }} commands{% else %}N/A{% endif %}<br>
+                                            {% if log.data.stdout %}
+                                                <strong>Output:</strong>
+                                                <div class="code-block">{{ log.data.stdout|truncatechars:200 }}</div>
+                                            {% endif %}
+                                            {% if log.data.stderr %}
+                                                <strong>Errors:</strong>
+                                                <div class="text-danger">{{ log.data.stderr|truncatechars:200 }}</div>
+                                            {% endif %}
+                                        </div>
+                                    </details>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Information Panel -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-info-circle"></i> MiniMega Provisioning Info
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>MiniMega Script Generation</h6>
+                            <ul class="list-unstyled">
+                                <li><i class="bi bi-check-circle text-success"></i> Scripts generated in <code>out/mm/</code> directory</li>
+                                <li><i class="bi bi-check-circle text-success"></i> Each script contains VM launch commands</li>
+                                <li><i class="bi bi-check-circle text-success"></i> Automatic timestamp-based naming</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>State Management</h6>
+                            <ul class="list-unstyled">
+                                <li><i class="bi bi-check-circle text-success"></i> Inventory stored in <code>out/state/inventory.json</code></li>
+                                <li><i class="bi bi-check-circle text-success"></i> Execution logs in <code>out/runs/</code> directory</li>
+                                <li><i class="bi bi-check-circle text-success"></i> Support for run teardown and cleanup</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- VM Details Modal -->
+<div class="modal fade" id="vmDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">VM Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="vmDetailsContent">
+                <!-- Content will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle VM details modal
+    const vmDetailsModal = document.getElementById('vmDetailsModal');
+    const vmDetailsContent = document.getElementById('vmDetailsContent');
+
+    vmDetailsModal.addEventListener('show.bs.modal', function(event) {
+        const button = event.relatedTarget;
+        const runIndex = button.getAttribute('data-run') - 1; // Convert to 0-based index
+        const provisionedRuns = JSON.parse('{{ provisioned_runs|escapejs }}');
+
+        if (provisionedRuns && provisionedRuns[runIndex]) {
+            const run = provisionedRuns[runIndex];
+            let content = `
+                <h6>Run Label: <code>${run.label}</code></h6>
+                <p><strong>Timestamp:</strong> ${new Date(run.timestamp).toLocaleString()}</p>
+                <p><strong>VMs Count:</strong> ${run.vms ? run.vms.length : 0}</p>
+                <hr>
+                <h6>VM Details:</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Template</th>
+                                <th>Memory (MB)</th>
+                                <th>vCPUs</th>
+                                <th>VLAN</th>
+                                <th>IP</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+
+            if (run.vms) {
+                run.vms.forEach(function(vm) {
+                    content += `
+                        <tr>
+                            <td><code>${vm.name || 'N/A'}</code></td>
+                            <td>${vm.template || 'N/A'}</td>
+                            <td>${vm.memory_mb || 'N/A'}</td>
+                            <td>${vm.vcpus || 'N/A'}</td>
+                            <td>${vm.vlan || 'N/A'}</td>
+                            <td>${vm.ip || 'N/A'}</td>
+                        </tr>`;
+                });
+            }
+
+            content += `
+                        </tbody>
+                    </table>
+                </div>`;
+
+            vmDetailsContent.innerHTML = content;
+        }
+    });
+
+    // Auto-refresh functionality (optional)
+    function refreshPage() {
+        if (document.visibilityState === 'visible') {
+            location.reload();
+        }
+    }
+
+    // Refresh every 30 seconds when page is visible
+    setInterval(refreshPage, 30000);
+});
+</script>
+{% endblock %}

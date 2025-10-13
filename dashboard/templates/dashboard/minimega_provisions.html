@@ -127,6 +127,11 @@
                                                     title="Deploy this script">
                                                 <i class="bi bi-play-fill"></i> Deploy
                                             </button>
+                                            <button class="btn btn-sm btn-primary stream-deploy-btn"
+                                                    data-script="{{ script.filename }}"
+                                                    title="Deploy with live streaming console">
+                                                <i class="bi bi-play-circle"></i> Stream
+                                            </button>
                                             <button class="btn btn-sm btn-warning dry-run-btn"
                                                     data-script="{{ script.filename }}"
                                                     title="Dry run this script">
@@ -387,6 +392,14 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Handle streaming deploy
+    document.querySelectorAll('.stream-deploy-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const scriptFilename = this.getAttribute('data-script');
+            streamDeployScript(scriptFilename);
+        });
+    });
+
     // Handle dry run
     document.querySelectorAll('.dry-run-btn').forEach(btn => {
         btn.addEventListener('click', function() {
@@ -394,6 +407,130 @@ document.addEventListener('DOMContentLoaded', function() {
             deployScript(scriptFilename, true);
         });
     });
+
+    function streamDeployScript(scriptFilename) {
+        if (!confirm(`Start streaming deployment of "${scriptFilename}"?`)) {
+            return;
+        }
+
+        // Disable all buttons for this script
+        const scriptButtons = document.querySelectorAll(`[data-script="${scriptFilename}"]`);
+        scriptButtons.forEach(btn => {
+            btn.disabled = true;
+        });
+
+        // Create a streaming console modal
+        const streamModal = document.createElement('div');
+        streamModal.className = 'modal fade show';
+        streamModal.style.display = 'block';
+        streamModal.innerHTML = `
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="bi bi-play-circle"></i> Streaming: ${scriptFilename}
+                        </h5>
+                        <button type="button" class="btn-close" onclick="closeStreamModal()" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="bg-dark text-light p-3 rounded" style="font-family: 'Courier New', monospace; font-size: 0.875rem;">
+                            <div id="console-output" style="max-height: 400px; overflow-y: auto; white-space: pre-wrap;"></div>
+                            <div id="status-indicator" class="text-info">Connecting to stream...</div>
+                        </div>
+                        <div class="mt-3">
+                            <small class="text-muted">
+                                <i class="bi bi-info-circle"></i>
+                                Console output will appear here in real-time as commands execute.
+                            </small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="closeStreamModal()">Close</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-backdrop fade show" onclick="closeStreamModal()"></div>
+        `;
+        document.body.appendChild(streamModal);
+
+        // Connect to SSE stream
+        const eventSource = new EventSource(`/dashboard/minimega/stream/?script_filename=${encodeURIComponent(scriptFilename)}&label=stream-${new Date().toISOString().slice(0, 19)}`);
+        const consoleOutput = document.getElementById('console-output');
+        const statusIndicator = document.getElementById('status-indicator');
+
+        eventSource.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+
+                if (data.status === 'started') {
+                    consoleOutput.innerHTML += `[${data.timestamp}] Starting deployment...\n`;
+                    statusIndicator.textContent = `Running script... (${data.total_commands || 0} commands)`;
+                } else if (data.status === 'counted') {
+                    statusIndicator.textContent = `Executing commands (0/${data.total_commands})`;
+                } else if (data.type === 'command') {
+                    consoleOutput.innerHTML += `[${new Date().toLocaleTimeString()}] Executing: ${data.command}\n`;
+                } else if (data.type === 'stdout') {
+                    consoleOutput.innerHTML += data.line + '\n';
+                } else if (data.type === 'stderr') {
+                    consoleOutput.innerHTML += '<span style="color: #dc3545;">' + data.line + '</span>\n';
+                } else if (data.type === 'command_complete') {
+                    statusIndicator.textContent = `Command ${data.command} completed (exit: ${data.exit_code})`;
+                } else if (data.status === 'completed') {
+                    const successText = data.success ? 'SUCCESS' : 'FAILED';
+                    consoleOutput.innerHTML += `\n[${new Date().toLocaleTimeString()}] DEPLOYMENT ${successText} - ${data.total_commands} commands executed\n`;
+                    statusIndicator.innerHTML = `<span class="text-${data.success ? 'success' : 'danger'}">${successText.toLowerCase()}</span>`;
+                } else if (data.error) {
+                    consoleOutput.innerHTML += `<span style="color: #dc3545;">ERROR: ${data.error}</span>\n`;
+                    statusIndicator.innerHTML = '<span class="text-danger">Error</span>';
+                } else if (data.done) {
+                    eventSource.close();
+                    if (data.success) {
+                        statusIndicator.innerHTML = '<span class="text-success">Completed successfully</span>';
+                        setTimeout(closeStreamModal, 3000); // Auto-close after 3 seconds
+                    } else {
+                        statusIndicator.innerHTML = '<span class="text-danger">Completed with errors</span>';
+                    }
+                    // Refresh the page to update logs
+                    setTimeout(() => location.reload(), 2000);
+                }
+
+                // Auto-scroll to bottom
+                consoleOutput.scrollTop = consoleOutput.scrollHeight;
+            } catch (e) {
+                console.error('Error parsing SSE data:', e);
+                consoleOutput.innerHTML += `[ERROR parsing data: ${event.data}]\n`;
+            }
+        };
+
+        eventSource.onerror = function(error) {
+            console.error('SSE error:', error);
+            statusIndicator.innerHTML = '<span class="text-danger">Connection lost</span>';
+            eventSource.close();
+            setTimeout(() => {
+                if (confirm('Connection lost. Refresh page to see results?')) {
+                    location.reload();
+                }
+            }, 1000);
+        };
+
+        // Store references for cleanup
+        window.currentStream = { modal: streamModal, eventSource: eventSource };
+    }
+
+    function closeStreamModal() {
+        if (window.currentStream) {
+            if (window.currentStream.eventSource) {
+                window.currentStream.eventSource.close();
+            }
+            if (window.currentStream.modal) {
+                document.body.removeChild(window.currentStream.modal);
+            }
+            window.currentStream = null;
+        }
+    }
+
+    // Make close function global
+    window.closeStreamModal = closeStreamModal;
 
     function deployScript(scriptFilename, isDryRun) {
         const action = isDryRun ? 'dry run' : 'deploy';
@@ -403,8 +540,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         // Show loading state
-        const buttons = document.querySelectorAll(`[data-script="${scriptFilename}"]`);
-        buttons.forEach(btn => {
+        const scriptButtons = document.querySelectorAll(`[data-script="${scriptFilename}"]`);
+        scriptButtons.forEach(btn => {
             btn.disabled = true;
             btn.innerHTML = '<i class="bi bi-hourglass-split"></i> ' + (isDryRun ? 'Running...' : 'Deploying...');
         });
@@ -430,7 +567,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 location.reload();
             } else {
                 alert(`Script ${action} failed: ${data.error || 'Unknown error'}`);
-                buttons.forEach(btn => {
+                scriptButtons.forEach(btn => {
                     btn.disabled = false;
                     btn.innerHTML = isDryRun ? '<i class="bi bi-eye"></i> Dry Run' : '<i class="bi bi-play-fill"></i> Deploy';
                 });
@@ -439,7 +576,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .catch(error => {
             console.error('Error:', error);
             alert(`Error during ${action}: ${error.message}`);
-            buttons.forEach(btn => {
+            scriptButtons.forEach(btn => {
                 btn.disabled = false;
                 btn.innerHTML = isDryRun ? '<i class="bi bi-eye"></i> Dry Run' : '<i class="bi bi-play-fill"></i> Deploy';
             });

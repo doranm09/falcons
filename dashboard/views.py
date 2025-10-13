@@ -9,6 +9,7 @@ from .tasks import scan_network_task, launch_openvas_scan_task
 from celery.result import AsyncResult
 from .models import Node, Link
 from .utils import dijkstra, list_interfaces
+from .sse import StreamingMiniMegaRunner, stream_minimega_execution, stream_minimega_execution_async
 from django.views.decorators.http import require_GET, require_POST
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder

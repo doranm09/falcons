@@ -422,7 +422,45 @@ def handle_command(cmd):
         result = subprocess.run(["ping", "-c", "2", target], capture_output=True, text=True)
         return_output(cmd_id, result.stdout)
     elif action == "scan":
-        return_output(cmd_id, "scan complete (stub)")
+        cidr = parameters.get("cidr")
+        max_hosts = parameters.get("max_hosts")
+        scan_id = parameters.get("scan_id")
+        if not cidr:
+            return_output(cmd_id, "scan failed: cidr missing")
+            return
+
+        try:
+            import ipaddress
+            hosts = []
+            count = 0
+            max_hosts_val = int(max_hosts) if max_hosts else None
+            for ip in ipaddress.ip_network(cidr, strict=False).hosts():
+                if max_hosts_val and count >= max_hosts_val:
+                    break
+                result = subprocess.run(["ping", "-c", "1", "-W", "1", str(ip)], capture_output=True, text=True)
+                if result.returncode == 0:
+                    latency = None
+                    for line in result.stdout.splitlines():
+                        if "time=" in line:
+                            try:
+                                latency = float(line.split("time=")[-1].split()[0])
+                            except Exception:
+                                latency = None
+                    hosts.append({"ip": str(ip), "latency_ms": latency})
+                count += 1
+
+            payload = {
+                "agent_id": AGENT_ID,
+                "cidr": cidr,
+                "scan_id": scan_id,
+                "hosts": hosts,
+            }
+            scan_url = f"{SERVER_URL.rstrip('/')}/agent/scan_results/"
+            res = http_post_json(scan_url, payload)
+            status = res.status_code if res else "failed"
+            return_output(cmd_id, f"scan complete: {len(hosts)} hosts (status={status})")
+        except Exception as e:
+            return_output(cmd_id, f"scan failed: {e}")
     elif action == "sbom":
         sbom_format = parameters.get("format") or "cyclonedx"
         packages = collect_packages()

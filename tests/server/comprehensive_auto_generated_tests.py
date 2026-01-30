@@ -143,7 +143,8 @@ class TestDashboardscanhistoryEndpoint:
         """Test dashboard:scan-history history view."""
         response = client.get(reverse("dashboard:scan-history"))
         assert response.status_code == 200
-        assert "dashboard/history.html" in [t.name for t in response.templates]
+        data = response.json()
+        assert "history" in data
 
 class TestAgent_MonitoringEndpoint:
     """Auto-generated test for agent_monitoring endpoint."""

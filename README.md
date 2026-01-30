@@ -21,6 +21,7 @@ This project is a full-stack Django platform that simulates and secures networke
 - IP discovery and latency-weighted graph generation
 - Dijkstra-based shortest path calculation
 - Versioned scans with historical view
+- Ping sweep, Nmap discovery, and agent-based scanning (dedicated Network Scans view)
 
 ### 2. Vulnerability Assessment
 - CVE ingestion from NVD (via keyword or CPE)
@@ -64,11 +65,23 @@ sudo chmod -R u+rwX,go-rwx ./data/gvm-logs
 ### 1. Build & Run the Platform
 
 ```bash
+cp .env.example .env
 docker-compose up --build
 ```
 
 - Web app: http://localhost:8000
 - Sniffer API: http://localhost:5050 or http://sniffer:5000 internally
+
+If you previously ran containers, rebuild to pick up dependency changes:
+```bash
+docker-compose up --build --force-recreate
+```
+
+### Production Compose
+For a production-like deployment (no bind mounts), use:
+```bash
+docker-compose -f docker-compose.prod.yml up --build -d
+```
 
 ---
 
@@ -166,6 +179,80 @@ Confirmation tokens required by the UI:
 - Kill: `KILL_MINIMEGA`
 
 You must be logged in as a staff user to use the reset/kill controls.
+
+---
+
+## Network Scans
+
+All scan workflows live under **Vulnerability Assessment → Network Scans**:
+- **Ping Sweep** (fast discovery)
+- **Nmap Discovery** (more accurate host discovery)
+- **Agent Scan** (distributed discovery from a selected host agent)
+
+### Agent Scan Flow
+1. Select agent + CIDR in the Network Scans view.
+2. The dashboard issues a command to that agent.
+3. The agent performs a ping sweep and posts results back to `/agent/scan_results/`.
+
+### Nmap Requirements
+Nmap runs inside the web/celery containers. If you pull a fresh build, it’s already included.  
+If you modify Dockerfiles, rebuild the images:
+```bash
+docker-compose up --build --force-recreate
+```
+
+---
+
+## OpenVAS / GVM Integration
+
+The repo includes a Greenbone Community Edition stack at:
+```
+greenbone-community-container/
+```
+
+### Quick Start (OpenVAS)
+```bash
+sudo mkdir -p /opt/gvm-run
+sudo chmod 777 /opt/gvm-run
+docker compose -f greenbone-community-container/docker-compose.yml up -d
+```
+
+### Configure the Dashboard
+Set these in `.env` (defaults are shown):
+```
+GVM_SOCKET_PATH=/opt/gvm-run/gvmd.sock
+GVM_USER=admin
+GVM_PASS=admin
+GVM_HOST=openvas
+GVM_PORT=9390
+```
+
+The web and celery containers mount `/opt/gvm-run` so GMP over Unix socket works out of the box once GVM is running.
+If you use TLS instead, unset `GVM_SOCKET_PATH` and set `GVM_HOST` + `GVM_PORT`.
+
+---
+
+## OT Testbed Sandbox (Purdue-Style)
+
+This repo includes a multi-zone OT sandbox modeled after the `oscal-pbnc` layout. It creates L0/1–L5 networks,
+explicit conduits, and simple HTTP services with static IPs. It’s intended for functional testing of
+network scans and agent-based discovery.
+
+### Bring Up
+```bash
+docker compose -f docker-compose.yml -f docker-compose.testbed.yml up -d --build
+```
+
+### Tear Down
+```bash
+docker compose -f docker-compose.yml -f docker-compose.testbed.yml down -v
+```
+
+### Example Scan Targets
+- **Ping/Nmap discovery**: `172.30.2.0/24` (L3 zone; web/celery attach here)
+- **Agent scan**: choose the zone agent (e.g., `agent-l35`) and scan `172.30.3.0/24`
+
+Details: `testbed/ot/README.md`
 
 ---
 

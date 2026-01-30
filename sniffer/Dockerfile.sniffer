@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     tcpdump \
     tshark \
     iproute2 \
+    curl \
     && pip install --upgrade pip
 
 # Install Python packages
@@ -18,4 +19,3 @@ WORKDIR /sniffer
 COPY sniffer/ /sniffer/
 
 ENTRYPOINT ["python", "listener_api.py"]
-

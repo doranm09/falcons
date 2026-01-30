@@ -1,0 +1,159 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="row mb-4">
+    <div class="col-12">
+      <h2><i class="bi bi-activity"></i> Network Scans</h2>
+      <p class="text-muted">Run discovery scans and OpenVAS vulnerability scans from a single workspace.</p>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-search"></i> Discovery Scan</h5>
+        </div>
+        <div class="card-body">
+          <form id="scan-form" class="row g-2" method="post">
+            {% csrf_token %}
+            <div class="col-12 col-md-6">
+              <input type="text" class="form-control" name="cidr" placeholder="CIDR (e.g., 192.168.1.0/24)" required>
+            </div>
+            <div class="col-12 col-md-3">
+              <select class="form-select" name="scan_method">
+                <option value="ping" selected>Ping Sweep</option>
+                <option value="nmap">Nmap Discovery</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-auto">
+              <button type="submit" class="btn btn-primary">Start Discovery Scan</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-person-gear"></i> Agent-Based Scan</h5>
+        </div>
+        <div class="card-body">
+          <form id="agent-scan-form" class="row g-2" method="post">
+            {% csrf_token %}
+            <div class="col-12 col-md-4">
+              <select class="form-select" name="agent_id" required>
+                <option value="">Select agent</option>
+                {% for agent in agents %}
+                  <option value="{{ agent.agent_id }}">{{ agent.hostname }} ({{ agent.agent_id }})</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-md-4">
+              <input type="text" class="form-control" name="cidr" placeholder="CIDR (e.g., 192.168.1.0/24)" required>
+            </div>
+            <div class="col-12 col-md-2">
+              <input type="number" min="1" max="1024" class="form-control" name="max_hosts" placeholder="Max hosts">
+            </div>
+            <div class="col-12 col-md-auto">
+              <button type="submit" class="btn btn-outline-primary">Send Agent Scan</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-bug"></i> OpenVAS Vulnerability Scan</h5>
+        </div>
+        <div class="card-body">
+          <form id="vuln-scan-form" class="row g-2" method="post">
+            {% csrf_token %}
+            <div class="col-12 col-md-5">
+              <input type="text" class="form-control" name="vuln_cidr" placeholder="CIDR for OpenVAS (optional)">
+            </div>
+            <div class="col-12 col-md-3">
+              <select class="form-select" name="gvmd_config">
+                <option value="full_and_fast" selected>Full and fast</option>
+                <option value="host_discovery">Host Discovery</option>
+                <option value="system_discovery">System Discovery</option>
+                <option value="base">Base (safe checks)</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-2">
+              <input type="number" min="1" max="64" class="form-control" name="max_hosts" placeholder="Max hosts (default 20)">
+            </div>
+            <div class="col-12 col-md-auto">
+              <button type="submit" id="openvas-start" type="button" class="btn btn-warning">Start OpenVAS Scan</button>
+            </div>
+            <div class="col-12">
+              <div id="scan-status" class="mt-2 small text-muted">Ready.</div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="mb-0">Recent Scan History</h5>
+        <div>
+          <button class="btn btn-sm btn-outline-secondary" id="export-scans">Export CSV</button>
+          <button class="btn btn-sm btn-outline-primary" id="refresh-scans">Refresh</button>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-striped align-middle" id="scan-table">
+          <thead>
+            <tr>
+              <th data-sort="timestamp">Timestamp ↑↓</th>
+              <th data-sort="cidr">CIDR</th>
+              <th data-sort="status">Status</th>
+              <th>Summary</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="scan-history-body">
+            {% for run in scan_history %}
+            <tr data-scan-id="{{ run.id }}">
+              <td>{{ run.timestamp|date:"Y-m-d H:i:s" }}</td>
+              <td>{{ run.cidr }}</td>
+              <td>
+                {% with status=run.status|lower %}
+                <span class="badge bg-{% if status == 'complete' or status == 'completed' %}success{% elif status == 'running' or status == 'in_progress' %}info{% elif status == 'failed' %}danger{% else %}secondary{% endif %}">
+                  {{ run.status }}
+                </span>
+                {% endwith %}
+              </td>
+              <td>{{ run.result_summary|default:"-" }}</td>
+              <td>
+                <div class="btn-group btn-group-sm">
+                  <button class="btn btn-outline-primary action-view-report" {% if not run.report_available %}disabled{% endif %}>Report</button>
+                  <button class="btn btn-outline-secondary action-rescan">Rescan</button>
+                  <button class="btn btn-outline-danger action-cancel" {% if run.status != 'running' %}disabled{% endif %}>Cancel</button>
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5">No scans found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="d-flex justify-content-end gap-2">
+        <button class="btn btn-sm btn-outline-secondary" id="scan-prev">Prev</button>
+        <button class="btn btn-sm btn-outline-secondary" id="scan-next">Next</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="{% static 'js/scan.js' %}"></script>
+{% endblock %}

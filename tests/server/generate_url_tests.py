@@ -12,6 +12,7 @@ from django.test import Client
 from django.urls import reverse, resolve
 from django.http import HttpResponse
 import json
+from unittest.mock import patch
 from dashboard.models import *
 
 
@@ -26,8 +27,17 @@ class TestComprehensiveURLCoverage:
 
         # Check context contains expected data
         assert 'nodes' in response.context
-        assert 'scan_history' in response.context
         assert 'current_processes' in response.context
+        assert 'timestamp' in response.context
+
+    @pytest.mark.django_db
+    def test_network_scans_view(self, client):
+        """Test network_scans: GET /scans/"""
+        response = client.get(reverse('dashboard:network_scans'))
+        assert response.status_code == 200
+        assert 'dashboard/network_scans.html' in [t.name for t in response.templates]
+        assert 'scan_history' in response.context
+        assert 'agents' in response.context
 
     @pytest.mark.django_db
     def test_start_scan_ajax_post_only(self, client):
@@ -36,11 +46,64 @@ class TestComprehensiveURLCoverage:
         response = client.get(reverse('dashboard:start-scan'))
         assert response.status_code == 405
 
-        # POST with valid data
-        response = client.post(reverse('dashboard:start-scan'), {'cidr': '192.168.1.0/24'})
+        with patch('dashboard.views.scan_network_task') as mock_ping, patch('dashboard.views.nmap_discovery_task') as mock_nmap:
+            mock_ping.delay.return_value.id = 'ping-task'
+            mock_nmap.delay.return_value.id = 'nmap-task'
+
+            # POST with default method (ping)
+            response = client.post(reverse('dashboard:start-scan'), {'cidr': '192.168.1.0/24'})
+            assert response.status_code == 200
+            data = json.loads(response.content)
+            assert data['method'] == 'ping'
+            assert data['task_id'] == 'ping-task'
+
+            # POST with nmap method
+            response = client.post(reverse('dashboard:start-scan'), {'cidr': '192.168.1.0/24', 'scan_method': 'nmap'})
+            assert response.status_code == 200
+            data = json.loads(response.content)
+            assert data['method'] == 'nmap'
+            assert data['task_id'] == 'nmap-task'
+
+    @pytest.mark.django_db
+    def test_agent_scan_flow(self, client):
+        """Test agent-based scan start and results ingestion."""
+        agent = AgentStatus.objects.create(agent_id='agent-1', hostname='test-host', ip_address='10.0.0.10')
+
+        start_payload = {
+            'agent_id': 'agent-1',
+            'cidr': '10.0.0.0/24',
+            'max_hosts': 10,
+        }
+        response = client.post(
+            reverse('dashboard:start-agent-scan'),
+            json.dumps(start_payload),
+            content_type='application/json'
+        )
         assert response.status_code == 200
         data = json.loads(response.content)
-        assert 'task_id' in data
+        assert 'scan_id' in data
+        assert 'command_id' in data
+
+        scan = ScanRun.objects.get(id=data['scan_id'])
+        assert scan.scan_type == 'agent'
+
+        assert AgentCommand.objects.filter(id=data['command_id'], agent_id='agent-1', action='scan').exists()
+
+        results_payload = {
+            'agent_id': 'agent-1',
+            'cidr': '10.0.0.0/24',
+            'scan_id': scan.id,
+            'hosts': ['10.0.0.11', '10.0.0.12'],
+        }
+        response = client.post(
+            reverse('dashboard:agent_scan_results'),
+            json.dumps(results_payload),
+            content_type='application/json'
+        )
+        assert response.status_code == 200
+        scan.refresh_from_db()
+        assert scan.status == 'COMPLETE'
+        assert Node.objects.filter(scan_run=scan).count() == 2
 
     @pytest.mark.django_db
     def test_scan_status_view(self, client):

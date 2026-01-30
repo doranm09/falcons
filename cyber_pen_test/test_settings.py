@@ -45,7 +45,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'dashboard'
+    'dashboard',
+    'sliver'
 ]
 
 MIDDLEWARE = [
@@ -132,8 +133,11 @@ STATIC_URL = '/static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Disable Celery for tests
-CELERY_RESULT_BACKEND = None
-CELERY_BROKER_URL = None
+CELERY_BROKER_URL = "memory://"
+CELERY_RESULT_BACKEND = "cache+memory://"
+CELERY_TASK_ALWAYS_EAGER = True
+CELERY_TASK_EAGER_PROPAGATES = True
+CELERY_TASK_STORE_EAGER_RESULT = True
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / "dashboard/static"]

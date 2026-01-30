@@ -1,6 +1,6 @@
 # dashboard/utils.py
 import heapq
-from scapy.all import get_if_list
+import psutil
 
 def dijkstra(nodes, links, start_id):
     graph = {node.id: [] for node in nodes}
@@ -24,4 +24,7 @@ def dijkstra(nodes, links, start_id):
     return distances
 
 def list_interfaces():
-    return get_if_list()
+    try:
+        return list(psutil.net_if_addrs().keys())
+    except Exception:
+        return []

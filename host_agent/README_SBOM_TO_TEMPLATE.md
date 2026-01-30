@@ -283,7 +283,7 @@ python3 host_agent/agent.py cyber --format full --output debug_template.json
 ## Related Documentation
 
 - [README.md](../README.md) - Main project documentation
-- [host_agent/README.md](host_agent/README.md) - Host agent details
+- [README.md](./README.md) - Host agent details
 - [Cyber Threat Intelligence Integration](./cyber_intel.md) - Integration with threat databases
 
 ---

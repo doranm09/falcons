@@ -126,8 +126,8 @@
             <button class="btn btn-outline-info" onclick="window.open('http://127.0.0.1:9392', '_blank')">
               <i class="bi bi-cpu"></i> OpenVAS Scanner
             </button>
-            <button class="btn btn-outline-secondary" onclick="window.location.href='/dashboard/scan/history/'">
-              <i class="bi bi-activity"></i> Scan History
+            <button class="btn btn-outline-primary" onclick="window.location.href='/dashboard/scans/'">
+              <i class="bi bi-activity"></i> Network Scans
             </button>
           </div>
         </div>
@@ -259,10 +259,7 @@
   <!-- Tabs -->
   <ul class="nav nav-tabs" id="dashTabs" role="tablist">
     <li class="nav-item" role="presentation">
-      <button class="nav-link active" id="scans-tab" data-bs-toggle="tab" data-bs-target="#scans" type="button" role="tab">Scans</button>
-    </li>
-    <li class="nav-item" role="presentation">
-      <button class="nav-link" id="nodes-tab" data-bs-toggle="tab" data-bs-target="#nodes" type="button" role="tab">Nodes</button>
+      <button class="nav-link active" id="nodes-tab" data-bs-toggle="tab" data-bs-target="#nodes" type="button" role="tab">Nodes</button>
     </li>
     <li class="nav-item" role="presentation">
       <button class="nav-link" id="vulns-tab" data-bs-toggle="tab" data-bs-target="#vulns" type="button" role="tab">Vulns</button>
@@ -270,102 +267,8 @@
   </ul>
 
   <div class="tab-content pt-3">
-    <!-- Scans -->
-    <div class="tab-pane fade show active" id="scans" role="tabpanel">
-      <div class="card mb-4">
-        <div class="card-body">
-          <form id="scan-form" class="row g-2" method="post">
-            {% csrf_token %}
-            <div class="col-12 col-md-auto">
-              <input type="text" class="form-control" name="cidr" placeholder="CIDR (e.g., 192.168.1.0/24)" required>
-            </div>
-            <div class="col-6 col-md-auto">
-              <button type="submit" class="btn btn-primary">Start Ping Scan</button>
-            </div>
-          </form>
-          <!-- OpenVAS-->
-          <form id="vuln-scan-form" class="row g-2" method="post">
-            {% csrf_token %}
-            <div class="col-12 mt-2"></div>
-            <div class="col-12 col-md-auto">
-              <input type="text" class="form-control" name="vuln_cidr" placeholder="CIDR for OpenVAS (optional)">
-            </div>
-            <div class="col-6 col-md-auto">
-              <select class="form-select" name="gvmd_config">
-                <option value="Full and fast" selected>Full and fast</option>
-                <option value="Full and fast ultimate">Full and fast ultimate</option>
-                <option value="Host Discovery">Host Discovery</option>
-              </select>
-            </div>
-            <div class="col-6 col-md-auto">
-              <input type="number" min="1" max="64" class="form-control" name="max_hosts" placeholder="Max hosts (default 20)">
-            </div>
-            <div class="col-12 col-md-auto">
-              <button type="submit" id="openvas-start" type="button" class="btn btn-warning">Start OpenVAS Scan</button>
-            </div>
-
-            <div class="col-12">
-              <div id="scan-status" class="mt-2 small text-muted">Ready.</div>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <h5 class="mb-0">Recent Scan History</h5>
-        <div>
-          <button class="btn btn-sm btn-outline-secondary" id="export-scans">Export CSV</button>
-          <button class="btn btn-sm btn-outline-primary" id="refresh-scans">Refresh</button>
-        </div>
-      </div>
-
-      <div class="table-responsive">
-        <table class="table table-striped align-middle" id="scan-table">
-          <thead>
-            <tr>
-              <th data-sort="timestamp">Timestamp ↑↓</th>
-              <th data-sort="cidr">CIDR</th>
-              <th data-sort="status">Status</th>
-              <th>Summary</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="scan-history-body">
-            {% for run in scan_history %}
-            <tr data-scan-id="{{ run.id }}">
-              <td>{{ run.timestamp|date:"Y-m-d H:i:s" }}</td>
-              <td>{{ run.cidr }}</td>
-              <td>
-                {% with status=run.status|lower %}
-                <span class="badge bg-{% if status == 'complete' or status == 'completed' %}success{% elif status == 'running' or status == 'in_progress' %}info{% elif status == 'failed' %}danger{% else %}secondary{% endif %}">
-                  {{ run.status }}
-                </span>
-                {% endwith %}
-              </td>
-              <td>{{ run.result_summary|default:"-" }}</td>
-              <td>
-                <div class="btn-group btn-group-sm">
-                  <button class="btn btn-outline-primary action-view-report" {% if not run.report_available %}disabled{% endif %}>Report</button>
-                  <button class="btn btn-outline-secondary action-rescan">Rescan</button>
-                  <button class="btn btn-outline-danger action-cancel" {% if run.status != 'running' %}disabled{% endif %}>Cancel</button>
-                </div>
-              </td>
-            </tr>
-            {% empty %}
-            <tr><td colspan="5">No scans found.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-
-      <div class="d-flex justify-content-end gap-2">
-        <button class="btn btn-sm btn-outline-secondary" id="scan-prev">Prev</button>
-        <button class="btn btn-sm btn-outline-secondary" id="scan-next">Next</button>
-      </div>
-    </div>
-
     <!-- Nodes -->
-    <div class="tab-pane fade" id="nodes" role="tabpanel">
+    <div class="tab-pane fade show active" id="nodes" role="tabpanel">
       <div class="d-flex justify-content-between align-items-center mb-2">
         <h5 class="mb-0">Discovered Nodes</h5>
         <div class="d-flex gap-2">

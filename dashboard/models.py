@@ -16,6 +16,8 @@ SCAN_STATUS_CHOICES = [
 SCAN_TYPE_CHOICES = [
     ("ping", "Ping"),
     ("openvas", "OpenVAS"),
+    ("nmap", "Nmap"),
+    ("agent", "Agent"),
 ]
 
 SEVERITY_CHOICES = [

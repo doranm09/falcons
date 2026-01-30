@@ -1,0 +1,602 @@
+services:
+  web:
+    networks:
+      - default
+      - l3
+
+  celery:
+    networks:
+      - default
+      - l3
+
+  field-sensor:
+    image: python:3.11-slim
+    command: ["python", "/app/service.py"]
+    environment:
+      SERVICE_NAME: field-sensor
+      SERVICE_ROLE: sensor
+      SERVICE_ZONE: L0/1
+      SERVICE_PORT: "15020"
+      PROTOCOL_NAME: "fieldbus"
+      PROTOCOL_RATE: "10/s"
+      CONFIG_BASELINE: "field-v1"
+      LOG_PATH: /data/field-sensor.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/services:/app
+      - ./testbed/ot/data:/data
+    networks:
+      l01:
+        ipv4_address: 172.30.0.10
+
+  field-actuator:
+    image: python:3.11-slim
+    command: ["python", "/app/service.py"]
+    environment:
+      SERVICE_NAME: field-actuator
+      SERVICE_ROLE: actuator
+      SERVICE_ZONE: L0/1
+      SERVICE_PORT: "15021"
+      PROTOCOL_NAME: "fieldbus"
+      PROTOCOL_RATE: "10/s"
+      CONFIG_BASELINE: "field-v1"
+      LOG_PATH: /data/field-actuator.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/services:/app
+      - ./testbed/ot/data:/data
+    networks:
+      l01:
+        ipv4_address: 172.30.0.11
+
+  rtu-io:
+    image: python:3.11-slim
+    command: ["python", "/app/service.py"]
+    environment:
+      SERVICE_NAME: rtu-io
+      SERVICE_ROLE: rtu
+      SERVICE_ZONE: L0/1
+      SERVICE_PORT: "15023"
+      PROTOCOL_NAME: "fieldbus"
+      PROTOCOL_RATE: "10/s"
+      CONFIG_BASELINE: "rtu-v1"
+      LOG_PATH: /data/rtu-io.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/services:/app
+      - ./testbed/ot/data:/data
+    networks:
+      l01:
+        ipv4_address: 172.30.0.12
+
+  collector-l01:
+    image: python:3.11-slim
+    command: ["python", "/collector/collector.py"]
+    environment:
+      COLLECTOR_ZONE: "L0/1"
+      INVENTORY_PATH: /workspace/inventory.json
+      OUT_PATH: /data/collectors/collector-l01.json
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+      POLL_INTERVAL: "30"
+    volumes:
+      - ./testbed/ot/collector:/collector
+      - ./testbed/ot/inventory.json:/workspace/inventory.json:ro
+      - ./testbed/ot/data:/data
+    networks:
+      l01:
+        ipv4_address: 172.30.0.50
+
+  plc-1:
+    image: python:3.11-slim
+    command: ["python", "/app/service.py"]
+    environment:
+      SERVICE_NAME: plc-1
+      SERVICE_ROLE: plc
+      SERVICE_ZONE: L2
+      SERVICE_PORT: "15022"
+      PROTOCOL_NAME: "modbus"
+      PROTOCOL_RATE: "25/s"
+      CONFIG_BASELINE: "plc-v1"
+      PATCH_LEVEL: "2026.01"
+      LOG_PATH: /data/plc-1.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/services:/app
+      - ./testbed/ot/data:/data
+    networks:
+      l2:
+        ipv4_address: 172.30.1.10
+
+  hmi-1:
+    image: python:3.11-slim
+    command: ["python", "/app/service.py"]
+    environment:
+      SERVICE_NAME: hmi-1
+      SERVICE_ROLE: hmi
+      SERVICE_ZONE: L2
+      SERVICE_PORT: "15024"
+      PROTOCOL_NAME: "opcua"
+      PROTOCOL_RATE: "15/s"
+      CONFIG_BASELINE: "hmi-v1"
+      PATCH_LEVEL: "2026.01"
+      LOG_PATH: /data/hmi-1.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/services:/app
+      - ./testbed/ot/data:/data
+    networks:
+      l2:
+        ipv4_address: 172.30.1.11
+
+  scada-1:
+    image: python:3.11-slim
+    command: ["python", "/app/service.py"]
+    environment:
+      SERVICE_NAME: scada-1
+      SERVICE_ROLE: scada
+      SERVICE_ZONE: L2
+      SERVICE_PORT: "15025"
+      PROTOCOL_NAME: "opcua"
+      PROTOCOL_RATE: "12/s"
+      CONFIG_BASELINE: "scada-v1"
+      PATCH_LEVEL: "2026.01"
+      LOG_PATH: /data/scada-1.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/services:/app
+      - ./testbed/ot/data:/data
+    networks:
+      l2:
+        ipv4_address: 172.30.1.12
+
+  collector-l2:
+    image: python:3.11-slim
+    command: ["python", "/collector/collector.py"]
+    environment:
+      COLLECTOR_ZONE: "L2"
+      INVENTORY_PATH: /workspace/inventory.json
+      OUT_PATH: /data/collectors/collector-l2.json
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+      POLL_INTERVAL: "30"
+    volumes:
+      - ./testbed/ot/collector:/collector
+      - ./testbed/ot/inventory.json:/workspace/inventory.json:ro
+      - ./testbed/ot/data:/data
+    networks:
+      l2:
+        ipv4_address: 172.30.1.50
+
+  hist-1:
+    image: python:3.11-slim
+    command: ["python", "/app/service.py"]
+    environment:
+      SERVICE_NAME: hist-1
+      SERVICE_ROLE: historian
+      SERVICE_ZONE: L3
+      SERVICE_PORT: "18080"
+      CONFIG_BASELINE: "hist-v1"
+      PATCH_LEVEL: "2026.01"
+      LOG_PATH: /data/hist-1.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/services:/app
+      - ./testbed/ot/data:/data
+    networks:
+      l3:
+        ipv4_address: 172.30.2.10
+
+  eng-ws:
+    image: python:3.11-slim
+    command: ["python", "/app/service.py"]
+    environment:
+      SERVICE_NAME: eng-ws
+      SERVICE_ROLE: engineering-ws
+      SERVICE_ZONE: L3
+      SERVICE_PORT: "15022"
+      AUTH_EVENT_COUNT: "3"
+      CONFIG_BASELINE: "eng-v1"
+      PATCH_LEVEL: "2026.01"
+      LOG_PATH: /data/eng-ws.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/services:/app
+      - ./testbed/ot/data:/data
+    networks:
+      l3:
+        ipv4_address: 172.30.2.11
+
+  patch-replica:
+    image: python:3.11-slim
+    command: ["python", "/app/service.py"]
+    environment:
+      SERVICE_NAME: patch-replica
+      SERVICE_ROLE: patch
+      SERVICE_ZONE: L3
+      SERVICE_PORT: "18081"
+      CONFIG_BASELINE: "patch-v1"
+      PATCH_LEVEL: "2026.01"
+      LOG_PATH: /data/patch-replica.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/services:/app
+      - ./testbed/ot/data:/data
+    networks:
+      l3:
+        ipv4_address: 172.30.2.12
+
+  jump-host:
+    image: python:3.11-slim
+    command: ["python", "/app/service.py"]
+    environment:
+      SERVICE_NAME: jump-host
+      SERVICE_ROLE: jump
+      SERVICE_ZONE: L3
+      SERVICE_PORT: "15026"
+      AUTH_EVENT_COUNT: "5"
+      CONFIG_BASELINE: "jump-v1"
+      PATCH_LEVEL: "2026.01"
+      LOG_PATH: /data/jump-host.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/services:/app
+      - ./testbed/ot/data:/data
+    networks:
+      l3:
+        ipv4_address: 172.30.2.13
+
+  collector-l3:
+    image: python:3.11-slim
+    command: ["python", "/collector/collector.py"]
+    environment:
+      COLLECTOR_ZONE: "L3"
+      INVENTORY_PATH: /workspace/inventory.json
+      OUT_PATH: /data/collectors/collector-l3.json
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+      POLL_INTERVAL: "30"
+    volumes:
+      - ./testbed/ot/collector:/collector
+      - ./testbed/ot/inventory.json:/workspace/inventory.json:ro
+      - ./testbed/ot/data:/data
+    networks:
+      l3:
+        ipv4_address: 172.30.2.51
+
+  dmz-broker:
+    image: python:3.11-slim
+    command: ["python", "/app/service.py"]
+    environment:
+      SERVICE_NAME: dmz-broker
+      SERVICE_ROLE: broker
+      SERVICE_ZONE: L3.5
+      SERVICE_PORT: "18883"
+      PROTOCOL_NAME: "mqtt"
+      PROTOCOL_RATE: "20/s"
+      CONFIG_BASELINE: "broker-v1"
+      LOG_PATH: /data/dmz-broker.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/services:/app
+      - ./testbed/ot/data:/data
+    networks:
+      l35:
+        ipv4_address: 172.30.3.10
+
+  update-staging:
+    image: python:3.11-slim
+    command: ["python", "/app/service.py"]
+    environment:
+      SERVICE_NAME: update-staging
+      SERVICE_ROLE: update
+      SERVICE_ZONE: L3.5
+      SERVICE_PORT: "18081"
+      CONFIG_BASELINE: "update-v1"
+      PATCH_LEVEL: "2026.01"
+      LOG_PATH: /data/update-staging.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/services:/app
+      - ./testbed/ot/data:/data
+    networks:
+      l35:
+        ipv4_address: 172.30.3.11
+
+  remote-access:
+    image: python:3.11-slim
+    command: ["python", "/app/service.py"]
+    environment:
+      SERVICE_NAME: remote-access
+      SERVICE_ROLE: remote-access
+      SERVICE_ZONE: L3.5
+      SERVICE_PORT: "10443"
+      AUTH_EVENT_COUNT: "2"
+      CONFIG_BASELINE: "remote-v1"
+      PATCH_LEVEL: "2026.01"
+      LOG_PATH: /data/remote-access.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/services:/app
+      - ./testbed/ot/data:/data
+    networks:
+      l35:
+        ipv4_address: 172.30.3.12
+
+  scanner-l35:
+    image: python:3.11-slim
+    command: ["python", "/scanner/scanner.py"]
+    environment:
+      SCAN_ZONE: "L3.5"
+      INVENTORY_PATH: /workspace/inventory.json
+      OUT_PATH: /data/scans/scan-l3-5.json
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+      POLL_INTERVAL: "30"
+    volumes:
+      - ./testbed/ot/scanner:/scanner
+      - ./testbed/ot/inventory.json:/workspace/inventory.json:ro
+      - ./testbed/ot/data:/data
+    networks:
+      l35:
+        ipv4_address: 172.30.3.60
+
+  enterprise-app:
+    image: python:3.11-slim
+    command: ["python", "/app/service.py"]
+    environment:
+      SERVICE_NAME: enterprise-app
+      SERVICE_ROLE: enterprise
+      SERVICE_ZONE: L4
+      SERVICE_PORT: "10400"
+      LOG_PATH: /data/enterprise-app.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/services:/app
+      - ./testbed/ot/data:/data
+    networks:
+      l4:
+        ipv4_address: 172.30.4.10
+
+  scanner-l4:
+    image: python:3.11-slim
+    command: ["python", "/scanner/scanner.py"]
+    environment:
+      SCAN_ZONE: "L4"
+      INVENTORY_PATH: /workspace/inventory.json
+      OUT_PATH: /data/scans/scan-l4.json
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+      POLL_INTERVAL: "30"
+    volumes:
+      - ./testbed/ot/scanner:/scanner
+      - ./testbed/ot/inventory.json:/workspace/inventory.json:ro
+      - ./testbed/ot/data:/data
+    networks:
+      l4:
+        ipv4_address: 172.30.4.60
+
+  vendor-portal:
+    image: python:3.11-slim
+    command: ["python", "/app/service.py"]
+    environment:
+      SERVICE_NAME: vendor-portal
+      SERVICE_ROLE: vendor
+      SERVICE_ZONE: L5
+      SERVICE_PORT: "10480"
+      LOG_PATH: /data/vendor-portal.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/services:/app
+      - ./testbed/ot/data:/data
+    networks:
+      l5:
+        ipv4_address: 172.30.5.10
+
+  scanner-l5:
+    image: python:3.11-slim
+    command: ["python", "/scanner/scanner.py"]
+    environment:
+      SCAN_ZONE: "L5"
+      INVENTORY_PATH: /workspace/inventory.json
+      OUT_PATH: /data/scans/scan-l5.json
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+      POLL_INTERVAL: "30"
+    volumes:
+      - ./testbed/ot/scanner:/scanner
+      - ./testbed/ot/inventory.json:/workspace/inventory.json:ro
+      - ./testbed/ot/data:/data
+    networks:
+      l5:
+        ipv4_address: 172.30.5.60
+
+  conduit-l01-l2:
+    build: ./testbed/ot/conduit
+    cap_add: ["NET_ADMIN"]
+    environment:
+      ALLOWED_PORTS: "15020,15021"
+      CONDUIT_MAP: |-
+        [
+          {"listen_port": 15020, "target_host": "172.30.0.10", "target_port": 15020},
+          {"listen_port": 15021, "target_host": "172.30.0.11", "target_port": 15021}
+        ]
+      LOG_PATH: /data/conduit-l01-l2.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/data:/data
+    networks:
+      l01:
+        ipv4_address: 172.30.0.200
+      l2:
+        ipv4_address: 172.30.1.200
+
+  conduit-l2-l3:
+    build: ./testbed/ot/conduit
+    cap_add: ["NET_ADMIN"]
+    environment:
+      ALLOWED_PORTS: "15022,18080"
+      CONDUIT_MAP: |-
+        [
+          {"listen_port": 15022, "target_host": "172.30.1.10", "target_port": 15022},
+          {"listen_port": 18080, "target_host": "172.30.2.10", "target_port": 18080}
+        ]
+      LOG_PATH: /data/conduit-l2-l3.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/data:/data
+    networks:
+      l2:
+        ipv4_address: 172.30.1.201
+      l3:
+        ipv4_address: 172.30.2.201
+
+  conduit-l3-l35:
+    build: ./testbed/ot/conduit
+    cap_add: ["NET_ADMIN"]
+    environment:
+      ALLOWED_PORTS: "18883"
+      CONDUIT_MAP: |-
+        [
+          {"listen_port": 18883, "target_host": "172.30.3.10", "target_port": 18883}
+        ]
+      LOG_PATH: /data/conduit-l3-l35.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/data:/data
+    networks:
+      l3:
+        ipv4_address: 172.30.2.202
+      l35:
+        ipv4_address: 172.30.3.202
+
+  conduit-l35-l4:
+    build: ./testbed/ot/conduit
+    cap_add: ["NET_ADMIN"]
+    environment:
+      ALLOWED_PORTS: "18081,10443"
+      CONDUIT_MAP: |-
+        [
+          {"listen_port": 18081, "target_host": "172.30.3.11", "target_port": 18081},
+          {"listen_port": 10443, "target_host": "172.30.3.12", "target_port": 10443}
+        ]
+      LOG_PATH: /data/conduit-l35-l4.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/data:/data
+    networks:
+      l35:
+        ipv4_address: 172.30.3.203
+      l4:
+        ipv4_address: 172.30.4.203
+
+  conduit-l4-l5:
+    build: ./testbed/ot/conduit
+    cap_add: ["NET_ADMIN"]
+    environment:
+      ALLOWED_PORTS: "10480"
+      CONDUIT_MAP: |-
+        [
+          {"listen_port": 10480, "target_host": "172.30.5.10", "target_port": 10480}
+        ]
+      LOG_PATH: /data/conduit-l4-l5.log
+      FIXED_TIME: "2026-01-25T00:00:00Z"
+    volumes:
+      - ./testbed/ot/data:/data
+    networks:
+      l4:
+        ipv4_address: 172.30.4.204
+      l5:
+        ipv4_address: 172.30.5.204
+
+  agent-l01:
+    build:
+      context: .
+      dockerfile: testbed/ot/agent/Dockerfile
+    command: ["run", "--url", "http://web:8000"]
+    environment:
+      AGENT_SERVER_URL: "http://web:8000"
+    networks:
+      - default
+      - l01
+
+  agent-l2:
+    build:
+      context: .
+      dockerfile: testbed/ot/agent/Dockerfile
+    command: ["run", "--url", "http://web:8000"]
+    environment:
+      AGENT_SERVER_URL: "http://web:8000"
+    networks:
+      - default
+      - l2
+
+  agent-l3:
+    build:
+      context: .
+      dockerfile: testbed/ot/agent/Dockerfile
+    command: ["run", "--url", "http://web:8000"]
+    environment:
+      AGENT_SERVER_URL: "http://web:8000"
+    networks:
+      - default
+      - l3
+
+  agent-l35:
+    build:
+      context: .
+      dockerfile: testbed/ot/agent/Dockerfile
+    command: ["run", "--url", "http://web:8000"]
+    environment:
+      AGENT_SERVER_URL: "http://web:8000"
+    networks:
+      - default
+      - l35
+
+  agent-l4:
+    build:
+      context: .
+      dockerfile: testbed/ot/agent/Dockerfile
+    command: ["run", "--url", "http://web:8000"]
+    environment:
+      AGENT_SERVER_URL: "http://web:8000"
+    networks:
+      - default
+      - l4
+
+  agent-l5:
+    build:
+      context: .
+      dockerfile: testbed/ot/agent/Dockerfile
+    command: ["run", "--url", "http://web:8000"]
+    environment:
+      AGENT_SERVER_URL: "http://web:8000"
+    networks:
+      - default
+      - l5
+
+networks:
+  l01:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+    internal: true
+  l2:
+    ipam:
+      config:
+        - subnet: 172.30.1.0/24
+    internal: true
+  l3:
+    ipam:
+      config:
+        - subnet: 172.30.2.0/24
+    internal: true
+  l35:
+    ipam:
+      config:
+        - subnet: 172.30.3.0/24
+    internal: true
+  l4:
+    ipam:
+      config:
+        - subnet: 172.30.4.0/24
+    internal: true
+  l5:
+    ipam:
+      config:
+        - subnet: 172.30.5.0/24
+    internal: true

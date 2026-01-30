@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // Elements
   const scanForm     = document.getElementById('scan-form');
   const vulnForm     = document.getElementById('vuln-scan-form');
+  const agentScanForm = document.getElementById('agent-scan-form');
   const scanStatus   = document.getElementById('scan-status');
   const nodesBody    = document.getElementById('nodes-body');
   const historyTbody = document.getElementById('scan-history-body');
@@ -58,16 +59,28 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!historyTbody) return;
       historyTbody.innerHTML = '';
       (data.history || []).forEach(run => {
+        const status = (run.status || '').toLowerCase();
+        const badge =
+          status === 'complete' || status === 'completed' ? 'success' :
+          status === 'running' || status === 'in_progress' ? 'info' :
+          status === 'failed' ? 'danger' : 'secondary';
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${escapeHtml(run.timestamp || '')}</td>
           <td>${escapeHtml(run.cidr || '')}</td>
-          <td>${escapeHtml(run.status || '')}</td>
-          <td>${escapeHtml(run.summary || run.result_summary || '-')}</td>`;
+          <td><span class="badge bg-${badge}">${escapeHtml(run.status || '')}</span></td>
+          <td>${escapeHtml(run.summary || run.result_summary || '-')}</td>
+          <td>
+            <div class="btn-group btn-group-sm">
+              <button class="btn btn-outline-primary" disabled>Report</button>
+              <button class="btn btn-outline-secondary" disabled>Rescan</button>
+              <button class="btn btn-outline-danger" disabled>Cancel</button>
+            </div>
+          </td>`;
         historyTbody.appendChild(tr);
       });
       if (!data.history || !data.history.length) {
-        const tr = document.createElement('tr'); tr.innerHTML = `<td colspan="4">No scans found.</td>`; historyTbody.appendChild(tr);
+        const tr = document.createElement('tr'); tr.innerHTML = `<td colspan="5">No scans found.</td>`; historyTbody.appendChild(tr);
       }
     } catch(e){ console.warn('History refresh failed:', e.message); }
   }
@@ -94,11 +107,13 @@ document.addEventListener('DOMContentLoaded', function () {
   let cyInstance = null;
 
   async function renderGraph() {
+    const cyContainer = document.getElementById('cy');
+    if (!cyContainer) return;
     try {
       const data = await jsonFetch('/graph/data/');
       if (cyInstance) { cyInstance.destroy(); cyInstance = null; }
       cyInstance = cytoscape({
-        container: document.getElementById('cy'),
+        container: cyContainer,
         elements: data,
         style: [
           { selector: 'node', style: {
@@ -130,11 +145,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
       });
 
-      // When Graph tab is shown, fix size
-      document.addEventListener('shown.bs.tab', (e) => {
-        const target = e.target && e.target.getAttribute('data-bs-target');
-        if (target === '#graph' && cyInstance) { cyInstance.resize(); cyInstance.fit(); }
-      });
     } catch (e) { console.warn('Graph render failed:', e.message); }
   }
 
@@ -166,7 +176,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // guard: hidden or zero-size container -> white image
     if (elementIsHidden(container)) {
       console.warn('Export blocked — #cy size:', container.clientWidth, 'x', container.clientHeight);
-      setStatus('Open the Graph tab (visible, non-zero size) before exporting.','warning');
+      setStatus('Graph must be visible (non-zero size) before exporting.','warning');
       return;
     }
 
@@ -255,6 +265,34 @@ document.addEventListener('DOMContentLoaded', function () {
           onError:err=>{ setStatus(`OpenVAS status failed (${err.message})`,'muted'); disableForm(vulnForm,false); }
         });
       } catch(err){ setStatus(`Could not start OpenVAS: ${err.message}`,'danger'); disableForm(vulnForm,false); }
+    });
+  }
+
+  if (agentScanForm) {
+    agentScanForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      disableForm(agentScanForm, true);
+      setStatus('Dispatching agent scan…');
+      try {
+        const formData = new FormData(agentScanForm);
+        const payload = Object.fromEntries(formData.entries());
+        const res = await fetch('/scan/agent/start/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCSRFToken()
+          },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        setStatus(`Agent scan queued (scan ${data.scan_id}).`, 'success');
+        updateScanHistory();
+      } catch (err) {
+        setStatus(`Agent scan failed: ${err.message}`, 'danger');
+      } finally {
+        disableForm(agentScanForm, false);
+      }
     });
   }
 
@@ -358,7 +396,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // Guard: exporting from a hidden tab = blank image
         const cyDiv = cyInstance.container();
         if (!cyDiv || cyDiv.clientWidth === 0 || cyDiv.clientHeight === 0 || cyDiv.offsetParent === null) {
-          setStatus('Open the Graph tab before exporting.', 'warning');
+          setStatus('Graph must be visible before exporting.', 'warning');
           return;
         }
 
@@ -394,5 +432,12 @@ document.addEventListener('DOMContentLoaded', function () {
   // Init
   renderGraph();
   updateScanHistory();
-});
 
+  const refreshTopology = document.getElementById('refresh-topology');
+  if (refreshTopology) {
+    refreshTopology.addEventListener('click', () => {
+      setStatus('Refreshing topology…', 'muted');
+      renderGraph();
+    });
+  }
+});

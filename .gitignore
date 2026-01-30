@@ -39,6 +39,7 @@ Thumbs.db
 *.pid
 *.seed
 data/db/
+testbed/ot/data/
 
 # === Coverage / Testing ===
 htmlcov/
@@ -75,3 +76,4 @@ npm-debug.log
 yarn-error.log
 
 utils/utils-venv
+.env

@@ -16,7 +16,12 @@ import ipaddress
 import subprocess
 import requests
 from django.http import JsonResponse, FileResponse, Http404, HttpResponse
-from .tasks import scan_network_task, launch_openvas_scan_task, parse_and_save_vulnerabilities
+from .tasks import (
+    scan_network_task,
+    launch_openvas_scan_task,
+    nmap_discovery_task,
+    parse_and_save_vulnerabilities,
+)
 from .openvas_client import openvas_session, get_task_status, get_report_id, download_report
 from celery.result import AsyncResult
 from .models import Link
@@ -44,7 +49,6 @@ SNIFFER_BASE_URL = 'http://localhost:5050'
 
 def home(request):
     nodes = Node.objects.all().values('ip_address', 'name')
-    scan_history = ScanRun.objects.all().order_by('-timestamp')[:10]  # limit to last 10
 
     # Get process information from all agents
     agents = AgentStatus.objects.filter(processes__isnull=False).order_by('-last_heartbeat')[:10]
@@ -63,9 +67,17 @@ def home(request):
 
     return render(request, 'dashboard/home.html', {
         'nodes': nodes,
-        'scan_history': scan_history,
         'current_processes': current_processes[:20],  # Show top 20 processes
         'timestamp': now().timestamp()
+    })
+
+
+def network_scans(request):
+    scan_history = ScanRun.objects.all().order_by('-timestamp')[:20]
+    agents = AgentStatus.objects.all().order_by("hostname")
+    return render(request, 'dashboard/network_scans.html', {
+        'scan_history': scan_history,
+        'agents': agents,
     })
 
 
@@ -73,16 +85,24 @@ def start_scan_ajax(request):
     print(f"[DEBUG] Method received: {request.method}")
     if request.method == "POST":
         cidr = request.POST.get("cidr")
+        method = (request.POST.get("scan_method") or "ping").lower()
         print(f"[DEBUG] Received CIDR: {cidr}")
-        task = scan_network_task.delay(cidr)
+        if method == "nmap":
+            task = nmap_discovery_task.delay(cidr)
+        else:
+            task = scan_network_task.delay(cidr)
         print(f"[DEBUG] Task dispatched: {task.id}")
-        return JsonResponse({"task_id": task.id})
+        return JsonResponse({"task_id": task.id, "method": method})
     else:
         return JsonResponse({"error": "Only POST allowed"}, status=405)
 
 
 def check_scan_status(request, task_id):
     result = AsyncResult(str(task_id))
+    try:
+        state = result.state
+    except Exception:
+        state = "PENDING"
 
     # Fetch all nodes with interfaces
     nodes = Node.objects.all()
@@ -104,14 +124,14 @@ def check_scan_status(request, task_id):
         })
 
     response = {
-        "state": result.state,
+        "state": state,
         "nodes": node_data
     }
 
-    if result.state in ['PENDING', 'STARTED']:
+    if state in ['PENDING', 'STARTED']:
         response["progress"] = "Scan is running..."
 
-    if result.ready():
+    if hasattr(result, "ready") and result.ready():
         try:
             result_val = result.result
             if isinstance(result_val, Exception):
@@ -123,10 +143,118 @@ def check_scan_status(request, task_id):
 
     return JsonResponse(response)
 
-def shortest_paths(request, start_node_id):
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def start_agent_scan(request):
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        data = request.POST
+
+    agent_id = data.get("agent_id")
+    cidr = data.get("cidr")
+    max_hosts = data.get("max_hosts")
+
+    if not agent_id or not cidr:
+        return JsonResponse({"error": "agent_id and cidr are required"}, status=400)
+
+    try:
+        agent = AgentStatus.objects.get(agent_id=agent_id)
+    except AgentStatus.DoesNotExist:
+        return JsonResponse({"error": "Agent not found"}, status=404)
+
+    scan = ScanRun.objects.create(cidr=cidr, status="IN_PROGRESS", scan_type="agent")
+
+    parameters = {"cidr": cidr, "scan_id": scan.id}
+    if max_hosts:
+        parameters["max_hosts"] = max_hosts
+
+    command = AgentCommand.objects.create(
+        agent_id=agent_id,
+        action="scan",
+        parameters=parameters,
+    )
+
+    agent.last_command_sent = now()
+    agent.save(update_fields=["last_command_sent"])
+
+    return JsonResponse({
+        "status": "command_sent",
+        "scan_id": scan.id,
+        "command_id": command.id,
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def agent_scan_results(request):
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    agent_id = data.get("agent_id")
+    cidr = data.get("cidr")
+    scan_id = data.get("scan_id")
+    hosts = data.get("hosts", [])
+
+    if not agent_id or not cidr:
+        return JsonResponse({"error": "agent_id and cidr are required"}, status=400)
+
+    scan = None
+    if scan_id:
+        try:
+            scan = ScanRun.objects.get(id=scan_id)
+        except ScanRun.DoesNotExist:
+            scan = None
+    if not scan:
+        scan = ScanRun.objects.create(cidr=cidr, status="IN_PROGRESS", scan_type="agent")
+
+    created_nodes = 0
+    for host in hosts:
+        ip_address = host.get("ip") if isinstance(host, dict) else host
+        if not ip_address:
+            continue
+        node, created = Node.objects.get_or_create(
+            scan_run=scan,
+            ip_address=ip_address,
+            defaults={
+                "name": ip_address,
+                "status": "online",
+                "description": f"Reported by agent {agent_id}",
+            },
+        )
+        if not created:
+            node.status = "online"
+            node.description = f"Reported by agent {agent_id}"
+            node.save(update_fields=["status", "description"])
+        created_nodes += 1
+
+    scan.status = "COMPLETE"
+    scan.result_summary = f"{created_nodes} hosts reported by agent {agent_id}"
+    scan.save(update_fields=["status", "result_summary"])
+
+    return JsonResponse({
+        "status": "received",
+        "scan_id": scan.id,
+        "nodes_added": created_nodes,
+    })
+
+def shortest_paths(request, start_node_id=None):
+    if start_node_id is None:
+        start_node_id = request.POST.get("start_node_id") or request.GET.get("start_node_id")
+    if not start_node_id:
+        return JsonResponse({"error": "start_node_id is required"}, status=400)
+
+    try:
+        start_node_id = int(start_node_id)
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "start_node_id must be an integer"}, status=400)
+
     nodes = Node.objects.all()
     links = Link.objects.all()
-    distances = dijkstra(nodes, links, int(start_node_id))
+    distances = dijkstra(nodes, links, start_node_id)
 
     # Convert keys to strings or extract node info
     distances_serialized = {
@@ -240,16 +368,17 @@ def get_interfaces(request):
     return JsonResponse({'interfaces': list_interfaces()})
 
 @csrf_exempt
+@require_http_methods(["POST"])
 def start_listener(request):
-    if request.method == 'POST':
-        iface = request.POST.get("interface")
-        try:
-            res = requests.post(f"{SNIFFER_BASE_URL}/start", json={"interface": iface})
-            return JsonResponse(res.json(), status=res.status_code)
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
+    iface = request.POST.get("interface")
+    try:
+        res = requests.post(f"{SNIFFER_BASE_URL}/start", json={"interface": iface})
+        return JsonResponse(res.json(), status=res.status_code)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
 
 @csrf_exempt
+@require_http_methods(["POST"])
 def stop_listener(request):
     try:
         res = requests.post(f"{SNIFFER_BASE_URL}/stop")
@@ -875,21 +1004,22 @@ def agent_analysis(request, agent_id):
             22: 'SSH', 80: 'HTTP', 443: 'HTTPS', 21: 'FTP', 25: 'SMTP',
             53: 'DNS', 3306: 'MySQL', 5432: 'PostgreSQL', 6379: 'Redis'
         }
+        for port_info in active_ports:
+            try:
+                port_id = int(port_info.get('id', 0))
+            except (ValueError, TypeError):
+                port_id = 0
 
-    for port_info in active_ports:
-        try:
-            port_id = int(port_info.get('id', 0))
-        except (ValueError, TypeError):
-            port_id = 0
+            if port_id in well_known_ports:
+                port_categories[well_known_ports[port_id]] += 1
+            elif port_id < 1024:
+                port_categories['System (<1024)'] += 1
+            elif port_id < 49152:
+                port_categories['User (1024-49151)'] += 1
+            else:
+                port_categories['Dynamic (49152+)'] += 1
 
-        if port_id in well_known_ports:
-            port_categories[well_known_ports[port_id]] += 1
-        elif port_id < 1024:
-            port_categories['System (<1024)'] += 1
-        elif port_id < 49152:
-            port_categories['User (1024-49151)'] += 1
-        else:
-            port_categories['Dynamic (49152+)'] += 1
+        cyber_template_analysis['port_categories'] = dict(port_categories)
     # ====================
     # HEARTBEAT/UPTIME ANALYSIS
     # ====================
@@ -1147,7 +1277,11 @@ def download_host_agent(request):
 @require_GET
 def agent_version_api(request):
     """API endpoint for agent version information."""
-    from host_agent.agent import AGENT_VERSION, AGENT_NAME
+    try:
+        from host_agent.agent import AGENT_VERSION, AGENT_NAME
+    except Exception:
+        AGENT_VERSION = "unknown"
+        AGENT_NAME = "host_agent"
 
     # Get version information from all agents
     agents = AgentStatus.objects.filter(

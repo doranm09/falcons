@@ -40,7 +40,6 @@ services:
     networks: [appnet]
     ports: ["8000:8000"]
     volumes:
-      - .:/code
       - /opt/gvm-run:/opt/gvm-run
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8000/ || exit 1"]
@@ -85,7 +84,6 @@ services:
         condition: service_started
     networks: [appnet]
     volumes:
-      - .:/code
       - /opt/gvm-run:/opt/gvm-run
     healthcheck:
       test: ["CMD-SHELL", "celery -A cyber_pen_test inspect ping -t 5 || exit 1"]

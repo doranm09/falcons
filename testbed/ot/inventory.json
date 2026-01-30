@@ -1,0 +1,20 @@
+{
+  "run_id": "ot-testbed",
+  "assets": [
+    {"name": "field-sensor", "role": "sensor", "zone": "L0/1", "ip": "172.30.0.10", "port": 15020, "protocol": "http"},
+    {"name": "field-actuator", "role": "actuator", "zone": "L0/1", "ip": "172.30.0.11", "port": 15021, "protocol": "http"},
+    {"name": "rtu-io", "role": "rtu", "zone": "L0/1", "ip": "172.30.0.12", "port": 15023, "protocol": "http"},
+    {"name": "plc-1", "role": "plc", "zone": "L2", "ip": "172.30.1.10", "port": 15022, "protocol": "http"},
+    {"name": "hmi-1", "role": "hmi", "zone": "L2", "ip": "172.30.1.11", "port": 15024, "protocol": "http"},
+    {"name": "scada-1", "role": "scada", "zone": "L2", "ip": "172.30.1.12", "port": 15025, "protocol": "http"},
+    {"name": "hist-1", "role": "historian", "zone": "L3", "ip": "172.30.2.10", "port": 18080, "protocol": "http"},
+    {"name": "eng-ws", "role": "engineering-ws", "zone": "L3", "ip": "172.30.2.11", "port": 15022, "protocol": "http"},
+    {"name": "patch-replica", "role": "patch", "zone": "L3", "ip": "172.30.2.12", "port": 18081, "protocol": "http"},
+    {"name": "jump-host", "role": "jump", "zone": "L3", "ip": "172.30.2.13", "port": 15026, "protocol": "http"},
+    {"name": "dmz-broker", "role": "broker", "zone": "L3.5", "ip": "172.30.3.10", "port": 18883, "protocol": "http"},
+    {"name": "update-staging", "role": "update", "zone": "L3.5", "ip": "172.30.3.11", "port": 18081, "protocol": "http"},
+    {"name": "remote-access", "role": "remote-access", "zone": "L3.5", "ip": "172.30.3.12", "port": 10443, "protocol": "http"},
+    {"name": "enterprise-app", "role": "enterprise", "zone": "L4", "ip": "172.30.4.10", "port": 10400, "protocol": "http"},
+    {"name": "vendor-portal", "role": "vendor", "zone": "L5", "ip": "172.30.5.10", "port": 10480, "protocol": "http"}
+  ]
+}

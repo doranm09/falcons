@@ -1,7 +1,14 @@
 # dashboard/tasks.py
 from celery import shared_task
-from .models import Node, Link, ScanRun, Vulnerability
-from .openvas_client import openvas_session, create_target, start_scan, get_report_id, download_report
+from .models import Node, Link, ScanRun, Vulnerability, ScanVulnerability
+from .openvas_client import (
+    openvas_session,
+    create_target,
+    start_scan,
+    get_report_id,
+    download_report,
+    get_task_status,
+)
 from django.utils.timezone import now
 import time
 import xml.etree.ElementTree as ET
@@ -70,7 +77,7 @@ def nmap_discovery_task(cidr):
         for line in result.stdout.splitlines():
             if "Status: Up" not in line:
                 continue
-            match = re.search(r"Host:\\s+(\\S+)", line)
+            match = re.search(r"Host:\s+(\S+)", line)
             if match:
                 found_ips.append(match.group(1))
 
@@ -94,6 +101,65 @@ def parse_ping_latency(output):
             except:
                 pass
     return 100.0  # Fallback default
+
+def _severity_label(score):
+    try:
+        value = float(score)
+    except (TypeError, ValueError):
+        return "None"
+    if value >= 9.0:
+        return "Critical"
+    if value >= 7.0:
+        return "High"
+    if value >= 4.0:
+        return "Medium"
+    if value > 0:
+        return "Low"
+    return "None"
+
+def parse_and_save_vulnerabilities(report_xml, scan):
+    root = ET.fromstring(report_xml)
+    for result in root.findall(".//{*}result"):
+        host_ip = result.findtext("{*}host")
+        if not host_ip:
+            continue
+
+        name = result.findtext("{*}name")
+        nvt = result.find(".//{*}nvt")
+        if not name and nvt is not None:
+            name = nvt.findtext("{*}name")
+        name = name or "OpenVAS finding"
+
+        description = result.findtext("{*}description")
+        if not description and nvt is not None:
+            description = nvt.findtext("{*}description")
+        description = description or ""
+
+        severity_raw = result.findtext("{*}severity")
+        severity_label = _severity_label(severity_raw)
+        try:
+            cvss_score = float(severity_raw)
+        except (TypeError, ValueError):
+            cvss_score = None
+
+        cve_text = result.findtext(".//{*}cve") or ""
+        cves = [c.strip() for c in cve_text.replace(";", ",").split(",") if c.strip()]
+        if not cves:
+            nvt_oid = nvt.attrib.get("oid") if nvt is not None else None
+            cves = [nvt_oid or f"NVT-{host_ip}"]
+
+        for cve_id in cves:
+            ScanVulnerability.objects.update_or_create(
+                scan_run=scan,
+                host_ip=host_ip,
+                cve_id=cve_id[:32],
+                defaults={
+                    "name": name,
+                    "severity": severity_label,
+                    "cvss_score": cvss_score,
+                    "description": description,
+                },
+            )
 
 NVD_API_KEY = 'fd4ab0bd-f3a2-4ad2-bc30-c28a09163034'  # put in env later
 NVD_API_URL = 'https://services.nvd.nist.gov/rest/json/cves/2.0'
@@ -143,8 +209,14 @@ def fetch_and_store_cves(keyword="scada"):
         )
 
 @shared_task
-def launch_openvas_scan_task(cidr, config_name=None):
-    scan = ScanRun.objects.create(cidr=cidr, status="IN_PROGRESS", scan_type="openvas")
+def launch_openvas_scan_task(cidr, config_name=None, scan_id=None):
+    if scan_id:
+        scan = ScanRun.objects.get(id=scan_id)
+        if scan.cidr != cidr:
+            scan.cidr = cidr
+        scan.status = "IN_PROGRESS"
+    else:
+        scan = ScanRun.objects.create(cidr=cidr, status="IN_PROGRESS", scan_type="openvas")
 
     try:
         gmp = openvas_session()
@@ -166,13 +238,13 @@ def poll_openvas_results():
     for scan in scans:
         try:
             gmp = openvas_session()
-            task = gmp.get_task(scan.openvas_task_id)
-            status = task.xpath("//task/status/text()")[0]
+            info = get_task_status(gmp, scan.openvas_task_id)
+            status = info.get("status")
 
             if status != "Done":
                 continue
 
-            report_id = get_report_id(gmp, scan.openvas_task_id)
+            report_id = info.get("report_id") or get_report_id(gmp, scan.openvas_task_id)
             report_xml = download_report(gmp, report_id)
             parse_and_save_vulnerabilities(report_xml, scan)
 

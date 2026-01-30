@@ -64,6 +64,9 @@ document.addEventListener('DOMContentLoaded', function () {
           status === 'complete' || status === 'completed' ? 'success' :
           status === 'running' || status === 'in_progress' ? 'info' :
           status === 'failed' ? 'danger' : 'secondary';
+        const reportHref = run.scan_type === 'openvas' && run.id
+          ? `/vulnerabilities/${encodeURIComponent(run.id)}/`
+          : null;
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${escapeHtml(run.timestamp || '')}</td>
@@ -72,7 +75,9 @@ document.addEventListener('DOMContentLoaded', function () {
           <td>${escapeHtml(run.summary || run.result_summary || '-')}</td>
           <td>
             <div class="btn-group btn-group-sm">
-              <button class="btn btn-outline-primary" disabled>Report</button>
+              ${reportHref
+                ? `<a class="btn btn-outline-primary" href="${reportHref}">Report</a>`
+                : `<button class="btn btn-outline-primary" disabled>Report</button>`}
               <button class="btn btn-outline-secondary" disabled>Rescan</button>
               <button class="btn btn-outline-danger" disabled>Cancel</button>
             </div>
@@ -212,13 +217,13 @@ document.addEventListener('DOMContentLoaded', function () {
   if (btnDownloadPng) btnDownloadPng.addEventListener('click', exportPng);
 
   // --- Polling ---
-  function pollTask({ statusUrl, onTick, onDone, onError, intervalMs=2000 }) {
+  function pollTask({ statusUrl, onTick, onDone, onError, intervalMs=2000, doneStates=['SUCCESS','FAILURE','REVOKED'] }) {
     let stopped=false;
     async function tick(){
       if(stopped) return;
       try{
         const data=await jsonFetch(statusUrl); onTick && onTick(data);
-        if(['SUCCESS','FAILURE','REVOKED'].includes(data.state)){ stopped=true; onDone && onDone(data); return; }
+        if(doneStates.includes(data.state)){ stopped=true; onDone && onDone(data); return; }
       }catch(err){ stopped=true; onError && onError(err); return; }
       setTimeout(tick, intervalMs);
     }
@@ -256,12 +261,29 @@ document.addEventListener('DOMContentLoaded', function () {
       try {
         const formData=new FormData(vulnForm);
         const res=await fetch('/scan/vuln/start/',{method:'POST',headers:{'X-CSRFToken':getCSRFToken()},body:formData});
-        const {task_id}=await res.json(); if(!task_id) throw new Error('No task id');
-        setStatus(`OpenVAS scan launched (task ${task_id}).`,'warning');
+        const data=await res.json(); const scan_id=data.scan_id; if(!scan_id) throw new Error(data.error || 'No scan id');
+        const reportHref = `/vulnerabilities/${encodeURIComponent(scan_id)}/`;
+        setStatus(`OpenVAS scan queued (scan ${scan_id}).`,'warning');
         pollTask({
-          statusUrl:`/scan/vuln/status/${encodeURIComponent(task_id)}/`,
-          onTick:s=>setStatus(`OpenVAS scanning… (${s.state})`,'warning'),
-          onDone:s=>{ setStatus(`OpenVAS done: ${s.state}`,'success'); updateScanHistory(); disableForm(vulnForm,false); },
+          statusUrl:`/scan/vuln/status/${encodeURIComponent(scan_id)}/`,
+          doneStates:['Done','ERROR'],
+          onTick:s=>{
+            if (s.state === 'LAUNCHING') {
+              setStatus('OpenVAS scan launching…','warning');
+              return;
+            }
+            const progress = s.progress ? ` ${s.progress}%` : '';
+            setStatus(`OpenVAS scanning… (${s.state}${progress})`,'warning');
+          },
+          onDone:s=>{
+            if (s.state === 'Done') {
+              setStatus(`OpenVAS done. Report ready: ${reportHref}`,'success');
+            } else {
+              setStatus(`OpenVAS error: ${s.error || s.state}`,'danger');
+            }
+            updateScanHistory();
+            disableForm(vulnForm,false);
+          },
           onError:err=>{ setStatus(`OpenVAS status failed (${err.message})`,'muted'); disableForm(vulnForm,false); }
         });
       } catch(err){ setStatus(`Could not start OpenVAS: ${err.message}`,'danger'); disableForm(vulnForm,false); }

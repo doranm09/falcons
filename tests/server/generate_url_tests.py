@@ -379,11 +379,9 @@ class TestComprehensiveURLCoverage:
 
     @pytest.mark.django_db
     def test_vuln_scan_status_api(self, client):
-        """Test vuln-scan-status: GET /scan/vuln/status/<task_id>/"""
-        # Mock task ID
-        mock_task_id = '550e8400-e29b-41d4-a716-446655440000'
-
-        response = client.get(reverse('dashboard:vuln-scan-status', args=[mock_task_id]))
+        """Test vuln-scan-status: GET /scan/vuln/status/<scan_id>/"""
+        scan = ScanRun.objects.create(cidr="192.168.1.0/24", status="IN_PROGRESS", scan_type="openvas")
+        response = client.get(reverse('dashboard:vuln-scan-status', args=[scan.id]))
         assert response.status_code == 200
 
         data = json.loads(response.content)

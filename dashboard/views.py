@@ -1688,6 +1688,21 @@ def digital_twin_execute(request):
 
 
 @require_http_methods(["POST"])
+def deploy_minimega_script(request):
+    return digital_twin_execute(request)
+
+
+@require_GET
+def stream_minimega_execution(request):
+    return JsonResponse({"error": "streaming_not_configured"}, status=501)
+
+
+@require_GET
+def stream_minimega_execution_async(request):
+    return JsonResponse({"error": "streaming_not_configured"}, status=501)
+
+
+@require_http_methods(["POST"])
 @_staff_required_json
 def digital_twin_reset(request):
     if os.environ.get("MINIMEGA_EXECUTION_ENABLED") != "1" or os.environ.get("MINIMEGA_ALLOW_RESET") != "1":
@@ -1790,6 +1805,10 @@ def minimega_execution_logs(request):
 
     logs = MinimegaExecutionLog.objects.select_related("user", "scan").all()[:200]
     return render(request, "dashboard/minimega_logs.html", {"logs": logs})
+
+@require_GET
+def minimega_provisions(request):
+    return redirect("dashboard:digital_twin_page")
 
 
 @require_GET

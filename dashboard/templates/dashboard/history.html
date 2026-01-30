@@ -19,7 +19,7 @@
         <td>{{ entry.run.cidr }}</td>
         <td>{{ entry.run.status }}</td>
         <td>
-          <a href="{% url 'vuln-detail' entry.run.id %}">
+          <a href="{% url 'dashboard:vuln-detail' entry.run.id %}">
             {{ entry.vuln_count }}
           </a>
         </td>

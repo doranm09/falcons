@@ -1,0 +1,297 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="row mb-4">
+    <div class="col-12">
+      <h2><i class="bi bi-boxes"></i> Digital Twin Generator</h2>
+      <p class="text-muted">Generate a MiniMega launch script and a reproducible manifest from scan + SBOM data.</p>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-12 col-lg-4">
+      <div class="card">
+        <div class="card-header">
+          <h6 class="mb-0"><i class="bi bi-sliders"></i> Build Options</h6>
+        </div>
+        <div class="card-body">
+          <form id="twin-form">
+            {% csrf_token %}
+            <div class="mb-3">
+              <label class="form-label">Scan Run</label>
+              <select class="form-select" name="scan_id" required>
+                {% if latest_scan %}
+                  <option value="{{ latest_scan.id }}">Latest ({{ latest_scan.cidr }} @ {{ latest_scan.timestamp|date:"Y-m-d H:i" }})</option>
+                {% endif %}
+                {% for scan in scans %}
+                  <option value="{{ scan.id }}">{{ scan.cidr }} @ {{ scan.timestamp|date:"Y-m-d H:i" }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Disk Image Path</label>
+              <input class="form-control" name="disk_image" placeholder="/var/lib/minimega/images/base.qcow2" required>
+              <div class="form-text">Use a base image with miniccc preinstalled.</div>
+            </div>
+            <div class="row g-2">
+              <div class="col-md-6">
+                <label class="form-label">VLAN</label>
+                <input class="form-control" name="vlan" placeholder="100" value="100">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Memory (MB)</label>
+                <input class="form-control" name="memory_mb" placeholder="2048" value="2048">
+              </div>
+            </div>
+            <div class="form-check mt-3">
+              <input class="form-check-input" type="checkbox" name="enable_virtio" id="enableVirtio">
+              <label class="form-check-label" for="enableVirtio">Enable virtio-ports (miniccc)</label>
+            </div>
+            <div class="mb-3 mt-3">
+              <label class="form-label">Run Confirmation</label>
+              <input class="form-control" name="confirm" placeholder="Type RUN_MINIMEGA to enable server execution">
+              <div class="form-text text-muted">Server execution requires MINIMEGA_EXECUTION_ENABLED=1.</div>
+            </div>
+            <div class="d-grid mt-3">
+              <button type="submit" class="btn btn-primary">
+                <i class="bi bi-box-arrow-up-right"></i> Generate Digital Twin
+              </button>
+            </div>
+            <div class="d-grid mt-2">
+              <button type="button" class="btn btn-outline-danger" id="run-twin" disabled>
+                <i class="bi bi-play-circle"></i> Run MiniMega Now
+              </button>
+            </div>
+            <div class="d-grid mt-2">
+              <button type="button" class="btn btn-outline-secondary" id="download-bundle" disabled>
+                <i class="bi bi-download"></i> Download Script + Manifest
+              </button>
+            </div>
+            {% if request.user.is_staff %}
+            <div class="mt-4 border-top pt-3">
+              <h6 class="text-muted mb-2">MiniMega Control (Staff Only)</h6>
+              <div class="d-grid gap-2">
+                <button type="button" class="btn btn-outline-warning" id="reset-minimega">
+                  <i class="bi bi-arrow-counterclockwise"></i> Reset MiniMega
+                </button>
+                <button type="button" class="btn btn-outline-danger" id="kill-minimega">
+                  <i class="bi bi-power"></i> Kill MiniMega
+                </button>
+              </div>
+            </div>
+            {% endif %}
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-8">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h6 class="mb-0"><i class="bi bi-file-earmark-code"></i> MiniMega Script</h6>
+          <button class="btn btn-sm btn-outline-secondary" id="copy-script" disabled>
+            <i class="bi bi-clipboard"></i> Copy
+          </button>
+        </div>
+        <div class="card-body">
+          <pre id="script-output" style="min-height: 220px; white-space: pre-wrap;">Generate a script to preview it here.</pre>
+        </div>
+      </div>
+
+      <div class="card mt-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h6 class="mb-0"><i class="bi bi-journal-text"></i> Twin Manifest</h6>
+          <button class="btn btn-sm btn-outline-secondary" id="copy-manifest" disabled>
+            <i class="bi bi-clipboard"></i> Copy
+          </button>
+        </div>
+        <div class="card-body">
+          <pre id="manifest-output" style="min-height: 220px; white-space: pre-wrap;">Manifest will appear here after generation.</pre>
+        </div>
+      </div>
+
+      <div class="card mt-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h6 class="mb-0"><i class="bi bi-terminal"></i> MiniMega Execution Output</h6>
+        </div>
+        <div class="card-body">
+          <pre id="execute-output" style="min-height: 160px; white-space: pre-wrap;">Execution output will appear here when you run MiniMega.</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  function setOutput(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  }
+
+  function getCSRFToken() {
+    const input = document.querySelector('#twin-form input[name=csrfmiddlewaretoken]');
+    if (input && input.value) return input.value;
+    const name = 'csrftoken=';
+    const cookies = document.cookie ? document.cookie.split(';') : [];
+    for (let c of cookies) { c = c.trim(); if (c.startsWith(name)) return decodeURIComponent(c.slice(name.length)); }
+    return '';
+  }
+
+  function copyText(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    navigator.clipboard.writeText(el.textContent || "");
+  }
+
+  document.getElementById('copy-script').addEventListener('click', () => copyText('script-output'));
+  document.getElementById('copy-manifest').addEventListener('click', () => copyText('manifest-output'));
+  const runButton = document.getElementById('run-twin');
+  const downloadButton = document.getElementById('download-bundle');
+
+  document.getElementById('twin-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+
+    const payload = {};
+    for (const [key, value] of formData.entries()) {
+      if (key === 'enable_virtio') {
+        payload[key] = true;
+      } else {
+        payload[key] = value;
+      }
+    }
+
+    try {
+      const res = await fetch('{% url "dashboard:digital_twin_generate" %}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+
+      setOutput('script-output', data.script || '');
+      setOutput('manifest-output', JSON.stringify(data.manifest || {}, null, 2));
+      document.getElementById('copy-script').disabled = false;
+      document.getElementById('copy-manifest').disabled = false;
+      runButton.disabled = false;
+      downloadButton.disabled = false;
+    } catch (err) {
+      setOutput('script-output', `Error: ${err.message}`);
+      setOutput('manifest-output', '');
+      document.getElementById('copy-script').disabled = true;
+      document.getElementById('copy-manifest').disabled = true;
+      runButton.disabled = true;
+      downloadButton.disabled = true;
+    }
+  });
+
+  runButton.addEventListener('click', async () => {
+    const form = document.getElementById('twin-form');
+    const formData = new FormData(form);
+    const payload = {};
+    for (const [key, value] of formData.entries()) {
+      if (key === 'enable_virtio') {
+        payload[key] = true;
+      } else {
+        payload[key] = value;
+      }
+    }
+
+    setOutput('execute-output', 'Running MiniMega…');
+
+    try {
+      const res = await fetch('{% url \"dashboard:digital_twin_execute\" %}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      const output = [`Status: ${data.status}`, `Script: ${data.script_path}`, `Return code: ${data.returncode}`];
+      if (data.stdout) output.push(`\\nSTDOUT:\\n${data.stdout}`);
+      if (data.stderr) output.push(`\\nSTDERR:\\n${data.stderr}`);
+      setOutput('execute-output', output.join('\\n'));
+    } catch (err) {
+      setOutput('execute-output', `Error: ${err.message}`);
+    }
+  });
+
+  downloadButton.addEventListener('click', async () => {
+    const form = document.getElementById('twin-form');
+    const formData = new FormData(form);
+    const payload = {};
+    for (const [key, value] of formData.entries()) {
+      if (key === 'enable_virtio') {
+        payload[key] = true;
+      } else {
+        payload[key] = value;
+      }
+    }
+
+    try {
+      const res = await fetch('{% url "dashboard:digital_twin_export" %}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `cybertwin_bundle_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setOutput('execute-output', `Download error: ${err.message}`);
+    }
+  });
+
+  const resetButton = document.getElementById('reset-minimega');
+  const killButton = document.getElementById('kill-minimega');
+
+  async function sendControl(url, confirmToken) {
+    if (!confirm(`Type ${confirmToken} to proceed. Continue?`)) return;
+    setOutput('execute-output', `Sending ${confirmToken}…`);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() },
+        body: JSON.stringify({ confirm: confirmToken })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      const output = [`Status: ${data.status}`, `Return code: ${data.returncode}`];
+      if (data.stdout) output.push(`\\nSTDOUT:\\n${data.stdout}`);
+      if (data.stderr) output.push(`\\nSTDERR:\\n${data.stderr}`);
+      setOutput('execute-output', output.join('\\n'));
+    } catch (err) {
+      setOutput('execute-output', `Error: ${err.message}`);
+    }
+  }
+
+  if (resetButton) {
+    resetButton.addEventListener('click', () => sendControl('{% url "dashboard:digital_twin_reset" %}', 'RESET_MINIMEGA'));
+  }
+  if (killButton) {
+    killButton.addEventListener('click', () => sendControl('{% url "dashboard:digital_twin_kill" %}', 'KILL_MINIMEGA'));
+  }
+</script>
+{% endblock %}

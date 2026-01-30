@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils import timezone
 from django.core.validators import MinValueValidator
+from django.conf import settings
 
 # -----------------------------
 # Common choices / helpers
@@ -54,6 +55,38 @@ class ScanRun(models.Model):
         return f"Scan on {self.cidr} at {ts}"
 
 
+class MinimegaExecutionLog(models.Model):
+    class Action(models.TextChoices):
+        EXECUTE = "execute", "Execute"
+        RESET = "reset", "Reset"
+        KILL = "kill", "Kill"
+
+    action = models.CharField(max_length=16, choices=Action.choices)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    scan = models.ForeignKey(ScanRun, null=True, blank=True, on_delete=models.SET_NULL)
+    disk_image = models.CharField(max_length=512, blank=True)
+    vlan = models.CharField(max_length=64, blank=True)
+    memory_mb = models.PositiveIntegerField(default=0)
+    enable_virtio = models.BooleanField(default=False)
+    script_path = models.CharField(max_length=512, blank=True)
+    command = models.CharField(max_length=512, blank=True)
+    status = models.CharField(max_length=32, default="unknown")
+    returncode = models.IntegerField(null=True, blank=True)
+    stdout = models.TextField(blank=True)
+    stderr = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["action", "created_at"]),
+            models.Index(fields=["scan"]),
+        ]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.action} @ {self.created_at:%Y-%m-%d %H:%M:%S}"
+
+
 class Node(models.Model):
     # Networked endpoint discovered by scans (global inventory or per-run via scan_run FK)
     scan_run = models.ForeignKey(
@@ -102,6 +135,29 @@ class Node(models.Model):
         self.mac_addresses = cyber_data.get("MAC", [])
         self.active_ports = cyber_data.get("port", [])
         self.save(update_fields=["os_info", "installed_libraries", "mac_addresses", "active_ports"])
+
+
+class SbomReport(models.Model):
+    node = models.ForeignKey(Node, on_delete=models.SET_NULL, null=True, blank=True, related_name="sbom_reports")
+    agent_id = models.CharField(max_length=64, db_index=True)
+    format = models.CharField(max_length=32, default="raw")
+    bom_format = models.CharField(max_length=64, blank=True)
+    spec_version = models.CharField(max_length=32, blank=True)
+    document = models.JSONField()
+    package_count = models.PositiveIntegerField(default=0)
+    os_summary = models.CharField(max_length=255, blank=True)
+    sha256 = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["agent_id", "created_at"]),
+            models.Index(fields=["sha256"]),
+        ]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"SBOM {self.agent_id} ({self.package_count} packages)"
 
 
 class NodeInterface(models.Model):

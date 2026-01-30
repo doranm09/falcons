@@ -1,0 +1,88 @@
+{% extends "dashboard/base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="row mb-4">
+    <div class="col-12">
+      <h2><i class="bi bi-terminal"></i> MiniMega Execution Logs</h2>
+      <p class="text-muted">Audit trail for executed, reset, and kill commands.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">Recent Activity</h5>
+      <div class="d-flex gap-2">
+        <input class="form-control form-control-sm" id="log-filter" placeholder="Search logs">
+        <select class="form-select form-select-sm" id="status-filter">
+          <option value="">All statuses</option>
+          <option value="success">Success</option>
+          <option value="failed">Failed</option>
+        </select>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle" id="log-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Action</th>
+              <th>Scan</th>
+              <th>User</th>
+              <th>Status</th>
+              <th>Return Code</th>
+              <th>Command</th>
+              <th>Script</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for log in logs %}
+            <tr data-status="{{ log.status }}">
+              <td>{{ log.created_at|date:"Y-m-d H:i:s" }}</td>
+              <td><span class="badge bg-info text-dark">{{ log.action }}</span></td>
+              <td>{{ log.scan.cidr|default:"-" }}</td>
+              <td>{{ log.user.username|default:"system" }}</td>
+              <td>
+                <span class="badge bg-{% if log.status == 'success' %}success{% elif log.status == 'failed' %}danger{% else %}secondary{% endif %}">
+                  {{ log.status }}
+                </span>
+              </td>
+              <td>{{ log.returncode|default:"-" }}</td>
+              <td><code class="small">{{ log.command|default:"-" }}</code></td>
+              <td><code class="small">{{ log.script_path|default:"-" }}</code></td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="8" class="text-center text-muted">No execution logs yet.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  const filterInput = document.getElementById('log-filter');
+  const statusFilter = document.getElementById('status-filter');
+  const rows = Array.from(document.querySelectorAll('#log-table tbody tr'));
+
+  function applyFilters() {
+    const term = (filterInput.value || '').toLowerCase();
+    const status = statusFilter.value;
+
+    rows.forEach(row => {
+      const matchesStatus = !status || row.dataset.status === status;
+      const matchesText = row.textContent.toLowerCase().includes(term);
+      row.style.display = matchesStatus && matchesText ? '' : 'none';
+    });
+  }
+
+  filterInput.addEventListener('input', applyFilters);
+  statusFilter.addEventListener('change', applyFilters);
+</script>
+{% endblock %}

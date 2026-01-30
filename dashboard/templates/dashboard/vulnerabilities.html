@@ -1,27 +1,52 @@
 {% extends "dashboard/base.html" %}
 {% block content %}
-<h2>Vulnerabilities for Scan: {{ scan.cidr }} ({{ scan.timestamp }})</h2>
+<div class="container-fluid">
+  <div class="row mb-4">
+    <div class="col-12">
+      <h2><i class="bi bi-shield-exclamation"></i> Vulnerabilities</h2>
+      <p class="text-muted">Scan {{ scan.cidr }} • {{ scan.timestamp|date:"Y-m-d H:i" }}</p>
+    </div>
+  </div>
 
-<table class="table table-bordered table-dark table-striped">
-  <thead>
-    <tr>
-      <th>Host</th>
-      <th>CVE</th>
-      <th>Name</th>
-      <th>Severity</th>
-      <th>Description</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for v in vulnerabilities %}
-      <tr>
-        <td>{{ v.host_ip }}</td>
-        <td>{{ v.cve_id }}</td>
-        <td>{{ v.name }}</td>
-        <td>{{ v.severity }}</td>
-        <td>{{ v.description|truncatechars:150 }}</td>
-      </tr>
-    {% endfor %}
-  </tbody>
-</table>
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">Findings</h5>
+      <span class="text-muted small">{{ vulnerabilities|length }} entries</span>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead>
+            <tr>
+              <th>Host</th>
+              <th>CVE</th>
+              <th>Name</th>
+              <th>Severity</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for v in vulnerabilities %}
+              <tr>
+                <td>{{ v.host_ip }}</td>
+                <td><code>{{ v.cve_id }}</code></td>
+                <td>{{ v.name }}</td>
+                <td>
+                  <span class="badge bg-{% if v.severity == 'Critical' or v.severity == 'High' %}danger{% elif v.severity == 'Medium' %}warning{% else %}secondary{% endif %}">
+                    {{ v.severity }}
+                  </span>
+                </td>
+                <td>{{ v.description|truncatechars:150 }}</td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="5" class="text-center text-muted">No vulnerabilities recorded for this scan.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

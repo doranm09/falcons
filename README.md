@@ -31,11 +31,17 @@ This project is a full-stack Django platform that simulates and secures networke
 - Periodic system info push (CPU, interfaces, processes)
 - Command polling (e.g., test ping, scans)
 - Remote execution with output POST-back
+- SBOM collection and upload (CycloneDX supported)
 
 ### 4. Real-Time Visualization
 - Dynamic network graph with Cytoscape.js
 - Node color/size/styling mapped to attributes
 - Interactive shortest path UI
+
+### 5. Digital Twin Generation (MiniMega)
+- Generate MiniMega launch scripts and manifests from scans
+- Optional server-side execution with safety gates
+- Download script + manifest bundles
 
 ---
 
@@ -89,6 +95,77 @@ python agent.py
 - Agent sends system heartbeat to `/agent/report/`
 - Polls for commands via `/agent/commands/`
 - Returns results via `/agent/command_result/`
+- Posts SBOMs to `/sbom/` (manual or via command)
+
+---
+
+## SBOM Collection & Diff
+
+You can trigger SBOM collection from the **Agent Monitor** page or directly on the agent:
+
+```bash
+python agent.py sbom --format cyclonedx
+```
+
+### SBOM Export
+- Latest JSON: `/agent/<agent_id>/sbom/`
+- CSV export: `/agent/<agent_id>/sbom/?format=csv`
+- Bundle (latest SBOM + diff): `/agent/<agent_id>/sbom/bundle/`
+
+### SBOM Diff
+Compare the last two SBOMs for an agent:
+```
+/agent/<agent_id>/sbom/diff/
+```
+
+---
+
+## Digital Twin + MiniMega
+
+Go to **Tools & Configuration → Digital Twin** to generate a MiniMega script and manifest from a scan.
+
+### Generate a Script + Manifest
+- Select a scan
+- Provide a base disk image path (qcow2)
+- Download a bundle ZIP or copy the script directly
+
+### Optional: Server-Side Execution
+To enable execution from the dashboard, set:
+```
+MINIMEGA_EXECUTION_ENABLED=1
+```
+
+The UI requires a confirm token `RUN_MINIMEGA` before execution.  
+Scripts are written to:
+```
+/tmp/cybertwin_minimega
+```
+You can override this with:
+```
+MINIMEGA_SCRIPT_DIR=/path/to/scripts
+```
+
+Execution events are logged in the admin under **MiniMega Execution Logs**.
+You can also view logs in the UI at `/digital-twin/logs/` (staff only).
+
+### Safe Reset / Kill (Staff Only)
+These controls are staff-gated and require explicit confirmation tokens:
+```
+MINIMEGA_ALLOW_RESET=1
+MINIMEGA_ALLOW_KILL=1
+```
+
+Defaults can be overridden:
+```
+MINIMEGA_RESET_COMMAND="clear vm"
+MINIMEGA_KILL_COMMAND="quit"
+```
+
+Confirmation tokens required by the UI:
+- Reset: `RESET_MINIMEGA`
+- Kill: `KILL_MINIMEGA`
+
+You must be logged in as a staff user to use the reset/kill controls.
 
 ---
 
@@ -319,6 +396,17 @@ From the Django Admin:
 | `/agent/report/`        | POST   | Receive system info from agent |
 | `/agent/commands/`      | GET    | Agent polls for commands     |
 | `/agent/command_result/`| POST   | Agent returns command output |
+| `/sbom/`                | POST   | Receive SBOM payload         |
+| `/agent/<id>/sbom/`     | GET    | Download latest SBOM (JSON/CSV) |
+| `/agent/<id>/sbom/diff/`| GET    | Diff latest two SBOMs        |
+| `/agent/<id>/sbom/bundle/`| GET  | Download latest SBOM + diff bundle |
+| `/digital-twin/`        | GET    | Digital twin generator UI    |
+| `/digital-twin/generate/`| POST  | Generate script + manifest   |
+| `/digital-twin/export/` | POST   | Download bundle ZIP          |
+| `/digital-twin/execute/`| POST   | Execute MiniMega (optional)  |
+| `/digital-twin/reset/`  | POST   | Reset MiniMega (staff only)  |
+| `/digital-twin/kill/`   | POST   | Kill MiniMega (staff only)   |
+| `/digital-twin/logs/`   | GET    | MiniMega execution logs (staff only) |
 | `/sniffer/interfaces/`  | GET    | List interfaces (Flask)      |
 | `/sniffer/start/`       | POST   | Start sniffing on interface  |
 | `/sniffer/stop/`        | POST   | Stop packet capture          |

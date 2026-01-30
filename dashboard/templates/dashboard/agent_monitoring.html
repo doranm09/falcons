@@ -80,6 +80,7 @@
                 </div>
                 <div class="card-body">
                     <form id="commandForm">
+                        {% csrf_token %}
                         <div class="row">
                             <div class="col-md-3">
                                 <label for="agentSelect" class="form-label">Select Agent</label>
@@ -158,6 +159,11 @@
                                     <td>{{ agent.hostname }}</td>
                                     <td>{{ agent.ip_address }}</td>
                                     <td>
+                                        <span class="badge bg-{% if agent.agent_version %}info{% else %}secondary{% endif %}">
+                                            {{ agent.agent_version|default:"Unknown" }}
+                                        </span>
+                                    </td>
+                                    <td>
                                         {% if agent.os_type %}
                                             {{ agent.os_type }} {{ agent.os_version }}
                                         {% else %}
@@ -178,13 +184,6 @@
                                             </span>
                                         {% else %}
                                             <span class="text-muted">Never</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if agent.get_uptime %}
-                                            {{ agent.get_uptime|date:"d\d H\h i\m" }}
-                                        {% else %}
-                                            <span class="text-muted">Unknown</span>
                                         {% endif %}
                                     </td>
                                     <td>

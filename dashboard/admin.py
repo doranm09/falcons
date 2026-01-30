@@ -1,32 +1,50 @@
 from django.contrib import admin
 from .models import (
-    Node, Link, ScanRun, Vulnerability, AgentCommand, CommandResult, NodeInterface,
-    AgentStatus, ScanVulnerability, Host, LocalNetworkInterface, InterfaceAddress,
-    InterfaceStats, NetworkMetadata, NetworkConnection, NetworkFlow
+    Node,
+    Link,
+    ScanRun,
+    Vulnerability,
+    AgentCommand,
+    CommandResult,
+    NodeInterface,
+    AgentStatus,
+    ScanVulnerability,
+    Host,
+    LocalNetworkInterface,
+    InterfaceAddress,
+    InterfaceStats,
+    NetworkMetadata,
+    NetworkConnection,
+    NetworkFlow,
+    SbomReport,
+    MinimegaExecutionLog,
 )
 
 @admin.register(Node)
 class NodeAdmin(admin.ModelAdmin):
-    list_display = ('name', 'ip_address', 'status', 'last_heartbeat')
-    search_fields = ('name', 'ip_address')
-    list_filter = ('status',)
+    list_display = ("name", "ip_address", "status", "last_heartbeat")
+    search_fields = ("name", "ip_address")
+    list_filter = ("status",)
 
 
 @admin.register(Link)
 class LinkAdmin(admin.ModelAdmin):
-    list_display = ('source', 'destination', 'weight')
-    search_fields = ('source__ip_address', 'destination__ip_address')
+    list_display = ("source", "destination", "weight")
+    search_fields = ("source__ip_address", "destination__ip_address")
+
 
 @admin.register(ScanRun)
 class ScanRunAdmin(admin.ModelAdmin):
-    list_display = ('cidr', 'timestamp', 'status', 'result_summary')
-    readonly_fields = ('timestamp',)
+    list_display = ("cidr", "timestamp", "status", "result_summary")
+    readonly_fields = ("timestamp",)
+
 
 @admin.register(Vulnerability)
 class VulnerabilityAdmin(admin.ModelAdmin):
     list_display = ("cve_id", "severity", "score", "published", "last_modified")
     search_fields = ("cve_id", "description", "references")
     list_filter = ("severity", "published")
+
 
 @admin.register(AgentCommand)
 class AgentCommandAdmin(admin.ModelAdmin):
@@ -39,6 +57,7 @@ class AgentCommandAdmin(admin.ModelAdmin):
 class CommandResultAdmin(admin.ModelAdmin):
     list_display = ("id", "agent_id", "command", "timestamp")
     search_fields = ("agent_id", "command__action")
+
 
 @admin.register(NodeInterface)
 class NodeInterfaceAdmin(admin.ModelAdmin):
@@ -84,8 +103,21 @@ class InterfaceAddressAdmin(admin.ModelAdmin):
 class InterfaceStatsAdmin(admin.ModelAdmin):
     list_display = ("iface", "rx_bytes", "tx_bytes", "rx_packets", "tx_packets")
     search_fields = ("iface__iface_name",)
-    readonly_fields = ("rx_packets", "rx_bytes", "rx_errors", "rx_dropped", "rx_overruns", "rx_frame",
-                      "tx_packets", "tx_bytes", "tx_errors", "tx_dropped", "tx_overruns", "tx_carrier", "tx_collisions")
+    readonly_fields = (
+        "rx_packets",
+        "rx_bytes",
+        "rx_errors",
+        "rx_dropped",
+        "rx_overruns",
+        "rx_frame",
+        "tx_packets",
+        "tx_bytes",
+        "tx_errors",
+        "tx_dropped",
+        "tx_overruns",
+        "tx_carrier",
+        "tx_collisions",
+    )
 
 
 @admin.register(NetworkMetadata)
@@ -109,3 +141,17 @@ class NetworkFlowAdmin(admin.ModelAdmin):
     search_fields = ("source_ip", "destination_ip", "agent__hostname")
     list_filter = ("protocol", "agent")
     readonly_fields = ("bytes_sent", "bytes_received", "packets_sent", "packets_received", "duration_seconds")
+
+
+@admin.register(SbomReport)
+class SbomReportAdmin(admin.ModelAdmin):
+    list_display = ("id", "agent_id", "node", "format", "package_count", "created_at")
+    search_fields = ("agent_id", "node__name", "node__ip_address")
+    list_filter = ("format",)
+
+
+@admin.register(MinimegaExecutionLog)
+class MinimegaExecutionLogAdmin(admin.ModelAdmin):
+    list_display = ("id", "action", "scan", "status", "returncode", "created_at")
+    search_fields = ("action", "scan__cidr", "disk_image", "script_path")
+    list_filter = ("action", "status")

@@ -6,8 +6,8 @@
   <!-- Page Header -->
   <div class="row mb-4">
     <div class="col-12">
-      <h2><i class="bi bi-diagram-3"></i> Network Topology Dashboard</h2>
-      <p class="text-muted">Interactive network visualization and topology analysis</p>
+      <h2><i class="bi bi-diagram-3"></i> CyberTwin Operations</h2>
+      <p class="text-muted">Unified visibility across scans, agents, and attack paths.</p>
     </div>
   </div>
 
@@ -72,21 +72,24 @@
     <div class="col-12">
       <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
-          <h5 class="mb-0"><i class="bi bi-diagram-3"></i> Network Topology</h5>
+          <div>
+            <h5 class="mb-1"><i class="bi bi-diagram-3"></i> Network Topology</h5>
+            <small class="text-muted">Tap two nodes to compute shortest path latency.</small>
+          </div>
           <div class="btn-group">
             <button class="btn btn-sm btn-outline-primary" id="refresh-topology">
               <i class="bi bi-arrow-repeat"></i> Refresh
             </button>
-            <button class="btn btn-sm btn-outline-secondary" id="toggle-physics">
-              <i class="bi bi-gear"></i> Physics
-            </button>
-            <button class="btn btn-sm btn-outline-info" id="export-png">
-              <i class="bi bi-download"></i> Export
+            <button class="btn btn-sm btn-outline-info" id="btn-download-png">
+              <i class="bi bi-download"></i> Export PNG
             </button>
           </div>
         </div>
         <div class="card-body p-0">
-          <div id="cy" style="width: 100%; height: 600px; background-color: var(--graph-bg); border: 1px solid var(--border-color);"></div>
+          <div id="cy" style="width: 100%; height: 560px; background-color: var(--graph-bg); border: 1px solid var(--border-color);"></div>
+        </div>
+        <div class="card-body border-top">
+          <div id="path-result" class="small text-muted">Shortest path results will appear here.</div>
         </div>
       </div>
     </div>
@@ -131,15 +134,18 @@
       </div>
     </div>
     <div class="col-md-6">
-      <div class="card">
-        <div class="card-header">
-          <h6 class="mb-0"><i class="bi bi-graph-up"></i> Analysis Tools</h6>
-        </div>
-        <div class="card-body">
-          <div class="d-grid gap-2">
-            <button class="btn btn-outline-warning" onclick="window.location.href='/dashboard/paths/'">
-              <i class="bi bi-signpost"></i> Attack Path Analysis
-            </button>
+        <div class="card">
+          <div class="card-header">
+            <h6 class="mb-0"><i class="bi bi-graph-up"></i> Analysis Tools</h6>
+          </div>
+          <div class="card-body">
+            <div class="d-grid gap-2">
+              <button class="btn btn-outline-primary" onclick="window.location.href='/dashboard/digital-twin/'">
+                <i class="bi bi-boxes"></i> Digital Twin Generator
+              </button>
+              <button class="btn btn-outline-warning" onclick="window.location.href='/dashboard/paths/'">
+                <i class="bi bi-signpost"></i> Attack Path Analysis
+              </button>
             <button class="btn btn-outline-dark" onclick="window.open('http://127.0.0.1:9001', '_blank')">
               <i class="bi bi-code-square"></i> Code Analysis
             </button>
@@ -261,9 +267,6 @@
     <li class="nav-item" role="presentation">
       <button class="nav-link" id="vulns-tab" data-bs-toggle="tab" data-bs-target="#vulns" type="button" role="tab">Vulns</button>
     </li>
-    <li class="nav-item" role="presentation">
-      <button class="nav-link" id="graph-tab" data-bs-toggle="tab" data-bs-target="#graph" type="button" role="tab">Graph</button>
-    </li>
   </ul>
 
   <div class="tab-content pt-3">
@@ -333,9 +336,11 @@
               <td>{{ run.timestamp|date:"Y-m-d H:i:s" }}</td>
               <td>{{ run.cidr }}</td>
               <td>
-                <span class="badge bg-{% if run.status == 'completed' %}success{% elif run.status == 'running' %}info{% elif run.status == 'failed' %}danger{% else %}secondary{% endif %}">
+                {% with status=run.status|lower %}
+                <span class="badge bg-{% if status == 'complete' or status == 'completed' %}success{% elif status == 'running' or status == 'in_progress' %}info{% elif status == 'failed' %}danger{% else %}secondary{% endif %}">
                   {{ run.status }}
                 </span>
+                {% endwith %}
               </td>
               <td>{{ run.result_summary|default:"-" }}</td>
               <td>
@@ -448,34 +453,6 @@
       </div>
     </div>
 
-    <!-- Graph -->
-    <div class="tab-pane fade" id="graph" role="tabpanel">
-      <div class="row g-3">
-        <div class="col-12 col-lg-3">
-          <div class="card">
-            <div class="card-body">
-              <h6 class="mb-3">Path Finder</h6>
-              <div class="mb-2">
-                <input id="path-src" class="form-control" placeholder="Source IP/host">
-              </div>
-              <div class="mb-2">
-                <input id="path-dst" class="form-control" placeholder="Destination IP/host">
-              </div>
-              <div class="d-grid gap-2">
-                <button id="btn-path" class="btn btn-primary btn-sm">Find Shortest Path</button>
-                <button id="btn-clear-path" class="btn btn-outline-secondary btn-sm">Clear</button>
-                <button id="btn-download-png" class="btn btn-outline-dark btn-sm">Download PNG</button>
-                <button id="btn-refresh-graph" class="btn btn-outline-primary btn-sm">Refresh Graph</button>
-              </div>
-              <div id="path-result" class="mt-3 small text-muted"></div>
-            </div>
-          </div>
-        </div>
-        <div class="col-12 col-lg-9">
-          <div id="cy" style="width: 100%; height: 600px; background-color: var(--graph-bg); border: 1px solid var(--border-color); border-radius: .5rem;"></div>
-        </div>
-      </div>
-    </div>
   </div>
 </div>
 

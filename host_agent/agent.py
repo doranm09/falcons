@@ -412,15 +412,38 @@ def poll_for_commands():
 def handle_command(cmd):
     cmd_id = cmd.get("id")
     action = cmd.get("action")
+    parameters = cmd.get("parameters") or {}
 
     print(f"[command] received: {cmd}")
 
     if action == "ping":
         # Linux ping; adjust for Windows if needed
-        result = subprocess.run(["ping", "-c", "2", "8.8.8.8"], capture_output=True, text=True)
+        target = parameters.get("target") or "8.8.8.8"
+        result = subprocess.run(["ping", "-c", "2", target], capture_output=True, text=True)
         return_output(cmd_id, result.stdout)
     elif action == "scan":
         return_output(cmd_id, "scan complete (stub)")
+    elif action == "sbom":
+        sbom_format = parameters.get("format") or "cyclonedx"
+        packages = collect_packages()
+        sbom = generate_cyclonedx_sbom(packages) if sbom_format == "cyclonedx" else packages
+        post_sbom_to_server(sbom_data=sbom, agent_id=AGENT_ID)
+        return_output(cmd_id, f"sbom posted ({len(packages)} packages)")
+    elif action == "cyber":
+        cyber_data = get_cyber_template_data()
+        cyber_payload = {
+            "agent_id": AGENT_ID,
+            "cyber_data": cyber_data
+        }
+        cyber_url = f"{SERVER_URL.rstrip('/')}/agent/cyber_report/"
+        cyber_res = http_post_json(cyber_url, cyber_payload)
+        status = cyber_res.status_code if cyber_res else "failed"
+        return_output(cmd_id, f"cyber data posted (status={status})")
+    elif action == "network_metadata":
+        ok = send_network_metadata()
+        return_output(cmd_id, "network metadata posted" if ok else "network metadata failed")
+    elif action == "info":
+        return_output(cmd_id, json.dumps(get_system_info(), indent=2))
     else:
         return_output(cmd_id, f"Unknown action: {action}")
 

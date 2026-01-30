@@ -3,6 +3,7 @@
 
 {% block content %}
 <div class="container-fluid p-4">
+    <form id="csrf-form">{% csrf_token %}</form>
     <div class="row mb-4">
         <div class="col-12">
             <h2><i class="bi bi-diagram-3"></i> Network Monitoring Dashboard</h2>
@@ -57,7 +58,7 @@
                     </button>
                 </div>
                 <div class="card-body">
-                    <div id="networkTopology" style="height: 400px; background: #f8f9fa; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #6c757d;">
+                    <div id="networkTopology" style="height: 400px; background: var(--graph-bg); border: 1px solid var(--border-color); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted);">
                         <div class="text-center">
                             <i class="bi bi-diagram-3" style="font-size: 3rem; margin-bottom: 1rem;"></i>
                             <p>Loading network topology...</p>
@@ -86,7 +87,7 @@
                 <div class="card-body">
                     <div class="table-responsive">
                         <table class="table table-hover table-sm" id="connectionsTable">
-                            <thead class="table-dark">
+                            <thead>
                                 <tr>
                                     <th>Agent</th>
                                     <th>Protocol</th>

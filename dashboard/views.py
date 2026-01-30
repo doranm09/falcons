@@ -1,19 +1,31 @@
 from django.shortcuts import render, redirect
 from django.contrib import messages
-from .models import Node, ScanRun, AgentCommand, CommandResult, NodeInterface, AgentStatus, NetworkMetadata, NetworkConnection
+from .models import (
+    AgentCommand,
+    AgentStatus,
+    CommandResult,
+    MinimegaExecutionLog,
+    NetworkConnection,
+    NetworkMetadata,
+    Node,
+    NodeInterface,
+    SbomReport,
+    ScanRun,
+)
 import ipaddress
 import subprocess
 import requests
-from django.http import JsonResponse, FileResponse, Http404
-from .tasks import scan_network_task, launch_openvas_scan_task
+from django.http import JsonResponse, FileResponse, Http404, HttpResponse
+from .tasks import scan_network_task, launch_openvas_scan_task, parse_and_save_vulnerabilities
+from .openvas_client import openvas_session, get_task_status, get_report_id, download_report
 from celery.result import AsyncResult
-from .models import Node, Link
+from .models import Link
 from .utils import dijkstra, list_interfaces
-from .sse import StreamingMiniMegaRunner, stream_minimega_execution, stream_minimega_execution_async
-from django.views.decorators.http import require_GET, require_POST
+from .sbom import detect_sbom_format, extract_os_summary_from_sbom, extract_packages_from_sbom, compute_payload_hash
+from .minimega import build_minimega_script, build_digital_twin_manifest
+from django.views.decorators.http import require_GET
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
-from django.http import JsonResponse
 from django.utils.timezone import now
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -26,6 +38,7 @@ from ipaddress import ip_network
 from pathlib import Path
 import time
 from datetime import timedelta
+from functools import wraps
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 
@@ -248,9 +261,11 @@ def stop_listener(request):
 def get_scan_history(request):
     recent = ScanRun.objects.all().order_by('-timestamp')[:10]
     history = [{
+        "id": run.id,
         "timestamp": run.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
         "cidr": run.cidr,
         "status": run.status,
+        "scan_type": run.scan_type,
         "summary": run.result_summary or "-"
     } for run in recent]
     return JsonResponse({"history": history})
@@ -354,6 +369,172 @@ def agent_cyber_report(request):
         return JsonResponse({"status": "cyber_data_updated"})
     except Node.DoesNotExist:
         return JsonResponse({"error": "Node not found"}, status=404)
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def sbom_ingest(request):
+    """Receive and store SBOM payloads from agents."""
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    agent_id = request.headers.get("X-Agent-ID")
+    if isinstance(data, dict):
+        agent_id = agent_id or data.get("agent_id")
+    if not agent_id:
+        return JsonResponse({"error": "agent_id is required"}, status=400)
+
+    payload = data.get("sbom") if isinstance(data, dict) and isinstance(data.get("sbom"), (dict, list)) else data
+
+    packages = extract_packages_from_sbom(payload)
+    os_summary = extract_os_summary_from_sbom(payload)
+    format_info = detect_sbom_format(payload)
+    payload_hash = compute_payload_hash(payload)
+
+    node = None
+    try:
+        node = Node.objects.get(agent_id=agent_id)
+    except Node.DoesNotExist:
+        node = None
+
+    if node:
+        updates = {"installed_libraries": packages[:200]}
+        if os_summary:
+            updates["os_info"] = os_summary
+        for field, value in updates.items():
+            setattr(node, field, value)
+        node.save(update_fields=list(updates.keys()))
+
+    report = SbomReport.objects.create(
+        node=node,
+        agent_id=agent_id,
+        format=format_info["format"],
+        bom_format=format_info["bom_format"],
+        spec_version=format_info["spec_version"],
+        document=payload,
+        package_count=len(packages),
+        os_summary=os_summary,
+        sha256=payload_hash,
+    )
+
+    return JsonResponse({
+        "status": "sbom_received",
+        "sbom_id": report.id,
+        "package_count": report.package_count,
+        "agent_id": agent_id,
+    })
+
+
+@require_GET
+def agent_sbom_export(request, agent_id):
+    fmt = (request.GET.get("format") or "json").lower()
+    report = SbomReport.objects.filter(agent_id=agent_id).order_by("-created_at").first()
+    if not report:
+        return JsonResponse({"error": "SBOM not found"}, status=404)
+
+    if fmt == "csv":
+        packages = extract_packages_from_sbom(report.document)
+        filename = f"sbom_{agent_id}_{report.created_at:%Y%m%d_%H%M%S}.csv"
+        lines = ["package"]
+        lines.extend(packages)
+        response = HttpResponse("\n".join(lines), content_type="text/csv")
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+    data = {
+        "agent_id": report.agent_id,
+        "created_at": report.created_at.isoformat(),
+        "format": report.format,
+        "bom_format": report.bom_format,
+        "spec_version": report.spec_version,
+        "package_count": report.package_count,
+        "os_summary": report.os_summary,
+        "document": report.document,
+    }
+    return JsonResponse(data, json_dumps_params={"indent": 2})
+
+
+@require_GET
+def agent_sbom_diff(request, agent_id):
+    reports = list(SbomReport.objects.filter(agent_id=agent_id).order_by("-created_at")[:2])
+    if len(reports) < 2:
+        return JsonResponse({"error": "Not enough SBOM reports to diff"}, status=400)
+
+    newest, previous = reports[0], reports[1]
+    newest_pkgs = set(extract_packages_from_sbom(newest.document))
+    previous_pkgs = set(extract_packages_from_sbom(previous.document))
+
+    added = sorted(newest_pkgs - previous_pkgs)
+    removed = sorted(previous_pkgs - newest_pkgs)
+    unchanged = sorted(newest_pkgs & previous_pkgs)
+
+    return JsonResponse({
+        "agent_id": agent_id,
+        "from_report_id": previous.id,
+        "to_report_id": newest.id,
+        "added": added,
+        "removed": removed,
+        "unchanged": unchanged,
+        "added_count": len(added),
+        "removed_count": len(removed),
+        "unchanged_count": len(unchanged),
+    })
+
+
+@require_GET
+def agent_sbom_bundle(request, agent_id):
+    reports = list(SbomReport.objects.filter(agent_id=agent_id).order_by("-created_at")[:2])
+    if not reports:
+        return JsonResponse({"error": "SBOM not found"}, status=404)
+
+    latest = reports[0]
+    packages = extract_packages_from_sbom(latest.document)
+    csv_lines = ["package"]
+    csv_lines.extend(packages)
+
+    diff_payload = {}
+    if len(reports) >= 2:
+        previous = reports[1]
+        newest_pkgs = set(extract_packages_from_sbom(latest.document))
+        previous_pkgs = set(extract_packages_from_sbom(previous.document))
+        diff_payload = {
+            "agent_id": agent_id,
+            "from_report_id": previous.id,
+            "to_report_id": latest.id,
+            "added": sorted(newest_pkgs - previous_pkgs),
+            "removed": sorted(previous_pkgs - newest_pkgs),
+            "unchanged": sorted(newest_pkgs & previous_pkgs),
+        }
+    else:
+        diff_payload = {
+            "agent_id": agent_id,
+            "error": "Not enough SBOM reports to diff",
+        }
+
+    import io
+    import zipfile
+
+    bundle = io.BytesIO()
+    with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        zip_file.writestr("sbom.json", json.dumps({
+            "agent_id": latest.agent_id,
+            "created_at": latest.created_at.isoformat(),
+            "format": latest.format,
+            "bom_format": latest.bom_format,
+            "spec_version": latest.spec_version,
+            "package_count": latest.package_count,
+            "os_summary": latest.os_summary,
+            "document": latest.document,
+        }, indent=2))
+        zip_file.writestr("sbom.csv", "\n".join(csv_lines))
+        zip_file.writestr("diff.json", json.dumps(diff_payload, indent=2))
+
+    bundle.seek(0)
+    filename = f"sbom_bundle_{agent_id}_{latest.created_at:%Y%m%d_%H%M%S}.zip"
+    response = FileResponse(bundle, as_attachment=True, filename=filename)
+    response["Content-Type"] = "application/zip"
+    return response
 
 @require_http_methods(["GET"])
 def agent_commands(request):
@@ -466,6 +647,25 @@ def send_agent_command(request):
     if not agent_id or not action:
         return JsonResponse({"error": "agent_id and action are required"}, status=400)
 
+    if agent_id == "all":
+        agents = list(AgentStatus.objects.all())
+        if not agents:
+            return JsonResponse({"error": "No agents available"}, status=404)
+
+        commands = [
+            AgentCommand.objects.create(agent_id=agent.agent_id, action=action, parameters=parameters)
+            for agent in agents
+        ]
+        AgentStatus.objects.filter(agent_id__in=[a.agent_id for a in agents]).update(last_command_sent=now())
+
+        return JsonResponse({
+            "status": "command_sent",
+            "command_ids": [cmd.id for cmd in commands],
+            "agent_id": agent_id,
+            "action": action,
+            "count": len(commands),
+        })
+
     # Check if agent exists
     try:
         agent = AgentStatus.objects.get(agent_id=agent_id)
@@ -511,12 +711,14 @@ def agent_details(request, agent_id):
     # Get command history for this agent
     commands = AgentCommand.objects.filter(agent_id=agent_id).order_by('-created')[:20]
     results = CommandResult.objects.filter(agent_id=agent_id).order_by('-timestamp')[:20]
+    sbom_reports = SbomReport.objects.filter(agent_id=agent_id).order_by('-created_at')[:5]
 
     return render(request, 'dashboard/agent_details.html', {
         'agent': agent,
         'node': node,
         'commands': commands,
         'results': results,
+        'sbom_reports': sbom_reports,
     })
 
 
@@ -748,7 +950,11 @@ def start_openvas_scan(request):
     # get cidr from form field (your JS uses FormData on vuln-scan-form)
     cidr = request.POST.get("vuln_cidr") or request.POST.get("cidr")
     if not cidr:
-        return JsonResponse({"error": "cidr is required (e.g., 10.0.0.0/24)"}, status=400)
+        latest_scan = ScanRun.objects.order_by("-timestamp").first()
+        if latest_scan:
+            cidr = latest_scan.cidr
+        else:
+            return JsonResponse({"error": "cidr is required (e.g., 10.0.0.0/24) and no previous scans were found"}, status=400)
 
     # validate
     try:
@@ -756,24 +962,57 @@ def start_openvas_scan(request):
     except ValueError:
         return JsonResponse({"error": f"invalid CIDR: {cidr}"}, status=400)
 
-    with transaction.atomic():
-        scan = ScanRun.objects.create(
-            cidr=cidr,
-            status=ScanRun.Status.IN_PROGRESS,
-            scan_type="openvas",
-        )
-        async_result = launch_openvas_scan_task.delay(cidr=cidr)
-        scan.openvas_task_id = async_result.id
-        scan.save(update_fields=["openvas_task_id"])  # <-- plural
+    config_name = request.POST.get("gvmd_config")
+    try:
+        with transaction.atomic():
+            scan = ScanRun.objects.create(
+                cidr=cidr,
+                status=ScanRun.Status.IN_PROGRESS,
+                scan_type="openvas",
+            )
+            async_result = launch_openvas_scan_task.delay(
+                cidr=cidr,
+                config_name=config_name,
+                scan_id=scan.id,
+            )
+    except Exception as exc:
+        return JsonResponse({"error": f"failed to launch OpenVAS scan: {exc}"}, status=500)
 
-    return JsonResponse({"scan_id": scan.id, "task_id": async_result.id}, status=202)
+    return JsonResponse({"scan_id": scan.id, "task_id": async_result.id, "cidr": cidr}, status=202)
 
-def vuln_scan_status(request, task_id):
-    async_res = AsyncResult(str(task_id))
-    data = {"state": async_res.state}
-    if async_res.ready():
-        data["result"] = async_res.result
-    return JsonResponse(data)
+@require_GET
+def vuln_scan_status(request, scan_id):
+    try:
+        scan = ScanRun.objects.get(id=scan_id)
+    except ScanRun.DoesNotExist:
+        return JsonResponse({"error": "scan_id not found"}, status=404)
+
+    if not scan.openvas_task_id:
+        return JsonResponse({"state": "LAUNCHING", "scan_status": scan.status})
+
+    try:
+        gmp = openvas_session()
+        info = get_task_status(gmp, scan.openvas_task_id)
+        state = info.get("status") or "UNKNOWN"
+        progress = info.get("progress")
+        report_id = info.get("report_id")
+
+        if state == "Done" and scan.status != "COMPLETE":
+            report_id = report_id or get_report_id(gmp, scan.openvas_task_id)
+            report_xml = download_report(gmp, report_id)
+            parse_and_save_vulnerabilities(report_xml, scan)
+            scan.status = "COMPLETE"
+            scan.result_summary = f"Scan complete. Report ID: {report_id}"
+            scan.save(update_fields=["status", "result_summary"])
+
+        return JsonResponse({
+            "state": state,
+            "progress": progress,
+            "scan_status": scan.status,
+            "report_id": report_id,
+        })
+    except Exception as exc:
+        return JsonResponse({"state": "ERROR", "error": str(exc)}, status=500)
 
 
 # -----------------------------
@@ -1020,6 +1259,405 @@ def network_monitoring_dashboard(request):
     })
 
 
+# -----------------------------
+# Digital Twin / MiniMega
+# -----------------------------
+def _staff_required_json(view_func):
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return JsonResponse({"error": "authentication_required"}, status=401)
+        if not request.user.is_staff:
+            return JsonResponse({"error": "forbidden"}, status=403)
+        return view_func(request, *args, **kwargs)
+    return wrapper
+
+
+def _run_minimega_command(command, timeout=60):
+    try:
+        return subprocess.run(
+            ["minimega", "-e", command],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        ), None
+    except FileNotFoundError:
+        return None, JsonResponse({"error": "minimega binary not found on server"}, status=500)
+    except subprocess.TimeoutExpired:
+        return None, JsonResponse({"error": "minimega execution timed out"}, status=504)
+
+
+def _resolve_scan_for_twin(scan_id):
+    if scan_id:
+        try:
+            return ScanRun.objects.get(id=scan_id), None
+        except ScanRun.DoesNotExist:
+            return None, JsonResponse({"error": "scan_id not found"}, status=404)
+    scan = ScanRun.objects.order_by("-timestamp").first()
+    if not scan:
+        return None, JsonResponse({"error": "no scan data available"}, status=404)
+    return scan, None
+
+
+def _build_twin_payload(scan, disk_image, vlan, enable_virtio, memory_mb):
+    nodes = list(scan.nodes.all().order_by("ip_address"))
+    if not nodes:
+        return None, JsonResponse({"error": "scan has no nodes"}, status=400)
+
+    agent_ids = [node.agent_id for node in nodes if node.agent_id]
+    sbom_by_agent = {}
+    if agent_ids:
+        for sbom in SbomReport.objects.filter(agent_id__in=agent_ids).order_by("agent_id", "-created_at"):
+            sbom_by_agent.setdefault(sbom.agent_id, sbom)
+
+    node_entries = []
+    for node in nodes:
+        sbom = sbom_by_agent.get(node.agent_id) if node.agent_id else None
+        package_count = sbom.package_count if sbom else (len(node.installed_libraries or []))
+        os_summary = sbom.os_summary if sbom and sbom.os_summary else (node.os_info or "")
+        node_entries.append({
+            "id": node.id,
+            "name": node.name,
+            "ip": node.ip_address,
+            "agent_id": node.agent_id,
+            "os": os_summary,
+            "packages": package_count,
+        })
+
+    links = [
+        {
+            "source": link.source.ip_address,
+            "destination": link.destination.ip_address,
+            "weight": link.weight,
+        }
+        for link in scan.links.select_related("source", "destination")
+    ]
+
+    script = build_minimega_script(
+        nodes=node_entries,
+        disk_image=disk_image,
+        vlan=vlan,
+        enable_virtio=enable_virtio,
+        memory_mb=memory_mb,
+    )
+
+    manifest = build_digital_twin_manifest(
+        scan_id=scan.id,
+        nodes=node_entries,
+        links=links,
+        disk_image=disk_image,
+        vlan=vlan,
+        enable_virtio=enable_virtio,
+        memory_mb=memory_mb,
+    )
+
+    return {
+        "script": script,
+        "manifest": manifest,
+        "node_count": len(node_entries),
+        "link_count": len(links),
+        "scan_id": scan.id,
+    }, None
+
+
+@require_GET
+def digital_twin_page(request):
+    scans = ScanRun.objects.all().order_by("-timestamp")[:20]
+    latest_scan = scans[0] if scans else None
+    return render(request, "dashboard/digital_twin.html", {
+        "scans": scans,
+        "latest_scan": latest_scan,
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def digital_twin_generate(request):
+    if request.content_type and "application/json" in request.content_type:
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+    else:
+        data = request.POST
+
+    scan_id = data.get("scan_id")
+    disk_image = data.get("disk_image")
+    vlan = data.get("vlan", "100")
+    enable_virtio = str(data.get("enable_virtio", "")).lower() in {"1", "true", "yes", "on"}
+    try:
+        memory_mb = int(data.get("memory_mb", 2048))
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "memory_mb must be an integer"}, status=400)
+
+    if not disk_image:
+        return JsonResponse({"error": "disk_image is required"}, status=400)
+    if "\n" in disk_image or "\r" in disk_image:
+        return JsonResponse({"error": "disk_image contains invalid characters"}, status=400)
+
+    scan, error = _resolve_scan_for_twin(scan_id)
+    if error:
+        return error
+
+    payload, error = _build_twin_payload(scan, disk_image, vlan, enable_virtio, memory_mb)
+    if error:
+        return error
+
+    return JsonResponse({
+        "status": "generated",
+        "scan_id": payload["scan_id"],
+        "script": payload["script"],
+        "manifest": payload["manifest"],
+        "node_count": payload["node_count"],
+        "link_count": payload["link_count"],
+    })
+
+
+@require_http_methods(["POST"])
+def digital_twin_export(request):
+    if request.content_type and "application/json" in request.content_type:
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+    else:
+        data = request.POST
+
+    scan_id = data.get("scan_id")
+    disk_image = data.get("disk_image")
+    vlan = data.get("vlan", "100")
+    enable_virtio = str(data.get("enable_virtio", "")).lower() in {"1", "true", "yes", "on"}
+    try:
+        memory_mb = int(data.get("memory_mb", 2048))
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "memory_mb must be an integer"}, status=400)
+
+    if not disk_image:
+        return JsonResponse({"error": "disk_image is required"}, status=400)
+    if "\n" in disk_image or "\r" in disk_image:
+        return JsonResponse({"error": "disk_image contains invalid characters"}, status=400)
+
+    scan, error = _resolve_scan_for_twin(scan_id)
+    if error:
+        return error
+
+    payload, error = _build_twin_payload(scan, disk_image, vlan, enable_virtio, memory_mb)
+    if error:
+        return error
+
+    import zipfile
+    import io
+
+    bundle = io.BytesIO()
+    with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        zip_file.writestr(f"cybertwin_scan_{payload['scan_id']}.mm", payload["script"])
+        zip_file.writestr("manifest.json", json.dumps(payload["manifest"], indent=2))
+
+    bundle.seek(0)
+    filename = f"cybertwin_scan_{payload['scan_id']}_bundle.zip"
+    response = FileResponse(bundle, as_attachment=True, filename=filename)
+    response["Content-Type"] = "application/zip"
+    return response
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def digital_twin_execute(request):
+    if request.content_type and "application/json" in request.content_type:
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+    else:
+        data = request.POST
+
+    if os.environ.get("MINIMEGA_EXECUTION_ENABLED") != "1":
+        return JsonResponse({"error": "MiniMega execution is disabled on this server"}, status=403)
+
+    if str(data.get("confirm", "")).strip() != "RUN_MINIMEGA":
+        return JsonResponse({"error": "Confirmation token missing. Set confirm=RUN_MINIMEGA to proceed."}, status=400)
+
+    scan_id = data.get("scan_id")
+    disk_image = data.get("disk_image")
+    vlan = data.get("vlan", "100")
+    enable_virtio = str(data.get("enable_virtio", "")).lower() in {"1", "true", "yes", "on"}
+    try:
+        memory_mb = int(data.get("memory_mb", 2048))
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "memory_mb must be an integer"}, status=400)
+
+    if not disk_image:
+        return JsonResponse({"error": "disk_image is required"}, status=400)
+    if "\n" in disk_image or "\r" in disk_image:
+        return JsonResponse({"error": "disk_image contains invalid characters"}, status=400)
+
+    if not os.path.exists(disk_image):
+        return JsonResponse({"error": f"disk_image not found: {disk_image}"}, status=400)
+
+    scan, error = _resolve_scan_for_twin(scan_id)
+    if error:
+        return error
+
+    payload, error = _build_twin_payload(scan, disk_image, vlan, enable_virtio, memory_mb)
+    if error:
+        return error
+
+    base_dir = getattr(settings, "MINIMEGA_SCRIPT_DIR", "/tmp/cybertwin_minimega")
+    Path(base_dir).mkdir(parents=True, exist_ok=True)
+    script_name = f"twin_scan_{payload['scan_id']}_{now():%Y%m%d_%H%M%S}.mm"
+    script_path = Path(base_dir) / script_name
+    script_path.write_text(payload["script"])
+
+    result, error = _run_minimega_command(f"read {script_path}")
+    if error:
+        MinimegaExecutionLog.objects.create(
+            action=MinimegaExecutionLog.Action.EXECUTE,
+            user=request.user if request.user.is_authenticated else None,
+            scan=scan,
+            disk_image=disk_image,
+            vlan=vlan,
+            memory_mb=memory_mb,
+            enable_virtio=enable_virtio,
+            script_path=str(script_path),
+            command=f"read {script_path}",
+            status="failed",
+            stdout="",
+            stderr=error.content.decode("utf-8") if hasattr(error, "content") else "",
+        )
+        return error
+
+    log = MinimegaExecutionLog.objects.create(
+        action=MinimegaExecutionLog.Action.EXECUTE,
+        user=request.user if request.user.is_authenticated else None,
+        scan=scan,
+        disk_image=disk_image,
+        vlan=vlan,
+        memory_mb=memory_mb,
+        enable_virtio=enable_virtio,
+        script_path=str(script_path),
+        command=f"read {script_path}",
+        status="success" if result.returncode == 0 else "failed",
+        returncode=result.returncode,
+        stdout=result.stdout[:10000],
+        stderr=result.stderr[:10000],
+    )
+
+    return JsonResponse({
+        "status": "executed",
+        "script_path": str(script_path),
+        "returncode": result.returncode,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+        "log_id": log.id,
+    })
+
+
+@require_http_methods(["POST"])
+@_staff_required_json
+def digital_twin_reset(request):
+    if os.environ.get("MINIMEGA_EXECUTION_ENABLED") != "1" or os.environ.get("MINIMEGA_ALLOW_RESET") != "1":
+        return JsonResponse({"error": "MiniMega reset is disabled on this server"}, status=403)
+
+    confirm = ""
+    if request.body:
+        try:
+            confirm = json.loads(request.body).get("confirm", "")
+        except json.JSONDecodeError:
+            confirm = ""
+    confirm = str(request.POST.get("confirm") or confirm).strip()
+    if confirm != "RESET_MINIMEGA":
+        return JsonResponse({"error": "Confirmation token missing. Set confirm=RESET_MINIMEGA to proceed."}, status=400)
+
+    command = os.environ.get("MINIMEGA_RESET_COMMAND", "clear vm")
+    result, error = _run_minimega_command(command)
+    if error:
+        MinimegaExecutionLog.objects.create(
+            action=MinimegaExecutionLog.Action.RESET,
+            user=request.user,
+            command=command,
+            status="failed",
+            stdout="",
+            stderr=error.content.decode("utf-8") if hasattr(error, "content") else "",
+        )
+        return error
+
+    log = MinimegaExecutionLog.objects.create(
+        action=MinimegaExecutionLog.Action.RESET,
+        user=request.user,
+        command=command,
+        status="success" if result.returncode == 0 else "failed",
+        returncode=result.returncode,
+        stdout=result.stdout[:10000],
+        stderr=result.stderr[:10000],
+    )
+    return JsonResponse({
+        "status": "reset",
+        "returncode": result.returncode,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+        "log_id": log.id,
+    })
+
+
+@require_http_methods(["POST"])
+@_staff_required_json
+def digital_twin_kill(request):
+    if os.environ.get("MINIMEGA_EXECUTION_ENABLED") != "1" or os.environ.get("MINIMEGA_ALLOW_KILL") != "1":
+        return JsonResponse({"error": "MiniMega kill is disabled on this server"}, status=403)
+
+    confirm = ""
+    if request.body:
+        try:
+            confirm = json.loads(request.body).get("confirm", "")
+        except json.JSONDecodeError:
+            confirm = ""
+    confirm = str(request.POST.get("confirm") or confirm).strip()
+    if confirm != "KILL_MINIMEGA":
+        return JsonResponse({"error": "Confirmation token missing. Set confirm=KILL_MINIMEGA to proceed."}, status=400)
+
+    command = os.environ.get("MINIMEGA_KILL_COMMAND", "quit")
+    result, error = _run_minimega_command(command)
+    if error:
+        MinimegaExecutionLog.objects.create(
+            action=MinimegaExecutionLog.Action.KILL,
+            user=request.user,
+            command=command,
+            status="failed",
+            stdout="",
+            stderr=error.content.decode("utf-8") if hasattr(error, "content") else "",
+        )
+        return error
+
+    log = MinimegaExecutionLog.objects.create(
+        action=MinimegaExecutionLog.Action.KILL,
+        user=request.user,
+        command=command,
+        status="success" if result.returncode == 0 else "failed",
+        returncode=result.returncode,
+        stdout=result.stdout[:10000],
+        stderr=result.stderr[:10000],
+    )
+    return JsonResponse({
+        "status": "killed",
+        "returncode": result.returncode,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+        "log_id": log.id,
+    })
+
+
+@require_GET
+def minimega_execution_logs(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "authentication_required"}, status=401)
+    if not request.user.is_staff:
+        return JsonResponse({"error": "forbidden"}, status=403)
+
+    logs = MinimegaExecutionLog.objects.select_related("user", "scan").all()[:200]
+    return render(request, "dashboard/minimega_logs.html", {"logs": logs})
+
+
 @require_GET
 def network_metadata_api(request):
     """API endpoint for real-time network metadata."""
@@ -1147,161 +1785,3 @@ def network_topology_api(request):
         'edges': edges,
         'timestamp': now().strftime('%Y-%m-%d %H:%M:%S')
     })
-
-
-# -----------------------------
-# MiniMega Provisioning Views
-# -----------------------------
-@require_GET
-def minimega_provisions(request):
-    """View for displaying MiniMega VM provisioning status and scripts."""
-    import os
-    from pathlib import Path
-
-    # Directories to check
-    output_base = Path(settings.BASE_DIR) / "out"
-    mm_scripts_dir = output_base / "mm"
-    state_dir = output_base / "state"
-    runs_dir = output_base / "runs"
-
-    # Get minimega scripts
-    mm_scripts = []
-    if mm_scripts_dir.exists():
-        for mm_file in mm_scripts_dir.glob("*.mm"):
-            try:
-                content = mm_file.read_text()
-                lines = content.split('\n')
-                vm_count = sum(1 for line in lines if line.strip().startswith('vm launch'))
-
-                mm_scripts.append({
-                    'filename': mm_file.name,
-                    'filepath': str(mm_file),
-                    'content': content[:500] + '...' if len(content) > 500 else content,
-                    'vm_count': vm_count,
-                    'size': len(content),
-                    'created': datetime.fromtimestamp(mm_file.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
-                })
-            except Exception as e:
-                print(f"Error reading {mm_file}: {e}")
-
-    # Sort by creation time (newest first)
-    mm_scripts.sort(key=lambda x: x['created'], reverse=True)
-
-    # Get provisioning inventory
-    inventory = {}
-    inventory_file = state_dir / "inventory.json"
-    if inventory_file.exists():
-        try:
-            import json
-            with open(inventory_file, 'r') as f:
-                inventory = json.load(f)
-        except Exception as e:
-            print(f"Error reading inventory: {e}")
-
-    # Flatten inventory for template
-    provisioned_runs = []
-    for run_label, runs in inventory.items():
-        for run in runs:
-            run_data = run.copy()
-            run_data['label'] = run_label
-            provisioned_runs.append(run_data)
-
-    # Sort runs by timestamp
-    provisioned_runs.sort(key=lambda x: x['timestamp'], reverse=True)
-
-    # Get execution logs
-    execution_logs = []
-    if runs_dir.exists():
-        for log_file in runs_dir.glob("*.json"):
-            try:
-                import json
-                with open(log_file, 'r') as f:
-                    log_data = json.load(f)
-
-                execution_logs.append({
-                    'filename': log_file.name,
-                    'filepath': str(log_file),
-                    'data': log_data,
-                    'success': log_data.get('success', False),
-                    'label': log_data.get('label', 'unknown'),
-                    'timestamp': log_data.get('timestamp', ''),
-                    'exit_code': log_data.get('exit_code', None)
-                })
-            except Exception as e:
-                print(f"Error reading execution log {log_file}: {e}")
-
-    # Sort logs by timestamp
-    execution_logs.sort(key=lambda x: x['timestamp'], reverse=True)
-
-    context = {
-        'mm_scripts': mm_scripts,
-        'provisioned_runs': provisioned_runs,
-        'execution_logs': execution_logs,
-        'total_scripts': len(mm_scripts),
-        'total_runs': len(provisioned_runs),
-        'total_logs': len(execution_logs),
-        'timestamp': now().timestamp()
-    }
-
-    return render(request, 'dashboard/minimega_provisions.html', context)
-
-
-@csrf_exempt
-def deploy_minimega_script(request):
-    """Deploy a MiniMega script by executing it."""
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "Invalid JSON"}, status=400)
-
-    script_filename = data.get("script_filename")
-    label = data.get("label", "dashboard-deploy")
-    dry_run = data.get("dry_run", False)
-
-    if not script_filename:
-        return JsonResponse({"error": "script_filename is required"}, status=400)
-
-    # Security: validate script filename
-    from pathlib import Path
-    output_base = Path(settings.BASE_DIR) / "out"
-    mm_scripts_dir = output_base / "mm"
-    script_path = (mm_scripts_dir / script_filename).resolve()
-
-    # Ensure script is within expected directory
-    if not str(script_path).startswith(str(mm_scripts_dir.resolve())):
-        return JsonResponse({"error": "Invalid script path"}, status=400)
-
-    if not script_path.exists():
-        return JsonResponse({"error": f"Script {script_filename} not found"}, status=404)
-
-    try:
-        # Use the MiniMegaRunner to execute the script
-        from ..provisioning.executor.run_minimega import MiniMegaRunner
-        from configs.provisioning import load_config
-
-        config = load_config()
-        runner = MiniMegaRunner(config)
-        result = runner.run_script(str(script_path), label, dry_run)
-
-        if result["success"]:
-            # Refresh the page data after successful deployment
-            request._messages = []
-            messages.success(request, f"Script {script_filename} deployed successfully")
-            return JsonResponse({
-                "success": True,
-                "message": f"Script {script_filename} deployed successfully",
-                "result": result,
-                "timestamp": result["timestamp"]
-            })
-        else:
-            messages.error(request, f"Script deployment failed: {result.get('stderr', 'Unknown error')}")
-            return JsonResponse({
-                "success": False,
-                "error": f"Deployment failed: {result.get('stderr', 'Unknown error')}",
-                "result": result
-            })
-
-    except Exception as e:
-        error_msg = f"Error deploying script: {str(e)}"
-        print(error_msg)
-        return JsonResponse({"error": error_msg}, status=500)

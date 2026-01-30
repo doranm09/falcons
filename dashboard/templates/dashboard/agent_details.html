@@ -144,6 +144,82 @@
         </div>
     </div>
 
+    <!-- SBOM Summary -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-journal-code"></i> SBOM Reports</h5>
+                    <div class="d-flex gap-2">
+                        {% if sbom_reports %}
+                        <a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:agent_sbom_export' agent.agent_id %}">
+                            <i class="bi bi-download"></i> Latest JSON
+                        </a>
+                        <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:agent_sbom_export' agent.agent_id %}?format=csv">
+                            <i class="bi bi-filetype-csv"></i> CSV
+                        </a>
+                        <a class="btn btn-sm btn-outline-info" href="{% url 'dashboard:agent_sbom_diff' agent.agent_id %}">
+                            <i class="bi bi-intersect"></i> Diff Latest
+                        </a>
+                        <a class="btn btn-sm btn-outline-dark" href="{% url 'dashboard:agent_sbom_bundle' agent.agent_id %}">
+                            <i class="bi bi-archive"></i> Bundle
+                        </a>
+                        {% endif %}
+                        <span class="text-muted small align-self-center">{{ sbom_reports|length }} recent</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if sbom_reports %}
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Collected</th>
+                                        <th>Format</th>
+                                        <th>Packages</th>
+                                        <th>OS Summary</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for report in sbom_reports %}
+                                    <tr>
+                                        <td>{{ report.created_at|date:"Y-m-d H:i" }}</td>
+                                        <td>{{ report.format|default:"raw" }}</td>
+                                        <td>{{ report.package_count }}</td>
+                                        <td>{{ report.os_summary|default:"-" }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="mt-3">
+                            <div class="d-flex align-items-center gap-2">
+                                <button class="btn btn-sm btn-outline-primary" id="load-sbom-diff">
+                                    <i class="bi bi-intersect"></i> Load Latest Diff
+                                </button>
+                                <span class="text-muted small" id="sbom-diff-status"></span>
+                            </div>
+                            <div class="row mt-3" id="sbom-diff-container" style="display: none;">
+                                <div class="col-md-6">
+                                    <h6 class="text-success">Added Packages</h6>
+                                    <input class="form-control form-control-sm mb-2" id="sbom-diff-added-filter" placeholder="Filter added packages">
+                                    <ul class="list-group list-group-flush" id="sbom-diff-added"></ul>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6 class="text-danger">Removed Packages</h6>
+                                    <input class="form-control form-control-sm mb-2" id="sbom-diff-removed-filter" placeholder="Filter removed packages">
+                                    <ul class="list-group list-group-flush" id="sbom-diff-removed"></ul>
+                                </div>
+                            </div>
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">No SBOMs reported yet. Use the command interface to trigger collection.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Running Processes -->
     {% if agent.processes %}
     <div class="row mb-4">
@@ -323,6 +399,7 @@
                 </div>
                 <div class="card-body">
                     <form id="agentCommandForm">
+                        {% csrf_token %}
                         <div class="row">
                             <div class="col-md-4">
                                 <label for="agentCommandAction" class="form-label">Action</label>
@@ -460,6 +537,63 @@
 
 {% block extra_scripts %}
 <script>
+    const diffButton = document.getElementById('load-sbom-diff');
+    if (diffButton) {
+        diffButton.addEventListener('click', () => {
+            const status = document.getElementById('sbom-diff-status');
+            const container = document.getElementById('sbom-diff-container');
+            const addedList = document.getElementById('sbom-diff-added');
+            const removedList = document.getElementById('sbom-diff-removed');
+            const addedFilter = document.getElementById('sbom-diff-added-filter');
+            const removedFilter = document.getElementById('sbom-diff-removed-filter');
+
+            status.textContent = 'Loading diff…';
+            fetch('{% url "dashboard:agent_sbom_diff" agent.agent_id %}')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        status.textContent = data.error;
+                        container.style.display = 'none';
+                        return;
+                    }
+                    addedList.innerHTML = '';
+                    removedList.innerHTML = '';
+
+                    (data.added || []).forEach(pkg => {
+                        const li = document.createElement('li');
+                        li.className = 'list-group-item';
+                        li.textContent = pkg;
+                        addedList.appendChild(li);
+                    });
+
+                    (data.removed || []).forEach(pkg => {
+                        const li = document.createElement('li');
+                        li.className = 'list-group-item';
+                        li.textContent = pkg;
+                        removedList.appendChild(li);
+                    });
+
+                    status.textContent = `Added: ${data.added_count}, Removed: ${data.removed_count}`;
+                    container.style.display = 'flex';
+
+                    const filterList = (inputEl, listEl) => {
+                        const term = (inputEl.value || '').toLowerCase();
+                        Array.from(listEl.children).forEach(item => {
+                            const match = item.textContent.toLowerCase().includes(term);
+                            item.style.display = match ? '' : 'none';
+                        });
+                    };
+
+                    addedFilter.addEventListener('input', () => filterList(addedFilter, addedList));
+                    removedFilter.addEventListener('input', () => filterList(removedFilter, removedList));
+                })
+                .catch(error => {
+                    status.textContent = `Error: ${error.message}`;
+                    container.style.display = 'none';
+                });
+        });
+    }
+
     // Handle agent-specific command form submission
     document.getElementById('agentCommandForm').addEventListener('submit', function(e) {
         e.preventDefault();

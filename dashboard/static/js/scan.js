@@ -130,11 +130,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
       });
 
-      // When Graph tab is shown, fix size
-      document.addEventListener('shown.bs.tab', (e) => {
-        const target = e.target && e.target.getAttribute('data-bs-target');
-        if (target === '#graph' && cyInstance) { cyInstance.resize(); cyInstance.fit(); }
-      });
     } catch (e) { console.warn('Graph render failed:', e.message); }
   }
 
@@ -166,7 +161,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // guard: hidden or zero-size container -> white image
     if (elementIsHidden(container)) {
       console.warn('Export blocked — #cy size:', container.clientWidth, 'x', container.clientHeight);
-      setStatus('Open the Graph tab (visible, non-zero size) before exporting.','warning');
+      setStatus('Graph must be visible (non-zero size) before exporting.','warning');
       return;
     }
 
@@ -358,7 +353,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // Guard: exporting from a hidden tab = blank image
         const cyDiv = cyInstance.container();
         if (!cyDiv || cyDiv.clientWidth === 0 || cyDiv.clientHeight === 0 || cyDiv.offsetParent === null) {
-          setStatus('Open the Graph tab before exporting.', 'warning');
+          setStatus('Graph must be visible before exporting.', 'warning');
           return;
         }
 
@@ -394,5 +389,12 @@ document.addEventListener('DOMContentLoaded', function () {
   // Init
   renderGraph();
   updateScanHistory();
-});
 
+  const refreshTopology = document.getElementById('refresh-topology');
+  if (refreshTopology) {
+    refreshTopology.addEventListener('click', () => {
+      setStatus('Refreshing topology…', 'muted');
+      renderGraph();
+    });
+  }
+});

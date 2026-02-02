@@ -1,21 +1,26 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.http import JsonResponse, Http404
+import secrets
+
+from django.http import JsonResponse, Http404, FileResponse
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_GET, require_POST
 from django.views.decorators.csrf import csrf_exempt
 from django.core.paginator import Paginator
+from django.db import models as dj_models
+from django.urls import reverse
 import json
 
 # Import Sliver client and models
 try:
     import sliver as sliver_client
+    from dashboard.models import AgentCommand, AgentStatus
     from .models import (
         Teamserver, Engagement, SliverSession, SliverJob, Loot,
-        TaskTemplate, ImplantTemplate, SliverEvent, AuditLog, Watcher
+        TaskTemplate, ImplantTemplate, ImplantArtifact, SliverEvent, AuditLog, Watcher
     )
-    from .utils import get_sliver_client, log_audit_action
+    from .utils import get_sliver_client, log_audit_action, resolve_artifact_path
     SLIVER_AVAILABLE = True
 except ImportError:
     SLIVER_AVAILABLE = False
@@ -63,6 +68,7 @@ def engagement_list(request):
     engagements = Engagement.objects.filter(
         operator=request.user
     ).order_by('-created_at')
+    teamservers = Teamserver.objects.all().order_by('name')
 
     # Add session/jobe counts to each engagement
     for engagement in engagements:
@@ -70,7 +76,8 @@ def engagement_list(request):
         engagement.completed_jobs = engagement.get_completed_jobs_count()
 
     return render(request, 'sliver/engagements.html', {
-        'engagements': engagements
+        'engagements': engagements,
+        'teamservers': teamservers,
     })
 
 
@@ -211,6 +218,7 @@ def session_list(request, engagement_id=None):
     sessions = SliverSession.objects.filter(
         engagement__operator=request.user
     ).order_by('-last_checkin')
+    engagements = Engagement.objects.filter(operator=request.user).order_by('name')
 
     if engagement_id:
         engagement = get_object_or_404(
@@ -238,6 +246,7 @@ def session_list(request, engagement_id=None):
     return render(request, 'sliver/sessions.html', {
         'page_obj': page_obj,
         'engagement_id': engagement_id,
+        'engagements': engagements,
     })
 
 
@@ -364,11 +373,25 @@ def generate_implant(request):
     if request.method == 'POST':
         template_id = request.POST.get('template_id')
         engagement_id = request.POST.get('engagement_id')
-        name = request.POST.get('name', f"implant_{timezone.now().strftime('%Y%m%d_%H%M%S')}")
+        raw_name = request.POST.get('name', '').strip()
+        name = raw_name or f"implant_{timezone.now().strftime('%Y%m%d_%H%M%S')}"
 
         try:
             template = ImplantTemplate.objects.get(id=template_id)
             engagement = Engagement.objects.get(id=engagement_id, operator=request.user)
+            file_name = name
+            if '.' not in file_name:
+                ext = template.file_format or template.config.get('format') or 'bin'
+                file_name = f"{file_name}.{ext.lstrip('.')}"
+
+            artifact = ImplantArtifact.objects.create(
+                name=name,
+                file_name=file_name,
+                engagement=engagement,
+                template=template,
+                generated_by=request.user,
+                status=ImplantArtifact.Status.PENDING,
+            )
 
             # Launch async implant generation
             from .tasks import generate_implant_task
@@ -376,11 +399,12 @@ def generate_implant(request):
                 engagement_id=engagement.id,
                 template_id=template.id,
                 name=name,
-                user_id=request.user.id
+                user_id=request.user.id,
+                artifact_id=artifact.id,
             )
 
             messages.success(request, f"Implant generation started for '{name}'.")
-            return redirect('sliver:engagement_detail', engagement_id=engagement_id)
+            return redirect('sliver:implant_artifacts', engagement_id=engagement_id)
 
         except (ImplantTemplate.DoesNotExist, Engagement.DoesNotExist):
             messages.error(request, "Invalid template or engagement.")
@@ -395,6 +419,217 @@ def generate_implant(request):
         'templates': templates,
         'engagements': engagements,
     })
+
+
+@login_required
+def implant_artifacts(request, engagement_id=None):
+    """List generated implant artifacts."""
+    if not SLIVER_AVAILABLE:
+        messages.error(request, "Sliver integration is not configured. Please install sliver-py.")
+        return redirect('dashboard:home')
+
+    artifacts = ImplantArtifact.objects.select_related(
+        'template', 'engagement', 'generated_by'
+    ).order_by('-created_at')
+    agents = AgentStatus.objects.all().order_by('-last_heartbeat')
+    engagement = None
+
+    if engagement_id:
+        engagement = get_object_or_404(
+            Engagement,
+            id=engagement_id,
+            operator=request.user
+        )
+        artifacts = artifacts.filter(engagement=engagement)
+    else:
+        artifacts = artifacts.filter(
+            dj_models.Q(engagement__operator=request.user) |
+            dj_models.Q(generated_by=request.user)
+        )
+
+    return render(request, 'sliver/implants.html', {
+        'artifacts': artifacts,
+        'engagement': engagement,
+        'agents': agents,
+    })
+
+
+@login_required
+def download_implant(request, artifact_id):
+    """Download a generated implant artifact."""
+    if not SLIVER_AVAILABLE:
+        messages.error(request, "Sliver integration is not configured. Please install sliver-py.")
+        return redirect('dashboard:home')
+
+    artifact = get_object_or_404(ImplantArtifact, id=artifact_id)
+
+    if artifact.engagement and artifact.engagement.operator != request.user and not request.user.is_superuser:
+        raise Http404
+    if artifact.generated_by and artifact.generated_by != request.user and not request.user.is_superuser:
+        raise Http404
+
+    if artifact.status != ImplantArtifact.Status.READY:
+        messages.warning(request, "Artifact is not ready for download.")
+        return redirect(request.META.get('HTTP_REFERER', 'sliver:implant_artifacts'))
+    if not artifact.relative_path:
+        messages.error(request, "Artifact path is missing.")
+        return redirect(request.META.get('HTTP_REFERER', 'sliver:implant_artifacts'))
+
+    try:
+        artifact_path = resolve_artifact_path(artifact.relative_path)
+    except ValueError:
+        raise Http404
+
+    if not artifact_path.exists():
+        messages.error(request, "Artifact file not found on disk.")
+        return redirect(request.META.get('HTTP_REFERER', 'sliver:implant_artifacts'))
+
+    return FileResponse(
+        open(artifact_path, 'rb'),
+        as_attachment=True,
+        filename=artifact.file_name or artifact_path.name,
+    )
+
+
+@require_GET
+def download_implant_token(request, artifact_id):
+    """Token-based download endpoint for agents."""
+    if not SLIVER_AVAILABLE:
+        raise Http404
+
+    token = request.GET.get('token', '')
+    if not token:
+        raise Http404
+
+    artifact = get_object_or_404(ImplantArtifact, id=artifact_id)
+    if artifact.download_token != token:
+        raise Http404
+    if artifact.token_expires_at and timezone.now() > artifact.token_expires_at:
+        raise Http404
+    if artifact.status != ImplantArtifact.Status.READY or not artifact.relative_path:
+        raise Http404
+
+    try:
+        artifact_path = resolve_artifact_path(artifact.relative_path)
+    except ValueError:
+        raise Http404
+
+    if not artifact_path.exists():
+        raise Http404
+
+    return FileResponse(
+        open(artifact_path, 'rb'),
+        as_attachment=True,
+        filename=artifact.file_name or artifact_path.name,
+    )
+
+
+@login_required
+@require_POST
+def deploy_implant_to_agent(request, artifact_id):
+    """Send a deploy command to a host agent for this artifact."""
+    if not SLIVER_AVAILABLE:
+        messages.error(request, "Sliver integration is not configured. Please install sliver-py.")
+        return redirect('dashboard:home')
+
+    artifact = get_object_or_404(ImplantArtifact, id=artifact_id)
+    if artifact.status != ImplantArtifact.Status.READY:
+        messages.error(request, "Artifact is not ready for deployment.")
+        return redirect(request.META.get('HTTP_REFERER', 'sliver:implant_artifacts'))
+
+    agent_id = request.POST.get('agent_id')
+    if not agent_id:
+        messages.error(request, "Agent ID is required for deployment.")
+        return redirect(request.META.get('HTTP_REFERER', 'sliver:implant_artifacts'))
+
+    try:
+        AgentStatus.objects.get(agent_id=agent_id)
+    except AgentStatus.DoesNotExist:
+        messages.error(request, "Selected agent was not found.")
+        return redirect(request.META.get('HTTP_REFERER', 'sliver:implant_artifacts'))
+
+    token = secrets.token_urlsafe(32)
+    artifact.download_token = token
+    artifact.token_expires_at = timezone.now() + timezone.timedelta(hours=1)
+    artifact.save(update_fields=['download_token', 'token_expires_at'])
+
+    fetch_url = request.build_absolute_uri(
+        reverse('sliver:download_implant_token', args=[artifact.id])
+    )
+
+    execute_after = request.POST.get('execute_after') == 'on'
+    execute_args_raw = request.POST.get('execute_args', '').strip()
+    execute_args = None
+    if execute_args_raw:
+        try:
+            parsed = json.loads(execute_args_raw)
+            execute_args = parsed if isinstance(parsed, list) else [str(parsed)]
+        except Exception:
+            execute_args = execute_args_raw.split()
+
+    parameters = {
+        'artifact_id': artifact.id,
+        'name': artifact.name,
+        'file_name': artifact.file_name,
+        'sha256': artifact.sha256,
+        'size': artifact.file_size,
+        'url': f"{fetch_url}?token={token}",
+    }
+    if execute_after:
+        parameters['execute'] = True
+        if execute_args:
+            parameters['execute_args'] = execute_args
+
+    AgentCommand.objects.create(
+        agent_id=agent_id,
+        action='sliver_deploy',
+        parameters=parameters,
+    )
+
+    if artifact.engagement:
+        log_audit_action(
+            action='IMPLANT_DEPLOYED',
+            user=request.user,
+            teamserver=artifact.engagement.teamserver,
+            engagement=artifact.engagement,
+            details={
+                'artifact_id': artifact.id,
+                'artifact_name': artifact.name,
+                'agent_id': agent_id,
+                'execute_after': execute_after,
+            }
+        )
+
+    messages.success(request, f"Deployment command queued for agent {agent_id}.")
+    return redirect(request.META.get('HTTP_REFERER', 'sliver:implant_artifacts'))
+
+
+@login_required
+def teamserver_list(request):
+    """List teamserver configurations and statuses."""
+    if not SLIVER_AVAILABLE:
+        messages.error(request, "Sliver integration is not configured. Please install sliver-py.")
+        return redirect('dashboard:home')
+
+    teamservers = Teamserver.objects.all().order_by('name')
+    return render(request, 'sliver/teamservers.html', {
+        'teamservers': teamservers,
+    })
+
+
+@login_required
+@require_POST
+def test_teamserver_connection(request, teamserver_id):
+    """Test teamserver connectivity."""
+    teamserver = get_object_or_404(Teamserver, id=teamserver_id)
+
+    try:
+        _ = get_sliver_client(teamserver)
+        messages.success(request, f"Connected to {teamserver.name}.")
+    except Exception as e:
+        messages.error(request, f"Connection failed: {str(e)}")
+
+    return redirect('sliver:teamserver_list')
 
 
 @login_required

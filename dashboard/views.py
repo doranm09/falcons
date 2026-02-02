@@ -264,18 +264,18 @@ def shortest_paths(request, start_node_id=None):
     return JsonResponse(distances_serialized, encoder=DjangoJSONEncoder, safe=False)
 
 def history(request):
-    from .models import Vulnerability
+    from .models import ScanVulnerability
     runs = ScanRun.objects.all().order_by('-timestamp')
 
     run_data = []
     for run in runs:
-        vulns = Vulnerability.objects.filter(scan_run=run)
+        vulns = ScanVulnerability.objects.filter(scan_run=run)
         run_data.append({
             "run": run,
             "vuln_count": vulns.count(),
         })
 
-    return render(request, 'dashboard/history.html', {'runs': runs})
+    return render(request, 'dashboard/history.html', {'runs': run_data})
 
 def graph_data(request):
     latest_scan = ScanRun.objects.order_by('-timestamp').first()
@@ -697,6 +697,42 @@ def agent_command_result(request):
         output=output
     )
 
+    if cmd.action == "sliver_deploy":
+        try:
+            from sliver.models import ImplantArtifact
+            from sliver.utils import log_audit_action
+
+            artifact_id = None
+            if isinstance(cmd.parameters, dict):
+                artifact_id = cmd.parameters.get("artifact_id")
+            artifact = None
+            if artifact_id:
+                artifact = ImplantArtifact.objects.select_related('engagement__teamserver').filter(id=artifact_id).first()
+
+            if artifact and artifact.engagement and artifact.engagement.teamserver:
+                normalized = (output or "").lower()
+                if "executed pid=" in normalized:
+                    action = "IMPLANT_EXECUTED"
+                elif "failed" in normalized:
+                    action = "IMPLANT_DEPLOY_FAILED"
+                else:
+                    action = "IMPLANT_DELIVERED"
+
+                log_audit_action(
+                    action=action,
+                    user=None,
+                    teamserver=artifact.engagement.teamserver,
+                    engagement=artifact.engagement,
+                    details={
+                        "artifact_id": artifact.id,
+                        "artifact_name": artifact.name,
+                        "agent_id": agent_id,
+                        "output": output,
+                    }
+                )
+        except Exception:
+            pass
+
     return JsonResponse({"status": "received"})
 
 
@@ -842,12 +878,22 @@ def agent_details(request, agent_id):
     results = CommandResult.objects.filter(agent_id=agent_id).order_by('-timestamp')[:20]
     sbom_reports = SbomReport.objects.filter(agent_id=agent_id).order_by('-created_at')[:5]
 
+    # Sliver artifacts for quick deployment (if available)
+    try:
+        from sliver.models import ImplantArtifact
+        sliver_artifacts = ImplantArtifact.objects.filter(
+            status='READY'
+        ).order_by('-created_at')[:50]
+    except Exception:
+        sliver_artifacts = []
+
     return render(request, 'dashboard/agent_details.html', {
         'agent': agent,
         'node': node,
         'commands': commands,
         'results': results,
         'sbom_reports': sbom_reports,
+        'sliver_artifacts': sliver_artifacts,
     })
 
 

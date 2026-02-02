@@ -31,6 +31,15 @@ urlpatterns = [
 
     # Implant generation
     path('generate-implant/', views.generate_implant, name='generate_implant'),
+    path('implants/', views.implant_artifacts, name='implant_artifacts'),
+    path('engagements/<int:engagement_id>/implants/', views.implant_artifacts, name='engagement_implants'),
+    path('implants/<int:artifact_id>/download/', views.download_implant, name='download_implant'),
+    path('implants/<int:artifact_id>/fetch/', views.download_implant_token, name='download_implant_token'),
+    path('implants/<int:artifact_id>/deploy/', views.deploy_implant_to_agent, name='deploy_implant_to_agent'),
+
+    # Teamserver management
+    path('teamservers/', views.teamserver_list, name='teamserver_list'),
+    path('teamservers/<int:teamserver_id>/test/', views.test_teamserver_connection, name='test_teamserver_connection'),
 
     # Templates
     path('templates/', views.task_templates, name='task_templates'),

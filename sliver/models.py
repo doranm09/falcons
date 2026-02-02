@@ -102,6 +102,43 @@ class ImplantTemplate(models.Model):
 
 
 # -----------------------------
+# Generated Implants / Artifacts
+# -----------------------------
+class ImplantArtifact(models.Model):
+    """Generated implant/stager artifacts stored by the dashboard."""
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        RUNNING = "RUNNING", "Running"
+        READY = "READY", "Ready"
+        FAILED = "FAILED", "Failed"
+
+    name = models.CharField(max_length=200, help_text="Logical implant name")
+    file_name = models.CharField(max_length=255, blank=True, help_text="Artifact filename")
+    relative_path = models.CharField(max_length=500, blank=True, help_text="Relative path under artifact directory")
+
+    engagement = models.ForeignKey(Engagement, on_delete=models.SET_NULL, null=True, blank=True)
+    template = models.ForeignKey(ImplantTemplate, on_delete=models.SET_NULL, null=True, blank=True)
+    generated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    file_size = models.PositiveBigIntegerField(default=0)
+    sha256 = models.CharField(max_length=64, blank=True)
+    error_message = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    download_token = models.CharField(max_length=128, blank=True)
+    token_expires_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Implant Artifact"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.name} ({self.get_status_display()})"
+
+# -----------------------------
 # Sessions (Beacons/Interactive)
 # -----------------------------
 class SliverSession(models.Model):
@@ -324,6 +361,10 @@ class AuditLog(models.Model):
         ENGAGEMENT_STARTED = "ENGAGEMENT_STARTED", "Engagement Started"
         ENGAGEMENT_STOPPED = "ENGAGEMENT_STOPPED", "Engagement Stopped"
         IMPLANT_GENERATED = "IMPLANT_GENERATED", "Implant Generated"
+        IMPLANT_DEPLOYED = "IMPLANT_DEPLOYED", "Implant Deploy Queued"
+        IMPLANT_DELIVERED = "IMPLANT_DELIVERED", "Implant Delivered"
+        IMPLANT_EXECUTED = "IMPLANT_EXECUTED", "Implant Executed"
+        IMPLANT_DEPLOY_FAILED = "IMPLANT_DEPLOY_FAILED", "Implant Deploy Failed"
         SESSION_CONNECTED = "SESSION_CONNECTED", "Session Connected"
         COMMAND_EXECUTED = "COMMAND_EXECUTED", "Command Executed"
         LOOT_DOWNLOADED = "LOOT_DOWNLOADED", "Loot Downloaded"

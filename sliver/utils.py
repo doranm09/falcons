@@ -1,5 +1,10 @@
 import json
 import logging
+from pathlib import Path
+
+from django.conf import settings
+from django.utils import timezone
+
 from .models import AuditLog, Teamserver
 
 try:
@@ -47,7 +52,7 @@ def get_sliver_client(teamserver):
 
         # Update connection status
         teamserver.is_connected = True
-        teamserver.last_connected = teamserver.now()
+        teamserver.last_connected = timezone.now()
         teamserver.save(update_fields=['is_connected', 'last_connected'])
 
         return client
@@ -233,6 +238,23 @@ def format_command_output(output, error=None, max_length=1000):
             formatted += "STDERR:\n" + error
 
     return formatted.strip()
+
+
+def get_artifact_base_dir():
+    """Return the base directory for storing implant artifacts."""
+    configured = getattr(settings, "SLIVER_ARTIFACT_DIR", None)
+    base_dir = Path(configured) if configured else Path(settings.BASE_DIR) / "sliver_artifacts"
+    base_dir.mkdir(parents=True, exist_ok=True)
+    return base_dir
+
+
+def resolve_artifact_path(relative_path):
+    """Resolve a stored artifact path safely within the artifact directory."""
+    base_dir = get_artifact_base_dir().resolve()
+    candidate = (base_dir / relative_path).resolve()
+    if base_dir != candidate and base_dir not in candidate.parents:
+        raise ValueError("Artifact path is outside the artifact directory")
+    return candidate
 
 
 def create_default_implant_templates():

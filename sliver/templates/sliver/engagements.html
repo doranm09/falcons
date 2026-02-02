@@ -147,9 +147,11 @@
             <label for="teamserverSelect" class="form-label">Teamserver *</label>
             <select class="form-select" id="teamserverSelect" name="teamserver_id" required>
               <option value="">Select a teamserver...</option>
-              <!-- These would be populated from Teamserver.objects.all() -->
-              <option value="1">Local Teamserver (192.168.1.100:31337)</option>
-              <option value="2">Production Teamserver (example.com:31337)</option>
+              {% for teamserver in teamservers %}
+              <option value="{{ teamserver.id }}">{{ teamserver.name }} ({{ teamserver.host }}:{{ teamserver.port }})</option>
+              {% empty %}
+              <option value="" disabled>No teamservers configured</option>
+              {% endfor %}
             </select>
           </div>
 

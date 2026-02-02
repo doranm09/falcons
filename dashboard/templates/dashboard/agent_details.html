@@ -390,6 +390,52 @@
     </div>
     {% endif %}
 
+    <!-- Sliver Implant Deployment -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card border-success">
+                <div class="card-header">
+                    <h5><i class="bi bi-box-arrow-up"></i> Deploy Sliver Implant</h5>
+                </div>
+                <div class="card-body">
+                    {% if sliver_artifacts %}
+                    <form method="post" id="sliverDeployForm" data-base-url="{% url 'sliver:deploy_implant_to_agent' 0 %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="agent_id" value="{{ agent.agent_id }}">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-5">
+                                <label for="sliverArtifactSelect" class="form-label">Artifact</label>
+                                <select class="form-select" id="sliverArtifactSelect" required>
+                                    <option value="">Select artifact...</option>
+                                    {% for artifact in sliver_artifacts %}
+                                    <option value="{{ artifact.id }}">{{ artifact.name }} ({{ artifact.file_name|default:"-" }})</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="execute_after" id="sliverExecAfter">
+                                    <label class="form-check-label" for="sliverExecAfter">
+                                        Execute after download
+                                    </label>
+                                </div>
+                                <input class="form-control form-control-sm mt-1" type="text" name="execute_args" placeholder="Optional args">
+                            </div>
+                            <div class="col-md-2">
+                                <button type="submit" class="btn btn-success w-100">
+                                    <i class="bi bi-upload"></i> Deploy
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                    {% else %}
+                    <p class="text-muted mb-0">No ready Sliver artifacts found.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Command Interface for this Agent -->
     <div class="row mb-4">
         <div class="col-md-12">
@@ -638,6 +684,24 @@
             alert(`Error sending command: ${error}`);
         });
     });
+
+    // Sliver deploy form action wiring
+    const sliverForm = document.getElementById('sliverDeployForm');
+    if (sliverForm) {
+        const sliverSelect = document.getElementById('sliverArtifactSelect');
+        const baseUrl = sliverForm.dataset.baseUrl;
+        const updateAction = () => {
+            const id = sliverSelect.value;
+            sliverForm.action = id ? baseUrl.replace('/0/', `/${id}/`) : '#';
+        };
+        sliverSelect.addEventListener('change', updateAction);
+        sliverForm.addEventListener('submit', function(e) {
+            if (!sliverSelect.value) {
+                e.preventDefault();
+                alert('Select an artifact to deploy.');
+            }
+        });
+    }
 
     // Auto-refresh every 30 seconds
     setInterval(function() {

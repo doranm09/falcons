@@ -167,8 +167,15 @@ STATICFILES_DIRS = [
 # Where collectstatic will put the static files for production
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+# Media uploads (loot files, artifacts)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
 # Sliver implant artifact storage (override with SLIVER_ARTIFACT_DIR env var)
 SLIVER_ARTIFACT_DIR = os.environ.get('SLIVER_ARTIFACT_DIR', str(BASE_DIR / 'sliver_artifacts'))
+
+# ICS Risk Assessment API
+RISK_ASSESSMENT_API_URL = os.environ.get('RISK_ASSESSMENT_API_URL', 'http://127.0.0.1:7890')
 
 
 CELERY_BEAT_SCHEDULE = {

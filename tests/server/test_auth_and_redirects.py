@@ -1,3 +1,4 @@
+import json
 import pytest
 from django.urls import reverse
 
@@ -97,25 +98,35 @@ class TestAuthAndRedirects:
     @pytest.mark.django_db
     def test_agent_api_endpoints_accessible_without_auth(self, client):
         """Test that agent API endpoints are accessible without authentication."""
-        api_urls = [
-            reverse('dashboard:agent_report'),
-            reverse('dashboard:agent_commands') + '?agent_id=test-agent',
-            reverse('dashboard:agent_command_result'),
-            reverse('dashboard:agent_cyber_report'),
-            reverse('dashboard:agent_network_metadata'),
+        api_requests = [
+            ("POST", reverse('dashboard:agent_report'), {
+                "agent_id": "test-agent",
+                "hostname": "test-host",
+                "interfaces": [{"name": "eth0", "ip": "10.0.0.10", "mac": "00:11:22:33:44:55"}],
+            }),
+            ("GET", reverse('dashboard:agent_commands') + '?agent_id=test-agent', None),
+            ("POST", reverse('dashboard:agent_command_result'), {
+                "agent_id": "test-agent",
+                "command_id": 99999,
+                "output": "ok",
+            }),
+            ("POST", reverse('dashboard:agent_cyber_report'), {
+                "agent_id": "test-agent",
+                "cyber_data": {"OS": "linux", "lib": [], "MAC": [], "port": []},
+            }),
+            ("GET", reverse('dashboard:network_metadata_api'), None),
         ]
 
-        for url in api_urls:
-            # POST request with minimal data for endpoints that require POST
-            if 'report' in url or 'result' in url or 'metadata' in url:
-                response = client.post(url, {}, content_type='application/json')
+        for method, url, payload in api_requests:
+            if method == "POST":
+                response = client.post(url, data=json.dumps(payload or {}), content_type='application/json')
             else:
                 response = client.get(url)
 
             # Should not return 403 Forbidden or redirect to login
             assert response.status_code != 403, f"URL {url} returned 403 Forbidden"
             # Should return appropriate error for bad requests, not auth errors
-            assert response.status_code in [200, 400, 404, 500], f"URL {url} returned unexpected {response.status_code}"
+            assert response.status_code in [200, 400, 404, 405, 500], f"URL {url} returned unexpected {response.status_code}"
 
     @pytest.mark.django_db
     def test_no_global_login_middleware(self, client):

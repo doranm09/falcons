@@ -25,6 +25,7 @@ from .tasks import (
 from .openvas_client import openvas_session, get_task_status, get_report_id, download_report
 from celery.result import AsyncResult
 from .models import Link
+from .risk_assessment import build_cyber_data_for_risk_nodes, summarize_risk_results
 from .utils import dijkstra, list_interfaces
 from .sbom import detect_sbom_format, extract_os_summary_from_sbom, extract_packages_from_sbom, compute_payload_hash
 from .minimega import build_minimega_script, build_digital_twin_manifest
@@ -46,6 +47,7 @@ from datetime import timedelta
 from functools import wraps
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
+RISK_ASSESSMENT_TIMEOUT = 5
 
 def home(request):
     nodes = Node.objects.all().values('ip_address', 'name')
@@ -2243,3 +2245,82 @@ def network_topology_api(request):
         'edges': edges,
         'timestamp': now().strftime('%Y-%m-%d %H:%M:%S')
     })
+
+
+def risk_assessment_page(request):
+    return render(request, 'dashboard/risk_assessment.html')
+
+
+@require_GET
+def risk_assessment_status_api(request):
+    try:
+        response = requests.get(_risk_api_url('/status'), timeout=RISK_ASSESSMENT_TIMEOUT)
+        response.raise_for_status()
+        return JsonResponse(response.json())
+    except Exception as exc:
+        return JsonResponse({'error': str(exc)}, status=502)
+
+
+@require_GET
+def risk_assessment_nodes_api(request):
+    try:
+        response = requests.get(_risk_api_url('/nodes'), timeout=RISK_ASSESSMENT_TIMEOUT)
+        response.raise_for_status()
+        return JsonResponse(response.json())
+    except Exception as exc:
+        return JsonResponse({'error': str(exc)}, status=502)
+
+
+@require_http_methods(["POST"])
+def risk_assessment_probability_api(request):
+    try:
+        payload = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON payload.'}, status=400)
+
+    try:
+        response = requests.post(
+            _risk_api_url('/probability'),
+            json=payload,
+            timeout=RISK_ASSESSMENT_TIMEOUT
+        )
+        response.raise_for_status()
+        return JsonResponse(response.json())
+    except Exception as exc:
+        return JsonResponse({'error': str(exc)}, status=502)
+
+
+@require_GET
+def risk_assessment_network_compute_api(request):
+    try:
+        nodes_response = requests.get(_risk_api_url('/nodes'), timeout=RISK_ASSESSMENT_TIMEOUT)
+        nodes_response.raise_for_status()
+        payload = nodes_response.json()
+        variables = payload.get("variables", {})
+        risk_nodes = list(variables.keys())
+
+        cyber_data, mapped_nodes = build_cyber_data_for_risk_nodes(risk_nodes)
+
+        probability_response = requests.post(
+            _risk_api_url('/probability'),
+            json=cyber_data,
+            timeout=RISK_ASSESSMENT_TIMEOUT
+        )
+        probability_response.raise_for_status()
+        result_payload = probability_response.json()
+        results = result_payload.get("results", {})
+
+        summary = summarize_risk_results(mapped_nodes, results)
+
+        return JsonResponse({
+            "risk_nodes_count": len(risk_nodes),
+            "mapped_nodes": summary,
+            "results": results,
+        })
+    except Exception as exc:
+        return JsonResponse({'error': str(exc)}, status=502)
+
+
+def _risk_api_url(path: str) -> str:
+    base = getattr(settings, 'RISK_ASSESSMENT_API_URL', 'http://127.0.0.1:7890')
+    return f"{base.rstrip('/')}/{path.lstrip('/')}"

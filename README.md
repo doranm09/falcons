@@ -10,6 +10,7 @@ This project is a full-stack Django platform that simulates and secures networke
 - **Cytoscape.js Frontend** — Visual graph of nodes and link latencies
 - **Passive Sniffer API (Flask)** — Starts/stops sniffing via exposed interfaces
 - **Host Agent (Python)** — Pushes system info and responds to remote commands
+- **ICS Risk Assessment Service (FastAPI)** — Dynamic Bayesian risk probabilities for ICS nodes
 - **Dockerized Infrastructure** — PostgreSQL, Redis, Flask sniffer, Celery worker
 
 ---
@@ -44,6 +45,39 @@ This project is a full-stack Django platform that simulates and secures networke
 - Optional server-side execution with safety gates
 - Download script + manifest bundles
 
+### 6. Sliver C2 Operations
+- Sliver teamserver management with UI-based create/edit/delete
+- Engagement tracking, sessions, and job queue with live updates
+- Job retry + CSV export, and downloadable loot artifacts
+- Implant generation + deployment workflows
+
+### 7. ICS Risk Assessment
+- Integrated Risk Assessment UI (Overview, Nodes, Probability)
+- Network risk overlay computed from cyber scan data
+- Proxy endpoints to the ICS risk assessment API
+- Dockerized FastAPI service started alongside web/worker
+
+#### Risk Assessment Views
+- **Overview**: Health/status of the risk assessment service.
+- **Nodes**: List of DBN nodes and their state definitions from the risk service.
+- **Probability**: Run probability queries with optional evidence + cyber data payloads.
+- **Network View**: Graph + table that overlays per-node risk on the live topology.
+
+#### What It Does
+The risk assessment service provides Bayesian probability outputs for ICS nodes. The
+dashboard fetches available risk nodes, maps them to discovered network nodes (by
+name or IP), generates a cyber vulnerability payload, and computes risk scores.
+Results are shown in the Network View graph (color-coded) and in a sortable table.
+
+#### How To Use
+1. Start the stack with Docker Compose (the `risk-assessment` service must be running).
+2. Go to `Risk Analysis -> Risk Assessment`.
+3. Use:
+   - **Overview** to confirm service health.
+   - **Nodes** to see available DBN nodes.
+   - **Network View** to load the graph and compute risk overlay.
+   - **Probability** for manual queries (optional evidence/cyber payloads).
+
 ---
 
 ## Getting Started
@@ -71,6 +105,9 @@ docker-compose up --build
 
 - Web app: http://localhost:8000
 - Sniffer API: http://localhost:5050 or http://sniffer:5000 internally
+- Risk Assessment API: http://localhost:7890
+
+> Note: `docker-compose` expects the risk assessment repo to be available at `../ics-risk-assessment` relative to this project root. If you keep it elsewhere, update the `risk-assessment` build context in `docker-compose.yml`.
 
 If you previously ran containers, rebuild to pick up dependency changes:
 ```bash
@@ -276,6 +313,13 @@ cd cyber_pen_test
 
 # Run all tests with test settings
 python manage.py test dashboard --settings=cyber_pen_test.test_settings --verbosity=2
+```
+
+### Risk Assessment Integration Test
+Requires the `risk-assessment` service running (see Docker Compose instructions).
+
+```bash
+pytest tests/integration/test_risk_assessment_integration.py
 ```
 
 ### Running Specific Test Categories

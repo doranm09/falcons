@@ -1,8 +1,12 @@
 import json
+import pytest
 
 from django.urls import reverse
 
 from dashboard.models import Node, SbomReport
+
+
+pytestmark = pytest.mark.django_db
 
 
 def test_sbom_export_json(client):

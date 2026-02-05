@@ -9,9 +9,11 @@ The Sliver C2 Dashboard Plugin integrates Sliver teamserver with a Django web ap
 - ✅ Manage multiple teamserver connections
 - ✅ Control red team engagements and campaigns
 - ✅ Monitor beacon and interactive session status
-- ✅ Execute commands and task templates asynchronously
+- ✅ Execute commands and task templates asynchronously with live job status updates
 - ✅ Generate and deploy custom implants/stagers
-- ✅ Collect and manage loot/results
+- ✅ Collect and manage loot/results with downloadable artifacts
+- ✅ Live polling updates for sessions, jobs, and loot
+- ✅ Job retry + CSV export from the Job Queue
 - ✅ Audit all operations with comprehensive logging
 
 ## 🏗️ **Architecture**
@@ -98,11 +100,13 @@ python cyber_pen_test/manage.py create_default_templates
 ## 📊 **Usage Guide**
 
 ### **1. Configure Teamserver**
-1. Access Django admin at `/admin/`
-2. Create `Teamserver` instance with:
+1. Navigate to `/sliver/teamservers/`
+2. Click **Add Teamserver**
+3. Create `Teamserver` instance with:
    - Host/address of your Sliver teamserver
    - Port (default: 31337)
    - Optional TLS certificates
+4. Use **Test** to validate connectivity
 
 ### **2. Create Engagement**
 1. Navigate to `/sliver/engagements/`
@@ -116,13 +120,13 @@ python cyber_pen_test/manage.py create_default_templates
 1. Go to `/sliver/sessions/`
 2. View all active beacons and sessions
 3. Filter by engagement or status
-4. Check online/offline status
+4. Check online/offline status with live updates
 
 ### **4. Execute Commands**
 1. Click session name for details
 2. Use "Quick Actions" to run commands
 3. Or select from predefined templates
-4. Monitor job status in real-time
+4. Monitor job status in real-time (polling)
 
 ### **5. Deploy Implants**
 1. Go to `/sliver/generate-implant/`
@@ -152,12 +156,13 @@ python cyber_pen_test/manage.py create_default_templates
 - Comprehensive session table
 - Online/offline status with timestamps
 - Multi-engagement filtering
-- Real-time search functionality
+- Live polling updates + search functionality
 
 ### **Jobs (`/sliver/jobs/`)**
 - All executed commands and results
 - Status tracking (pending, running, completed, failed)
 - Job duration and output display
+- Filter/search, retry failed jobs, CSV export
 - Template usage tracking
 
 ### **Loot (`/sliver/loot/`)**
@@ -172,6 +177,7 @@ python cyber_pen_test/manage.py create_default_templates
 - `/sliver/api/sessions/` - Session data feed
 - `/sliver/api/jobs/` - Job status and results
 - `/sliver/api/events/` - Real-time event monitoring
+- `/sliver/api/loot/` - Loot data feed
 - `/sliver/api/teamserver-status/` - Connection health check
 
 ### **WebSocket** (Planned)

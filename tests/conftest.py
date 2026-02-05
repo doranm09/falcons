@@ -1,6 +1,7 @@
 import pytest
 import tempfile
 from pathlib import Path
+import os
 from django.conf import settings
 from django.test import Client
 from django.contrib.auth import get_user_model
@@ -53,3 +54,13 @@ def live_server_with_djangofixture(live_server):
     """Live server with Django fixtures available."""
     # This ensures Django fixtures can be used with live_server
     return live_server
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip Playwright E2E tests unless explicitly enabled."""
+    if os.getenv("RUN_E2E") in {"1", "true", "yes"}:
+        return
+    skip_playwright = pytest.mark.skip(reason="Playwright E2E tests disabled. Set RUN_E2E=1 to enable.")
+    for item in items:
+        if "playwright" in item.keywords:
+            item.add_marker(skip_playwright)

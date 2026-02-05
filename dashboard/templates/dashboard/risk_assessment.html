@@ -1,0 +1,498 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid p-4">
+  <div class="row mb-4">
+    <div class="col-12">
+      <h2><i class="bi bi-shield-exclamation"></i> Risk Assessment</h2>
+      <p class="text-muted">ICS risk probability analysis powered by the risk assessment service.</p>
+    </div>
+  </div>
+
+  <ul class="nav nav-pills mb-3" id="riskTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="risk-overview-tab" data-bs-toggle="tab" data-bs-target="#risk-overview" type="button" role="tab">Overview</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="risk-nodes-tab" data-bs-toggle="tab" data-bs-target="#risk-nodes" type="button" role="tab">Nodes</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="risk-probability-tab" data-bs-toggle="tab" data-bs-target="#risk-probability" type="button" role="tab">Probability</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="risk-network-tab" data-bs-toggle="tab" data-bs-target="#risk-network" type="button" role="tab">Network View</button>
+    </li>
+  </ul>
+
+  <div class="tab-content">
+    <div class="tab-pane fade show active" id="risk-overview" role="tabpanel">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Service Status</h5>
+          <button class="btn btn-sm btn-outline-primary" id="risk-status-refresh">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+          </button>
+        </div>
+        <div class="card-body">
+          <div id="risk-status" class="text-muted">Loading status…</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="risk-nodes" role="tabpanel">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <h5 class="mb-0">Available Nodes</h5>
+          <div class="d-flex gap-2">
+            <label class="visually-hidden" for="risk-node-filter">Filter nodes</label>
+            <input class="form-control form-control-sm" id="risk-node-filter" placeholder="Filter nodes">
+            <button class="btn btn-sm btn-outline-primary" id="risk-nodes-refresh">
+              <i class="bi bi-arrow-clockwise"></i> Refresh
+            </button>
+          </div>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0" id="risk-nodes-table">
+              <thead class="table-light">
+                <tr>
+                  <th>Node</th>
+                  <th>States</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colspan="2" class="text-center text-muted">Loading nodes…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="risk-probability" role="tabpanel">
+      <div class="row g-4">
+        <div class="col-lg-5">
+          <div class="card shadow-sm">
+            <div class="card-header">
+              <h5 class="mb-0">Probability Query</h5>
+            </div>
+            <div class="card-body">
+              <form id="risk-probability-form">
+                <div class="mb-3">
+                  <label class="form-label" for="risk-t">Time Horizon (T)</label>
+                  <input type="number" min="0" class="form-control" id="risk-t" value="3">
+                </div>
+                <div class="mb-3">
+                  <label class="form-label" for="risk-nodes-input">Nodes (comma separated)</label>
+                  <input type="text" class="form-control" id="risk-nodes-input" placeholder="PLC-Main, Heat-Ctrl">
+                </div>
+                <div class="mb-3">
+                  <label class="form-label" for="risk-evidence">Evidence (JSON)</label>
+                  <textarea class="form-control" id="risk-evidence" rows="4" placeholder='{"Heat-CtrlN0": "normal"}'></textarea>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label" for="risk-cyber">Cyber Data (JSON, optional)</label>
+                  <textarea class="form-control" id="risk-cyber" rows="4" placeholder='{"scanned_nodes": []}'></textarea>
+                </div>
+                <div class="d-flex gap-2">
+                  <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-calculator"></i> Calculate
+                  </button>
+                  <button type="button" class="btn btn-outline-secondary" id="risk-probability-reset">Reset</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-7">
+          <div class="card shadow-sm h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <h5 class="mb-0">Results</h5>
+              <button class="btn btn-sm btn-outline-secondary" id="risk-results-copy">
+                <i class="bi bi-clipboard"></i> Copy JSON
+              </button>
+            </div>
+            <div class="card-body">
+              <pre id="risk-results" class="mb-0 text-muted">Run a probability query to see results.</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="risk-network" role="tabpanel">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <h5 class="mb-0">Network Risk Overlay</h5>
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-secondary" id="risk-network-load">
+              <i class="bi bi-diagram-3"></i> Load Graph
+            </button>
+            <button class="btn btn-sm btn-outline-primary" id="risk-network-refresh">
+              <i class="bi bi-arrow-clockwise"></i> Compute Risk
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="risk-graph-status" class="text-muted mb-3">Loading graph…</div>
+          <div class="row g-3">
+            <div class="col-lg-7">
+              <div id="risk-network-graph" style="height: 420px; background-color: var(--graph-bg); border: 1px solid var(--border-color); border-radius: 8px;"></div>
+              <div class="d-flex flex-wrap gap-3 small text-muted mt-2">
+                <span><span class="badge bg-danger">High</span> ≥ 70%</span>
+                <span><span class="badge bg-warning text-dark">Medium</span> 40–69%</span>
+                <span><span class="badge bg-success">Low</span> &lt; 40%</span>
+                <span><span class="badge bg-secondary">Unknown</span> No data</span>
+              </div>
+            </div>
+            <div class="col-lg-5">
+              <div class="table-responsive">
+                <table class="table table-hover mb-0" id="risk-network-table">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Node</th>
+                      <th>IP</th>
+                      <th>Risk Node ID</th>
+                      <th>Risk Score</th>
+                      <th>Risk Level</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td colspan="5" class="text-center text-muted">Compute to load risk results.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
+<script>
+  const statusEl = document.getElementById('risk-status');
+  const nodesTableBody = document.querySelector('#risk-nodes-table tbody');
+  const nodeFilter = document.getElementById('risk-node-filter');
+  const resultsEl = document.getElementById('risk-results');
+  const riskGraphStatus = document.getElementById('risk-graph-status');
+  const riskGraphContainer = document.getElementById('risk-network-graph');
+  let riskCy = null;
+  let riskGraphElements = [];
+
+  async function fetchStatus() {
+    statusEl.textContent = 'Loading status…';
+    try {
+      const response = await fetch("{% url 'dashboard:risk_assessment_status' %}");
+      const data = await response.json();
+      statusEl.textContent = response.ok ? JSON.stringify(data, null, 2) : data.error || 'Status error';
+    } catch (err) {
+      statusEl.textContent = 'Status unavailable';
+    }
+  }
+
+  async function fetchNodes() {
+    nodesTableBody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Loading nodes…</td></tr>';
+    try {
+      const response = await fetch("{% url 'dashboard:risk_assessment_nodes' %}");
+      const data = await response.json();
+      if (!response.ok) {
+        nodesTableBody.innerHTML = `<tr><td colspan="2" class="text-center text-muted">${data.error || 'Error loading nodes'}</td></tr>`;
+        return;
+      }
+      const nodes = data.nodes || data;
+      if (!nodes || nodes.length === 0) {
+        nodesTableBody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">No nodes available.</td></tr>';
+        return;
+      }
+      nodesTableBody.innerHTML = nodes.map(node => {
+        const name = node.name || node.node || node.id || 'Unknown';
+        const states = node.states ? node.states.join(', ') : (node.state || '—');
+        return `<tr><td>${name}</td><td>${states}</td></tr>`;
+      }).join('');
+      applyNodeFilter();
+    } catch (err) {
+      nodesTableBody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Nodes unavailable.</td></tr>';
+    }
+  }
+
+  function applyNodeFilter() {
+    const term = (nodeFilter.value || '').toLowerCase();
+    const rows = Array.from(nodesTableBody.querySelectorAll('tr'));
+    rows.forEach(row => {
+      const text = row.textContent.toLowerCase();
+      row.style.display = text.includes(term) ? '' : 'none';
+    });
+  }
+
+  document.getElementById('risk-status-refresh').addEventListener('click', fetchStatus);
+  document.getElementById('risk-nodes-refresh').addEventListener('click', fetchNodes);
+  nodeFilter.addEventListener('input', applyNodeFilter);
+
+  document.getElementById('risk-probability-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const tValue = parseInt(document.getElementById('risk-t').value || '3', 10);
+    const nodesInput = document.getElementById('risk-nodes-input').value.trim();
+    const evidenceRaw = document.getElementById('risk-evidence').value.trim();
+    const cyberRaw = document.getElementById('risk-cyber').value.trim();
+
+    let evidence = {};
+    let cyberData = null;
+
+    try {
+      evidence = evidenceRaw ? JSON.parse(evidenceRaw) : {};
+    } catch (err) {
+      alert('Evidence must be valid JSON');
+      return;
+    }
+
+    try {
+      cyberData = cyberRaw ? JSON.parse(cyberRaw) : null;
+    } catch (err) {
+      alert('Cyber data must be valid JSON');
+      return;
+    }
+
+    const payload = {
+      T: Number.isNaN(tValue) ? 3 : tValue,
+      evidence,
+    };
+
+    if (nodesInput) {
+      payload.nodes = nodesInput.split(',').map(node => node.trim()).filter(Boolean);
+    }
+    if (cyberData) {
+      payload.cyber_data = cyberData;
+    }
+
+    resultsEl.textContent = 'Calculating…';
+    try {
+      const response = await fetch("{% url 'dashboard:risk_assessment_probability' %}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      resultsEl.textContent = response.ok ? JSON.stringify(data, null, 2) : (data.error || 'Calculation error');
+    } catch (err) {
+      resultsEl.textContent = 'Calculation unavailable.';
+    }
+  });
+
+  document.getElementById('risk-probability-reset').addEventListener('click', () => {
+    document.getElementById('risk-t').value = '3';
+    document.getElementById('risk-nodes-input').value = '';
+    document.getElementById('risk-evidence').value = '';
+    document.getElementById('risk-cyber').value = '';
+    resultsEl.textContent = 'Run a probability query to see results.';
+  });
+
+  document.getElementById('risk-results-copy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(resultsEl.textContent);
+    } catch (err) {
+      alert('Copy failed');
+    }
+  });
+
+  fetchStatus();
+  fetchNodes();
+
+  function setRiskGraphStatus(message) {
+    if (riskGraphStatus) {
+      riskGraphStatus.textContent = message;
+    }
+  }
+
+  function riskLabelFor(nodeData, match) {
+    const baseLabel = nodeData.label || nodeData.id || 'Unknown';
+    if (!match || match.risk_score === null || match.risk_score === undefined) {
+      return baseLabel;
+    }
+    const pct = Math.round(Number(match.risk_score) * 100);
+    return `${baseLabel} (${pct}%)`;
+  }
+
+  function applyRiskOverlay(mappedNodes) {
+    if (!riskCy || !mappedNodes) return;
+    const byNodeId = new Map();
+    const byIp = new Map();
+    const byName = new Map();
+    const byRiskNodeId = new Map();
+
+    mappedNodes.forEach(node => {
+      if (node.node_id !== null && node.node_id !== undefined) {
+        byNodeId.set(String(node.node_id), node);
+      }
+      if (node.ip_address) {
+        byIp.set(String(node.ip_address), node);
+      }
+      if (node.name) {
+        byName.set(String(node.name), node);
+      }
+      if (node.risk_node_id) {
+        byRiskNodeId.set(String(node.risk_node_id), node);
+      }
+    });
+
+    riskCy.nodes().forEach(node => {
+      const data = node.data();
+      const match =
+        (data.node_id && byNodeId.get(String(data.node_id))) ||
+        (data.ip && byIp.get(String(data.ip))) ||
+        (data.label && byName.get(String(data.label))) ||
+        (data.id && byRiskNodeId.get(String(data.id)));
+
+      const riskLevel = match && match.risk_level ? match.risk_level : 'unknown';
+      node.data('risk_level', riskLevel);
+      node.data('risk_score', match ? match.risk_score : null);
+      node.data('risk_label', riskLabelFor(data, match));
+    });
+  }
+
+  function renderRiskGraph(elements) {
+    if (!riskGraphContainer) return;
+    if (!Array.isArray(elements) || elements.length === 0) {
+      riskGraphContainer.innerHTML = '<div class="text-muted text-center py-5">No graph data available.</div>';
+      if (riskCy) {
+        riskCy.destroy();
+        riskCy = null;
+      }
+      return;
+    }
+
+    riskGraphContainer.innerHTML = '';
+    if (riskCy) {
+      riskCy.destroy();
+      riskCy = null;
+    }
+
+    riskCy = cytoscape({
+      container: riskGraphContainer,
+      elements,
+      style: [
+        { selector: 'node', style: {
+          'label': 'data(risk_label)',
+          'background-color': '#6c757d',
+          'text-valign': 'bottom',
+          'text-halign': 'center',
+          'color': '#0f172a',
+          'font-size': 11,
+          'text-margin-y': 6,
+          'text-background-color': '#ffffff',
+          'text-background-opacity': 0.9,
+          'text-background-shape': 'roundrectangle',
+          'text-border-color': '#334155',
+          'text-border-width': 0.5,
+          'border-width': 1,
+          'border-color': '#ffffff'
+        }},
+        { selector: 'node[risk_level = "high"]', style: { 'background-color': '#dc3545' } },
+        { selector: 'node[risk_level = "medium"]', style: { 'background-color': '#ffc107' } },
+        { selector: 'node[risk_level = "low"]', style: { 'background-color': '#28a745' } },
+        { selector: 'node[risk_level = "unknown"]', style: { 'background-color': '#6c757d' } },
+        { selector: 'edge', style: {
+          'label': 'data(weight)',
+          'font-size': 9,
+          'color': '#111827',
+          'text-background-color': '#ffffff',
+          'text-background-opacity': 0.8,
+          'text-background-shape': 'roundrectangle',
+          'text-rotation': 'autorotate',
+          'curve-style': 'bezier',
+          'width': 2,
+          'line-color': 'mapData(raw_weight,0,6,green,red)',
+          'target-arrow-shape': 'triangle',
+          'target-arrow-color': 'mapData(raw_weight,0,6,green,red)'
+        }}
+      ],
+      layout: { name: 'cose', animate: true, fit: true }
+    });
+
+    riskCy.nodes().forEach(node => {
+      const data = node.data();
+      node.data('risk_label', data.label || data.id || 'Unknown');
+    });
+
+    riskCy.on('tap', 'node', evt => {
+      const data = evt.target.data();
+      if (data.agent_id) {
+        window.location.href = `/dashboard/agent/${encodeURIComponent(data.agent_id)}/`;
+        return;
+      }
+      const nodeId = data.node_id || data.id;
+      if (/^\\d+$/.test(String(nodeId))) {
+        window.location.href = `/dashboard/node/${encodeURIComponent(nodeId)}/`;
+      }
+    });
+  }
+
+  async function loadRiskGraph() {
+    if (!riskGraphContainer) return;
+    setRiskGraphStatus('Loading graph…');
+    try {
+      const response = await fetch("{% url 'dashboard:graph-data' %}");
+      const data = await response.json();
+      if (!response.ok) {
+        setRiskGraphStatus(data.error || 'Graph unavailable.');
+        return;
+      }
+      riskGraphElements = data;
+      renderRiskGraph(riskGraphElements);
+      setRiskGraphStatus('Graph loaded.');
+    } catch (err) {
+      setRiskGraphStatus('Graph unavailable.');
+    }
+  }
+
+  async function fetchNetworkRisk() {
+    const tableBody = document.querySelector('#risk-network-table tbody');
+    tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Computing risk…</td></tr>';
+    try {
+      const response = await fetch("{% url 'dashboard:risk_assessment_network_compute' %}");
+      const data = await response.json();
+      if (!response.ok) {
+        tableBody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">${data.error || 'Error computing risk'}</td></tr>`;
+        return;
+      }
+      const mapped = data.mapped_nodes || [];
+      if (mapped.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No mapped nodes found.</td></tr>';
+        return;
+      }
+      tableBody.innerHTML = mapped.map(node => {
+        const score = node.risk_score !== null && node.risk_score !== undefined ? Number(node.risk_score).toFixed(3) : '—';
+        const level = node.risk_level || 'unknown';
+        const rowClass = level === 'high' ? 'table-danger' : (level === 'medium' ? 'table-warning' : '');
+        return `
+          <tr class="${rowClass}">
+            <td>${node.name || 'Unknown'}</td>
+            <td>${node.ip_address || '—'}</td>
+            <td>${node.risk_node_id || '—'}</td>
+            <td>${score}</td>
+            <td class="text-capitalize">${level}</td>
+          </tr>
+        `;
+      }).join('');
+      if (!riskCy) {
+        await loadRiskGraph();
+      }
+      applyRiskOverlay(mapped);
+    } catch (err) {
+      tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Risk service unavailable.</td></tr>';
+    }
+  }
+
+  document.getElementById('risk-network-refresh').addEventListener('click', fetchNetworkRisk);
+  document.getElementById('risk-network-load').addEventListener('click', loadRiskGraph);
+  loadRiskGraph();
+</script>
+{% endblock %}

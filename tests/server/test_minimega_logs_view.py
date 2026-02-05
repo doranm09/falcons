@@ -1,7 +1,12 @@
+import pytest
+
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from dashboard.models import MinimegaExecutionLog
+
+
+pytestmark = pytest.mark.django_db
 
 
 def test_minimega_logs_requires_staff(client):

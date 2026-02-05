@@ -41,6 +41,13 @@ urlpatterns = [
     path('scan/vuln/status/<int:scan_id>/', views.vuln_scan_status, name='vuln-scan-status'),
     path('paths/<int:start_node_id>/', views.shortest_paths, name='shortest-paths'),
 
+    # Risk assessment (ICS)
+    path('risk-assessment/', views.risk_assessment_page, name='risk_assessment'),
+    path('risk-assessment/status/', views.risk_assessment_status_api, name='risk_assessment_status'),
+    path('risk-assessment/nodes/', views.risk_assessment_nodes_api, name='risk_assessment_nodes'),
+    path('risk-assessment/probability/', views.risk_assessment_probability_api, name='risk_assessment_probability'),
+    path('risk-assessment/network/compute/', views.risk_assessment_network_compute_api, name='risk_assessment_network_compute'),
+
     # Network monitoring and Security Onion-like features
     path('network/monitoring/', views.network_monitoring_dashboard, name='network_monitoring'),
     path('network/metadata/', views.network_metadata_api, name='network_metadata_api'),

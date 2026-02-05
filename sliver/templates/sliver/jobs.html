@@ -1,0 +1,215 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid p-4">
+  <div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+      <div>
+        <h2><i class="bi bi-list-ul"></i> Job Queue</h2>
+        <p class="text-muted">Queued and completed Sliver tasks.</p>
+      </div>
+      {% if session_id %}
+        <a class="btn btn-outline-secondary" href="{% url 'sliver:session_detail' session_id %}">
+          <i class="bi bi-arrow-left"></i> Back to Session
+        </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <h5 class="mb-0">Jobs</h5>
+        <span id="sliver-live-status" class="badge bg-secondary">Live</span>
+        <small id="sliver-live-updated" class="text-muted">Not updated yet</small>
+        <button class="btn btn-sm btn-outline-secondary" type="button" id="sliver-live-refresh">
+          <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+        <button class="btn btn-sm btn-outline-secondary" type="button" id="sliver-live-toggle">
+          Pause
+        </button>
+      </div>
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'sliver:job_export' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">
+        <i class="bi bi-download"></i> Export CSV
+      </a>
+    </div>
+    <div class="card-body p-0">
+      <div class="p-3 border-bottom bg-light">
+        <form method="get" class="row g-2 align-items-end">
+          <div class="col-md-3">
+            <label class="form-label small text-muted" for="jobSearch">Search</label>
+            <input type="text" class="form-control" id="jobSearch" name="search" value="{{ filters.search|default:'' }}" placeholder="Job ID, command, session">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small text-muted" for="statusFilter">Status</label>
+            <select class="form-select" id="statusFilter" name="status">
+              <option value="">All Statuses</option>
+              <option value="PENDING" {% if filters.status == 'PENDING' %}selected{% endif %}>
+                Pending ({{ status_counts.PENDING|default:0 }})
+              </option>
+              <option value="RUNNING" {% if filters.status == 'RUNNING' %}selected{% endif %}>
+                Running ({{ status_counts.RUNNING|default:0 }})
+              </option>
+              <option value="COMPLETED" {% if filters.status == 'COMPLETED' %}selected{% endif %}>
+                Completed ({{ status_counts.COMPLETED|default:0 }})
+              </option>
+              <option value="FAILED" {% if filters.status == 'FAILED' %}selected{% endif %}>
+                Failed ({{ status_counts.FAILED|default:0 }})
+              </option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small text-muted" for="engagementFilter">Engagement</label>
+            <select class="form-select" id="engagementFilter" name="engagement_id">
+              <option value="">All Engagements</option>
+              {% for engagement in engagements %}
+              <option value="{{ engagement.id }}" {% if filters.engagement_id == engagement.id|stringformat:'s' %}selected{% endif %}>
+                {{ engagement.name }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small text-muted" for="sessionFilter">Session</label>
+            <select class="form-select" id="sessionFilter" name="session_id">
+              <option value="">All Sessions</option>
+              {% for session in sessions %}
+              <option value="{{ session.session_id }}" {% if filters.session_id == session.session_id %}selected{% endif %}>
+                {{ session.name|default:session.session_id }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 d-flex gap-2">
+            <button type="submit" class="btn btn-primary btn-sm">
+              <i class="bi bi-funnel"></i> Apply
+            </button>
+            <a href="{% url 'sliver:job_list' %}" class="btn btn-outline-secondary btn-sm">
+              Clear
+            </a>
+          </div>
+        </form>
+        {% if filters.search or filters.status or filters.engagement_id or filters.session_id %}
+        <div class="mt-3 d-flex flex-wrap gap-2 align-items-center">
+          <span class="text-muted small">Active filters:</span>
+          {% if filters.search %}
+          <span class="badge bg-info text-dark">Search: {{ filters.search }}</span>
+          {% endif %}
+          {% if filters.status %}
+          <span class="badge bg-secondary">Status: {{ filters.status }}</span>
+          {% endif %}
+          {% if filters.engagement_id %}
+          <span class="badge bg-secondary">Engagement: {{ filters.engagement_id }}</span>
+          {% endif %}
+          {% if filters.session_id %}
+          <span class="badge bg-secondary">Session: {{ filters.session_id }}</span>
+          {% endif %}
+          <a href="{% url 'sliver:job_list' %}" class="btn btn-sm btn-outline-secondary">Clear all</a>
+        </div>
+        {% endif %}
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover mb-0" id="jobsTable">
+          <thead class="table-light">
+            <tr class="{% if job.status == 'FAILED' %}table-danger{% elif job.status == 'RUNNING' %}table-warning{% endif %}">
+              <th>Job ID</th>
+              <th>Session</th>
+              <th>Status</th>
+              <th>Command</th>
+              <th>Started</th>
+              <th>Completed</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if page_obj and page_obj.object_list %}
+            {% for job in page_obj %}
+            <tr>
+              <td><code>{{ job.job_id }}</code></td>
+              <td>
+                <a href="{% url 'sliver:session_detail' job.session.session_id %}">
+                  {{ job.session.name|default:job.session.session_id }}
+                </a>
+              </td>
+              <td>
+                <span class="badge bg-{% if job.status == 'COMPLETED' %}success{% elif job.status == 'FAILED' %}danger{% elif job.status == 'RUNNING' %}info{% else %}secondary{% endif %}">
+                  {{ job.status }}
+                </span>
+              </td>
+              <td>{{ job.command|truncatechars:50 }}</td>
+              <td>{{ job.started_at|date:"M j, Y H:i" }}</td>
+              <td>
+                {% if job.completed_at %}
+                  {{ job.completed_at|date:"M j, Y H:i" }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>
+                <div class="btn-group" role="group">
+                  <a class="btn btn-sm btn-outline-primary" href="{% url 'sliver:job_detail' job.job_id %}">
+                    <i class="bi bi-eye"></i> View
+                  </a>
+                  <form method="post" action="{% url 'sliver:retry_job' job.job_id %}" class="d-inline" onsubmit="return confirm('Retry job {{ job.job_id }}?')">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-warning">
+                      <i class="bi bi-arrow-repeat"></i> Retry
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if page_obj and page_obj.has_other_pages %}
+      <div class="d-flex justify-content-center p-3">
+        <nav aria-label="Page navigation">
+          <ul class="pagination">
+            {% if page_obj.has_previous %}
+            <li class="page-item">
+              <a class="page-link" href="{% if pagination_query %}?{{ pagination_query }}&page={{ page_obj.previous_page_number }}{% else %}?page={{ page_obj.previous_page_number }}{% endif %}">Previous</a>
+            </li>
+            {% endif %}
+
+            {% for num in page_obj.paginator.page_range %}
+            {% if page_obj.number == num %}
+            <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+            {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+            <li class="page-item"><a class="page-link" href="{% if pagination_query %}?{{ pagination_query }}&page={{ num }}{% else %}?page={{ num }}{% endif %}">{{ num }}</a></li>
+            {% endif %}
+            {% endfor %}
+
+            {% if page_obj.has_next %}
+            <li class="page-item">
+              <a class="page-link" href="{% if pagination_query %}?{{ pagination_query }}&page={{ page_obj.next_page_number }}{% else %}?page={{ page_obj.next_page_number }}{% endif %}">Next</a>
+            </li>
+            {% endif %}
+          </ul>
+        </nav>
+      </div>
+      {% endif %}
+      <div id="jobsEmptyState" class="text-center py-5 {% if page_obj and page_obj.object_list %}d-none{% endif %}">
+        <i class="bi bi-inbox h1 text-muted"></i>
+        <h4 class="text-muted">No Jobs Found</h4>
+        <p class="text-muted">Run commands or templates to create jobs.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  window.SLIVER_LIVE = {
+    type: 'jobs',
+    endpoint: "{% url 'sliver:api_jobs' %}{% if jobs_api_query %}?{{ jobs_api_query }}{% endif %}",
+    interval: 10000,
+  };
+</script>
+<script src="{% static 'sliver/js/live-updates.js' %}"></script>
+{% endblock %}

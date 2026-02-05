@@ -6,6 +6,7 @@ from pathlib import Path
 
 from celery import shared_task
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
 from django.utils import timezone
 
 from .models import *
@@ -324,21 +325,44 @@ def collect_loot_task(self, session_id, user_id, loot_type='ALL'):
 
         collected_count = 0
         for loot_item in loot_data.get('loot', []):
-            if loot_item.get('session_id') != session_id:
+            loot_session_id = loot_item.get('SessionID') or loot_item.get('session_id')
+            if loot_session_id != session_id:
                 continue
+
+            loot_id = loot_item.get('LootID') or loot_item.get('loot_id')
+            loot_name = loot_item.get('Name') or loot_item.get('name') or ''
+            loot_type_value = (loot_item.get('Type') or loot_item.get('type') or 'OTHER').upper()
+            file_path = loot_item.get('FilePath') or loot_item.get('file_path') or ''
+            content = loot_item.get('Data') or loot_item.get('data') or ''
+            size_bytes = loot_item.get('Size') or loot_item.get('size') or 0
 
             # Create loot record
             loot_obj = Loot.objects.create(
-                loot_id=loot_item.get('LootID'),
-                name=loot_item.get('Name', ''),
-                loot_type=loot_item.get('Type', 'OTHER').upper(),
+                loot_id=loot_id,
+                name=loot_name,
+                loot_type=loot_type_value,
                 session=session,
                 engagement=session.engagement,
-                file_path=loot_item.get('FilePath', ''),
-                content=loot_item.get('Data', ''),
-                size_bytes=loot_item.get('Size', 0),
+                file_path=file_path,
+                content=content if isinstance(content, str) else '',
+                size_bytes=size_bytes or 0,
                 operator=user
             )
+
+            payload = None
+            for key in ('Data', 'data', 'Content', 'content', 'Payload', 'payload'):
+                if key in loot_item:
+                    payload = loot_item.get(key)
+                    break
+
+            file_bytes = _extract_artifact_bytes(payload) if payload is not None else None
+            if file_bytes:
+                candidate_name = loot_name or Path(file_path).name or f"loot_{loot_id or loot_obj.id}"
+                safe_name = Path(candidate_name).name or f"loot_{loot_obj.id}"
+                loot_obj.local_path.save(safe_name, ContentFile(file_bytes), save=False)
+                loot_obj.size_bytes = len(file_bytes)
+                loot_obj.save(update_fields=['local_path', 'size_bytes', 'updated_at'])
+
             collected_count += 1
 
         # Log audit action

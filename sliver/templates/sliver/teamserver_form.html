@@ -1,0 +1,87 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid p-4">
+  <div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+      <div>
+        <h2>
+          <i class="bi bi-server"></i>
+          {% if mode == 'edit' %}Edit Teamserver{% else %}Add Teamserver{% endif %}
+        </h2>
+        <p class="text-muted">Configure how the dashboard connects to a Sliver teamserver.</p>
+      </div>
+      <a class="btn btn-outline-secondary" href="{% url 'sliver:teamserver_list' %}">
+        <i class="bi bi-arrow-left"></i> Back to Teamservers
+      </a>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-lg-8">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <form method="post">
+            {% csrf_token %}
+            {{ form.non_field_errors }}
+
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label" for="id_name">Name</label>
+                {{ form.name }}
+                {{ form.name.errors }}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="id_host">Host</label>
+                {{ form.host }}
+                {{ form.host.errors }}
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="id_port">Port</label>
+                {{ form.port }}
+                {{ form.port.errors }}
+              </div>
+              <div class="col-12">
+                <label class="form-label" for="id_ca_cert">CA Certificate (optional)</label>
+                {{ form.ca_cert }}
+                {{ form.ca_cert.errors }}
+              </div>
+              <div class="col-12">
+                <label class="form-label" for="id_certificate">Client Certificate (optional)</label>
+                {{ form.certificate }}
+                {{ form.certificate.errors }}
+              </div>
+              <div class="col-12">
+                <label class="form-label" for="id_private_key">Client Private Key (optional)</label>
+                {{ form.private_key }}
+                {{ form.private_key.errors }}
+              </div>
+            </div>
+
+            <div class="mt-4 d-flex gap-2">
+              <button type="submit" class="btn btn-primary">
+                {% if mode == 'edit' %}Save Changes{% else %}Create Teamserver{% endif %}
+              </button>
+              <a href="{% url 'sliver:teamserver_list' %}" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h5>Tips</h5>
+          <ul class="text-muted">
+            <li>Use the teamserver hostname or IP reachable by the dashboard.</li>
+            <li>Provide both a certificate and private key when using TLS client auth.</li>
+            <li>Test connectivity from the Teamservers page after saving.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

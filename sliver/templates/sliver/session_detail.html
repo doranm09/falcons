@@ -1,0 +1,193 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid p-4">
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item"><a href="{% url 'sliver:dashboard' %}">Sliver</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'sliver:engagement_list' %}">Engagements</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'sliver:engagement_detail' session.engagement.id %}">{{ session.engagement.name }}</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'sliver:engagement_sessions' session.engagement.id %}">Sessions</a></li>
+      <li class="breadcrumb-item active" aria-current="page">{{ session.name|default:session.session_id }}</li>
+    </ol>
+  </nav>
+  <div class="row mb-3">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+      <div>
+        <h2><i class="bi bi-robot"></i> Session {{ session.name|default:session.session_id }}</h2>
+        <p class="text-muted mb-0">{{ session.hostname|default:"Unknown host" }} • {{ session.remote_address|default:"?" }}</p>
+      </div>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="{% url 'sliver:session_list' %}">
+          <i class="bi bi-arrow-left"></i> Back
+        </a>
+        <form method="post" action="{% url 'sliver:collect_loot' session.session_id %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-outline-success">
+            <i class="bi bi-download"></i> Collect Loot
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="row mb-4">
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-info-circle"></i> Session Details</h5>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-6">
+              <div class="text-muted small">Status</div>
+              <div class="fw-semibold">{{ session.status }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-muted small">Type</div>
+              <div class="fw-semibold">{{ session.session_type }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-muted small">User</div>
+              <div class="fw-semibold">{{ session.username|default:"—" }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-muted small">OS / Arch</div>
+              <div class="fw-semibold">{{ session.os|default:"?" }}/{{ session.arch|default:"?" }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-muted small">PID</div>
+              <div class="fw-semibold">{{ session.pid|default:"—" }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-muted small">Transport</div>
+              <div class="fw-semibold">{{ session.transport|default:"—" }}</div>
+            </div>
+            <div class="col-12">
+              <div class="text-muted small">Last Checkin</div>
+              <div class="fw-semibold">
+                {% if session.last_checkin %}{{ session.last_checkin|date:"Y-m-d H:i:s" }}{% else %}Never{% endif %}
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="text-muted small">Engagement</div>
+              <div class="fw-semibold">
+                <a href="{% url 'sliver:engagement_detail' session.engagement.id %}">{{ session.engagement.name }}</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-terminal"></i> Actions</h5>
+        </div>
+        <div class="card-body">
+          <form method="post" action="{% url 'sliver:execute_command' session.session_id %}" class="mb-3">
+            {% csrf_token %}
+            <label class="form-label">Execute Command</label>
+            <div class="input-group">
+              <input type="text" class="form-control" name="command" placeholder="whoami" required>
+              <button type="submit" class="btn btn-primary">Run</button>
+            </div>
+          </form>
+          <form method="post" action="{% url 'sliver:run_template_task' session.session_id %}">
+            {% csrf_token %}
+            <label class="form-label">Run Template</label>
+            <div class="input-group">
+              <select class="form-select" name="template_id" required>
+                <option value="">Select template...</option>
+                {% for template in templates %}
+                <option value="{{ template.id }}">{{ template.name }} ({{ template.category }})</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="btn btn-outline-primary">Run</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row mb-4">
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-list-ul"></i> Recent Jobs</h5>
+        </div>
+        <div class="card-body p-0">
+          {% if recent_jobs %}
+            <div class="table-responsive">
+              <table class="table table-sm mb-0">
+                <thead>
+                  <tr>
+                    <th>Command</th>
+                    <th>Status</th>
+                    <th>Started</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for job in recent_jobs %}
+                  <tr>
+                    <td>
+                      <a href="{% url 'sliver:job_detail' job.job_id %}">
+                        {{ job.command|truncatechars:40 }}
+                      </a>
+                    </td>
+                    <td>
+                      <span class="badge bg-{% if job.status == 'COMPLETED' %}success{% elif job.status == 'FAILED' %}danger{% elif job.status == 'RUNNING' %}info{% else %}secondary{% endif %}">
+                        {{ job.status }}
+                      </span>
+                    </td>
+                    <td>{{ job.started_at|date:"M j, Y H:i" }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="p-3 text-muted">No jobs recorded for this session.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-gift"></i> Recent Loot</h5>
+        </div>
+        <div class="card-body p-0">
+          {% if loot %}
+            <div class="table-responsive">
+              <table class="table table-sm mb-0">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Collected</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for item in loot %}
+                  <tr>
+                    <td>{{ item.name|default:item.loot_id }}</td>
+                    <td>{{ item.loot_type }}</td>
+                    <td>{{ item.collected_at|timesince }} ago</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="p-3 text-muted">No loot collected yet.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

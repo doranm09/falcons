@@ -82,6 +82,11 @@ def log_audit_action(action, user=None, teamserver=None, engagement=None, sessio
         user_agent: User agent string (optional)
         details: Additional details as dict (optional)
     """
+    if teamserver is None:
+        # Avoid IntegrityError; audit logs require a teamserver
+        logger.warning("Audit log skipped: teamserver is required for action %s", action)
+        return
+
     try:
         AuditLog.objects.create(
             action=action,
@@ -93,7 +98,7 @@ def log_audit_action(action, user=None, teamserver=None, engagement=None, sessio
             loot=loot,
             details=details or {},
             ip_address=ip_address,
-            user_agent=user_agent
+            user_agent=user_agent or ""
         )
     except Exception as e:
         # Log failure but don't raise exception to avoid breaking main functionality

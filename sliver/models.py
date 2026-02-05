@@ -72,7 +72,7 @@ class Engagement(models.Model):
         return self.sliversession_set.filter(status='ACTIVE').count()
 
     def get_completed_jobs_count(self):
-        return self.sliverjob_set.filter(status='COMPLETED').count()
+        return SliverJob.objects.filter(session__engagement=self, status='COMPLETED').count()
 
 
 # -----------------------------

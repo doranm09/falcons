@@ -140,6 +140,28 @@ class Node(models.Model):
         self.save(update_fields=["os_info", "installed_libraries", "mac_addresses", "active_ports"])
 
 
+class RiskNodeMapping(models.Model):
+    """Mapping between risk model node IDs and discovered network nodes."""
+    risk_node_id = models.CharField(max_length=255, unique=True)
+    node = models.ForeignKey(Node, null=True, blank=True, on_delete=models.SET_NULL, related_name="risk_mappings")
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    label = models.CharField(max_length=255, blank=True)
+    notes = models.TextField(blank=True)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["risk_node_id"]),
+            models.Index(fields=["ip_address"]),
+            models.Index(fields=["active"]),
+        ]
+
+    def __str__(self):
+        return f"{self.risk_node_id} -> {self.node or self.ip_address or 'unmapped'}"
+
+
 class SbomReport(models.Model):
     node = models.ForeignKey(Node, on_delete=models.SET_NULL, null=True, blank=True, related_name="sbom_reports")
     agent_id = models.CharField(max_length=64, db_index=True)

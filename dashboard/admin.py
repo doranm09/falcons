@@ -18,6 +18,7 @@ from .models import (
     NetworkFlow,
     SbomReport,
     MinimegaExecutionLog,
+    RiskNodeMapping,
 )
 
 @admin.register(Node)
@@ -25,6 +26,13 @@ class NodeAdmin(admin.ModelAdmin):
     list_display = ("name", "ip_address", "status", "last_heartbeat")
     search_fields = ("name", "ip_address")
     list_filter = ("status",)
+
+
+@admin.register(RiskNodeMapping)
+class RiskNodeMappingAdmin(admin.ModelAdmin):
+    list_display = ("risk_node_id", "node", "ip_address", "active", "updated_at")
+    search_fields = ("risk_node_id", "node__name", "node__ip_address", "ip_address", "label")
+    list_filter = ("active",)
 
 
 @admin.register(Link)

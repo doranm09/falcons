@@ -1,6 +1,6 @@
 from typing import Dict, List, Tuple
 
-from .models import Node, Vulnerability, ScanVulnerability
+from .models import Node, RiskNodeMapping, Vulnerability, ScanVulnerability
 
 
 SEVERITY_EPSS = {
@@ -25,14 +25,55 @@ def build_cyber_data_for_risk_nodes(risk_nodes: List[str]) -> Tuple[Dict, List[D
     mapped_nodes = []
 
     risk_set = set(risk_nodes)
-    nodes = Node.objects.all().order_by("ip_address")
+    nodes = Node.objects.all().order_by("-id")
+
+    mappings = list(
+        RiskNodeMapping.objects.filter(risk_node_id__in=risk_nodes, active=True).select_related("node")
+    )
+    mapping_by_risk_id = {mapping.risk_node_id: mapping for mapping in mappings}
+    mapping_by_node_id = {mapping.node_id: mapping for mapping in mappings if mapping.node_id}
+    mapping_by_ip = {}
+    for mapping in mappings:
+        if mapping.ip_address:
+            mapping_by_ip[mapping.ip_address] = mapping
+        if mapping.node_id and mapping.node and mapping.node.ip_address:
+            mapping_by_ip[mapping.node.ip_address] = mapping
+
+    def resolve_risk_node_id(node: Node) -> str | None:
+        mapping = mapping_by_node_id.get(node.id)
+        if not mapping and node.ip_address:
+            mapping = mapping_by_ip.get(node.ip_address)
+        if mapping:
+            return mapping.risk_node_id
+        if node.name and node.name in risk_set:
+            return node.name
+        if node.ip_address and node.ip_address in risk_set:
+            return node.ip_address
+        return None
+
+    def is_mapped(node: Node) -> bool:
+        return resolve_risk_node_id(node) is not None
+
+    selected_nodes = []
+    selected_by_ip = {}
+    selected_by_name = {}
 
     for node in nodes:
-        node_id = None
-        if node.name and node.name in risk_set:
-            node_id = node.name
-        elif node.ip_address and node.ip_address in risk_set:
-            node_id = node.ip_address
+        if node.ip_address:
+            current = selected_by_ip.get(node.ip_address)
+            if current is None or (is_mapped(node) and not is_mapped(current)):
+                selected_by_ip[node.ip_address] = node
+            continue
+        if node.name:
+            current = selected_by_name.get(node.name)
+            if current is None or (is_mapped(node) and not is_mapped(current)):
+                selected_by_name[node.name] = node
+
+    selected_nodes.extend(selected_by_ip.values())
+    selected_nodes.extend(selected_by_name.values())
+
+    for node in selected_nodes:
+        node_id = resolve_risk_node_id(node)
 
         mapped_nodes.append({
             "node_id": node.id,

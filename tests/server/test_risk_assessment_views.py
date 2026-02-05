@@ -3,7 +3,7 @@ from unittest.mock import Mock
 
 from django.utils import timezone
 
-from dashboard.models import Node, ScanRun, ScanVulnerability, Vulnerability
+from dashboard.models import Node, RiskNodeMapping, ScanRun, ScanVulnerability, Vulnerability
 from dashboard.risk_assessment import build_cyber_data_for_risk_nodes, summarize_risk_results
 
 import pytest
@@ -76,6 +76,9 @@ def test_build_cyber_data_for_risk_nodes_dedupes_and_maps():
     node_a = Node.objects.create(name="PLC-1", ip_address="10.0.0.10")
     node_b = Node.objects.create(name="Workstation-1", ip_address="10.0.0.20")
 
+    RiskNodeMapping.objects.create(risk_node_id="PLC-OVERRIDE", node=node_a)
+    RiskNodeMapping.objects.create(risk_node_id="WS-1", ip_address="10.0.0.20")
+
     vuln = Vulnerability.objects.create(
         cve_id="CVE-2024-0001",
         description="Test vuln",
@@ -103,18 +106,18 @@ def test_build_cyber_data_for_risk_nodes_dedupes_and_maps():
         cvss_score=5.0,
     )
 
-    cyber_data, mapped = build_cyber_data_for_risk_nodes(["PLC-1", "10.0.0.20"])
+    cyber_data, mapped = build_cyber_data_for_risk_nodes(["PLC-OVERRIDE", "WS-1"])
 
     assert len(mapped) == 2
     mapped_by_name = {entry["name"]: entry for entry in mapped}
-    assert mapped_by_name["PLC-1"]["risk_node_id"] == "PLC-1"
-    assert mapped_by_name["Workstation-1"]["risk_node_id"] == "10.0.0.20"
+    assert mapped_by_name["PLC-1"]["risk_node_id"] == "PLC-OVERRIDE"
+    assert mapped_by_name["Workstation-1"]["risk_node_id"] == "WS-1"
 
     scanned_nodes = {entry["id"]: entry for entry in cyber_data["scanned_nodes"]}
-    assert "PLC-1" in scanned_nodes
-    assert "10.0.0.20" in scanned_nodes
+    assert "PLC-OVERRIDE" in scanned_nodes
+    assert "WS-1" in scanned_nodes
 
-    plc_vulns = scanned_nodes["PLC-1"]["vulnerability"]
+    plc_vulns = scanned_nodes["PLC-OVERRIDE"]["vulnerability"]
     assert len(plc_vulns) == 1
     assert plc_vulns[0]["id"] == "CVE-2024-0001"
     assert plc_vulns[0]["epss"] > 0.8

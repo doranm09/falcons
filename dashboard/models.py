@@ -43,6 +43,7 @@ class ScanRun(models.Model):
     status = models.CharField(max_length=32, choices=SCAN_STATUS_CHOICES, default="PENDING")
     result_summary = models.TextField(blank=True, null=True)
     openvas_task_id = models.CharField(max_length=64, null=True, blank=True)
+    task_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
     scan_type = models.CharField(max_length=32, choices=SCAN_TYPE_CHOICES, default="ping")
 
     class Meta:

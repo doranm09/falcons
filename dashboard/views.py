@@ -87,12 +87,18 @@ def start_scan_ajax(request):
         cidr = request.POST.get("cidr")
         method = (request.POST.get("scan_method") or "ping").lower()
         print(f"[DEBUG] Received CIDR: {cidr}")
+        if not cidr:
+            return JsonResponse({"error": "cidr is required"}, status=400)
+
+        scan = ScanRun.objects.create(cidr=cidr, status="RUNNING", scan_type=method)
         if method == "nmap":
-            task = nmap_discovery_task.delay(cidr)
+            task = nmap_discovery_task.delay(cidr, scan.id)
         else:
-            task = scan_network_task.delay(cidr)
+            task = scan_network_task.delay(cidr, scan.id)
+        scan.task_id = task.id
+        scan.save(update_fields=["task_id"])
         print(f"[DEBUG] Task dispatched: {task.id}")
-        return JsonResponse({"task_id": task.id, "method": method})
+        return JsonResponse({"task_id": task.id, "scan_id": scan.id, "method": method})
     else:
         return JsonResponse({"error": "Only POST allowed"}, status=405)
 
@@ -123,12 +129,21 @@ def check_scan_status(request, task_id):
             ]
         })
 
+    progress = None
+    if isinstance(result.info, dict):
+        progress = {
+            "current": result.info.get("current"),
+            "total": result.info.get("total"),
+            "percent": result.info.get("percent"),
+        }
+
     response = {
         "state": state,
-        "nodes": node_data
+        "nodes": node_data,
+        "progress": progress,
     }
 
-    if state in ['PENDING', 'STARTED']:
+    if state in ['PENDING', 'STARTED'] and progress is None:
         response["progress"] = "Scan is running..."
 
     if hasattr(result, "ready") and result.ready():
@@ -211,7 +226,27 @@ def agent_scan_results(request):
     if not scan:
         scan = ScanRun.objects.create(cidr=cidr, status="IN_PROGRESS", scan_type="agent")
 
+    # Ensure a stable node for the scanning agent itself (agent_id is globally unique)
+    agent_node = None
+    try:
+        agent = AgentStatus.objects.get(agent_id=agent_id)
+    except AgentStatus.DoesNotExist:
+        agent = None
+
+    try:
+        agent_node = Node.objects.get(agent_id=agent_id)
+    except Node.DoesNotExist:
+        if agent:
+            agent_node = Node.objects.create(
+                agent_id=agent_id,
+                name=agent.hostname or f"agent-{agent_id}",
+                ip_address=agent.ip_address,
+                status="online",
+                description=f"Scanner agent {agent_id}",
+            )
+
     created_nodes = 0
+    created_links = 0
     for host in hosts:
         ip_address = host.get("ip") if isinstance(host, dict) else host
         if not ip_address:
@@ -231,8 +266,37 @@ def agent_scan_results(request):
             node.save(update_fields=["status", "description"])
         created_nodes += 1
 
+        # Build directed links (both directions) when we have a scanning agent node
+        if agent_node:
+            latency_ms = None
+            if isinstance(host, dict):
+                latency_ms = host.get("latency_ms")
+            try:
+                weight = float(latency_ms) if latency_ms is not None else 1.0
+            except (TypeError, ValueError):
+                weight = 1.0
+
+            link1, link1_created = Link.objects.update_or_create(
+                scan_run=scan,
+                source=agent_node,
+                destination=node,
+                defaults={"weight": weight},
+            )
+            link2, link2_created = Link.objects.update_or_create(
+                scan_run=scan,
+                source=node,
+                destination=agent_node,
+                defaults={"weight": weight},
+            )
+            if link1_created:
+                created_links += 1
+            if link2_created:
+                created_links += 1
+
     scan.status = "COMPLETE"
     scan.result_summary = f"{created_nodes} hosts reported by agent {agent_id}"
+    if created_links:
+        scan.result_summary += f" ({created_links} links)"
     scan.save(update_fields=["status", "result_summary"])
 
     return JsonResponse({
@@ -278,41 +342,207 @@ def history(request):
     return render(request, 'dashboard/history.html', {'runs': run_data})
 
 def graph_data(request):
-    latest_scan = ScanRun.objects.order_by('-timestamp').first()
-    if not latest_scan:
-        return JsonResponse([], safe=False)
+    scan_window = now() - timedelta(hours=24)
+    recent_scan_ids = list(
+        ScanRun.objects.filter(nodes__isnull=False, timestamp__gte=scan_window)
+        .order_by('-timestamp')
+        .values_list('id', flat=True)
+        .distinct()
+    )
 
-    nodes = Node.objects.filter(scan_run=latest_scan)
-    links = Link.objects.filter(scan_run=latest_scan)
+    nodes = Node.objects.none()
+    if recent_scan_ids:
+        nodes = (
+            Node.objects.filter(scan_run_id__in=recent_scan_ids)
+            .select_related('scan_run')
+            .order_by('-scan_run__timestamp', '-id')
+        )
+
+    latest_ping_scan = ScanRun.objects.filter(scan_type="ping", nodes__isnull=False).order_by('-timestamp').first()
+    ping_node_by_ip = {}
+    if latest_ping_scan:
+        for ping_node in Node.objects.filter(scan_run=latest_ping_scan):
+            ping_node_by_ip[ping_node.ip_address] = ping_node.id
 
     elements = []
+    nodes_by_id = {}
+    ip_to_node_id = {}
+    edge_ids = set()
 
+    def add_node(node_id, label, ip=None, status=None, extra=None, node_db_id=None, path_id=None):
+        if node_id in nodes_by_id:
+            return
+        data = {
+            "id": node_id,
+            "label": label,
+        }
+        if ip:
+            data["ip"] = ip
+        if status:
+            data["status"] = status
+        if node_db_id is not None:
+            data["node_id"] = node_db_id
+        if path_id is not None:
+            data["path_id"] = path_id
+        if extra:
+            data.update(extra)
+        nodes_by_id[node_id] = data
+
+    def add_edge(edge_id, source, target, label, raw_weight=1.0, kind=None):
+        if edge_id in edge_ids:
+            return
+        data = {
+            "id": edge_id,
+            "source": source,
+            "target": target,
+            "weight": label,
+            "raw_weight": raw_weight,
+        }
+        if kind:
+            data["kind"] = kind
+        elements.append({"data": data})
+        edge_ids.add(edge_id)
+
+    # Online agents for metadata + optional node enrichment
+    agents = AgentStatus.objects.filter(status="online")
+    agents_by_ip = {a.ip_address: a for a in agents if a.ip_address}
+
+    # Scan nodes (dedupe by IP; keep most recent per IP)
     for node in nodes:
-        # Get cyber template data for enhanced node information
+        if node.ip_address in ip_to_node_id:
+            continue
         cyber_data = node.get_cyber_template_data()
+        node_id = str(node.id)
 
-        elements.append({
-            "data": {
-                "id": str(node.id),
-                "label": node.name,
-                "ip": node.ip_address,
-                "status": node.status,
-                "cyber_data": cyber_data,
-                "has_cyber_data": any(cyber_data.values()),
-            }
-        })
+        agent = agents_by_ip.get(node.ip_address)
+        extra = {
+            "cyber_data": cyber_data,
+            "has_cyber_data": any(cyber_data.values()),
+        }
+        if agent:
+            extra.update({
+                "type": "agent",
+                "agent_id": agent.agent_id,
+                "hostname": agent.hostname,
+                "os_type": agent.os_type,
+            })
 
-    for link in links:
-        elements.append({
-            "data": {
-                "source": str(link.source.id),
-                "target": str(link.destination.id),
-                "weight": f"{link.weight:.2f}",  # for label
-                "raw_weight": link.weight        # for color mapping
-            }
-        })
+        path_id = ping_node_by_ip.get(node.ip_address)
+        add_node(
+            node_id=node_id,
+            label=node.name,
+            ip=node.ip_address,
+            status=node.status,
+            extra=extra,
+            node_db_id=node.id,
+            path_id=path_id,
+        )
+        ip_to_node_id[node.ip_address] = node_id
 
+    # Agent nodes (only if not already represented by scan nodes)
+    for agent in agents:
+        if agent.ip_address and agent.ip_address in ip_to_node_id:
+            continue
+        agent_node = None
+        try:
+            agent_node = Node.objects.filter(agent_id=agent.agent_id).first()
+        except Exception:
+            agent_node = None
+        agent_node_id = f"agent:{agent.agent_id}"
+        add_node(
+            node_id=agent_node_id,
+            label=agent.hostname,
+            ip=agent.ip_address,
+            status=agent.status,
+            extra={
+                "type": "agent",
+                "agent_id": agent.agent_id,
+                "hostname": agent.hostname,
+                "os_type": agent.os_type,
+                "last_heartbeat": agent.last_heartbeat.strftime("%Y-%m-%d %H:%M:%S") if agent.last_heartbeat else "Never",
+            },
+            node_db_id=agent_node.id if agent_node else None,
+            path_id=ping_node_by_ip.get(agent.ip_address),
+        )
+        if agent.ip_address:
+            ip_to_node_id.setdefault(agent.ip_address, agent_node_id)
 
+    # Scan links from latest ping scan (best for latency graph)
+    if latest_ping_scan:
+        ping_links = Link.objects.filter(scan_run=latest_ping_scan).select_related("source", "destination")
+        for link in ping_links:
+            src_ip = link.source.ip_address
+            dst_ip = link.destination.ip_address
+            src_id = ip_to_node_id.get(src_ip, str(link.source.id))
+            dst_id = ip_to_node_id.get(dst_ip, str(link.destination.id))
+            if src_id not in nodes_by_id:
+                add_node(
+                    node_id=src_id,
+                    label=src_ip,
+                    ip=src_ip,
+                    status="unknown",
+                    node_db_id=link.source.id,
+                    path_id=link.source.id,
+                )
+                ip_to_node_id[src_ip] = src_id
+            if dst_id not in nodes_by_id:
+                add_node(
+                    node_id=dst_id,
+                    label=dst_ip,
+                    ip=dst_ip,
+                    status="unknown",
+                    node_db_id=link.destination.id,
+                    path_id=link.destination.id,
+                )
+                ip_to_node_id[dst_ip] = dst_id
+            add_edge(
+                edge_id=f"scan:{link.id}",
+                source=src_id,
+                target=dst_id,
+                label=f"{link.weight:.2f}",
+                raw_weight=link.weight,
+                kind="scan",
+            )
+
+    # Network metadata connections (last hour)
+    recent_connections = NetworkConnection.objects.filter(
+        agent__status="online",
+        last_seen__gte=now() - timedelta(hours=1),
+    ).select_related("agent")
+
+    flows = defaultdict(int)
+    for conn in recent_connections:
+        if not conn.remote_address or conn.remote_address in ["127.0.0.1", "localhost", "::1"]:
+            continue
+
+        src_id = f"agent:{conn.agent.agent_id}"
+        dst_ip = conn.remote_address
+        dst_id = ip_to_node_id.get(dst_ip)
+        if not dst_id:
+            dst_id = f"ip:{dst_ip}"
+            add_node(
+                node_id=dst_id,
+                label=dst_ip,
+                ip=dst_ip,
+                status="unknown",
+                extra={"type": "ip"},
+            )
+            ip_to_node_id[dst_ip] = dst_id
+
+        flow_key = (src_id, dst_id, conn.protocol)
+        flows[flow_key] += 1
+
+    for (src_id, dst_id, protocol), count in flows.items():
+        add_edge(
+            edge_id=f"conn:{src_id}->{dst_id}:{protocol}",
+            source=src_id,
+            target=dst_id,
+            label=f"{protocol} ({count})",
+            raw_weight=1.0,
+            kind="connection",
+        )
+
+    elements = [{"data": data} for data in nodes_by_id.values()] + elements
     return JsonResponse(elements, safe=False)
 
 
@@ -364,6 +594,34 @@ def node_details(request, node_id):
 
     return JsonResponse(node_data)
 
+
+@require_GET
+def node_detail_page(request, node_id):
+    """HTML page for node characteristics and composition."""
+    try:
+        node = Node.objects.get(id=node_id)
+    except Node.DoesNotExist:
+        messages.error(request, "Node not found")
+        return redirect('dashboard:dashboard-home')
+
+    agent_status = None
+    if node.agent_id:
+        try:
+            agent_status = AgentStatus.objects.get(agent_id=node.agent_id)
+        except AgentStatus.DoesNotExist:
+            agent_status = None
+
+    network_metadata = None
+    if agent_status:
+        network_metadata = NetworkMetadata.objects.filter(agent=agent_status).order_by('-timestamp').first()
+
+    return render(request, 'dashboard/node_detail.html', {
+        'node': node,
+        'interfaces': node.interfaces.all(),
+        'agent_status': agent_status,
+        'network_metadata': network_metadata,
+    })
+
 def get_interfaces(request):
     return JsonResponse({'interfaces': list_interfaces()})
 
@@ -395,6 +653,7 @@ def get_scan_history(request):
         "cidr": run.cidr,
         "status": run.status,
         "scan_type": run.scan_type,
+        "task_id": run.task_id,
         "summary": run.result_summary or "-"
     } for run in recent]
     return JsonResponse({"history": history})

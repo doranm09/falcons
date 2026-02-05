@@ -365,6 +365,31 @@ body {
     border-right: 1px solid var(--sidebar-border);
     box-shadow: 8px 0 24px rgba(2, 6, 23, 0.35);
     transition: background 0.3s ease, border-color 0.3s ease;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.6) rgba(15, 23, 42, 0.2);
+}
+
+/* Sidebar scrollbar styling */
+.sidebar::-webkit-scrollbar {
+    width: 10px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.2);
+    border-radius: 10px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.6);
+    border-radius: 10px;
+    border: 2px solid rgba(15, 23, 42, 0.2);
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.85);
 }
 
 .sidebar .logo {
@@ -402,6 +427,93 @@ main {
     min-height: 100vh;
     transition: background-color 0.3s ease;
     animation: page-in 0.6s ease;
+}
+
+/* Global scan banner */
+.scan-banner {
+    position: sticky;
+    top: 0;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.6rem 1rem;
+    margin-bottom: 1.5rem;
+    border-radius: 10px;
+    background: linear-gradient(90deg, rgba(14, 165, 233, 0.15), rgba(34, 197, 94, 0.08));
+    border: 1px solid rgba(14, 165, 233, 0.25);
+    color: var(--text-primary);
+    box-shadow: 0 8px 24px rgba(2, 6, 23, 0.15);
+    backdrop-filter: blur(6px);
+}
+
+.scan-banner.hidden {
+    display: none;
+}
+
+.scan-banner__left {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-weight: 600;
+}
+
+.scan-banner__dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 12px rgba(34, 197, 94, 0.9);
+    animation: scan-pulse 1.4s ease-in-out infinite;
+}
+
+.scan-banner__right {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-width: 200px;
+}
+
+.scan-banner__percent {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    min-width: 38px;
+    text-align: right;
+}
+
+.scan-progress {
+    position: relative;
+    height: 8px;
+    width: 180px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.15);
+    overflow: hidden;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.scan-progress__bar {
+    height: 100%;
+    width: 35%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #22c55e, #38bdf8);
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.6);
+    transition: width 0.3s ease;
+}
+
+.scan-progress.indeterminate .scan-progress__bar {
+    animation: scan-bar 1.4s ease-in-out infinite;
+}
+
+@keyframes scan-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.9; }
+    50% { transform: scale(1.35); opacity: 0.6; }
+}
+
+@keyframes scan-bar {
+    0% { transform: translateX(-60%); }
+    50% { transform: translateX(40%); }
+    100% { transform: translateX(120%); }
 }
 
 @keyframes page-in {

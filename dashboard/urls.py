@@ -35,6 +35,7 @@ urlpatterns = [
     path('agent/<str:agent_id>/sbom/diff/', views.agent_sbom_diff, name='agent_sbom_diff'),
     path('agent/<str:agent_id>/sbom/bundle/', views.agent_sbom_bundle, name='agent_sbom_bundle'),
     path('node/<int:node_id>/details/', views.node_details, name='node_details'),
+    path('node/<int:node_id>/', views.node_detail_page, name='node_detail_page'),
     path("vulnerabilities/<int:scan_id>/", views.vulnerability_detail, name="vuln-detail"),
     path('scan/vuln/start/', views.start_openvas_scan, name='start-vuln-scan'),
     path('scan/vuln/status/<int:scan_id>/', views.vuln_scan_status, name='vuln-scan-status'),

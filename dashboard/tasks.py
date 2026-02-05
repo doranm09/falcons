@@ -20,17 +20,36 @@ from datetime import datetime
 from .models import Vulnerability
 from django.utils.dateparse import parse_datetime
 
-@shared_task
-def scan_network_task(cidr):
+@shared_task(bind=True)
+def scan_network_task(self, cidr, scan_id=None):
     from .models import ScanRun, Node, Link  # ensure local import in tasks
     import subprocess, ipaddress
 
-    scan = ScanRun.objects.create(cidr=cidr, status="RUNNING", scan_type="ping")
+    if scan_id:
+        try:
+            scan = ScanRun.objects.get(id=scan_id)
+            if scan.cidr != cidr:
+                scan.cidr = cidr
+            scan.status = "RUNNING"
+            scan.scan_type = "ping"
+            scan.save(update_fields=["cidr", "status", "scan_type"])
+        except ScanRun.DoesNotExist:
+            scan = ScanRun.objects.create(cidr=cidr, status="RUNNING", scan_type="ping")
+    else:
+        scan = ScanRun.objects.create(cidr=cidr, status="RUNNING", scan_type="ping")
 
     network = ipaddress.ip_network(cidr, strict=False)
+    if network.version == 4:
+        total_hosts = network.num_addresses if network.prefixlen >= 31 else max(1, network.num_addresses - 2)
+    else:
+        total_hosts = max(1, network.num_addresses)
+    update_every = max(1, int(total_hosts / 20))  # ~5% increments
+
     found_nodes = []
+    scanned = 0
 
     for ip in network.hosts():
+        scanned += 1
         result = subprocess.run(['ping', '-c', '1', '-W', '1', str(ip)],
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if result.returncode == 0:
@@ -41,6 +60,14 @@ def scan_network_task(cidr):
                 name=str(ip)
             )
             found_nodes.append((node, latency))
+
+        if scanned % update_every == 0 or scanned == total_hosts:
+            percent = int((scanned / total_hosts) * 100)
+            self.update_state(state="PROGRESS", meta={
+                "current": scanned,
+                "total": total_hosts,
+                "percent": percent,
+            })
 
     # Create weighted links between nodes
     for i in range(len(found_nodes)):
@@ -58,28 +85,61 @@ def scan_network_task(cidr):
     return scan.result_summary
 
 
-@shared_task
-def nmap_discovery_task(cidr):
-    scan = ScanRun.objects.create(cidr=cidr, status="RUNNING", scan_type="nmap")
+@shared_task(bind=True)
+def nmap_discovery_task(self, cidr, scan_id=None):
+    if scan_id:
+        try:
+            scan = ScanRun.objects.get(id=scan_id)
+            if scan.cidr != cidr:
+                scan.cidr = cidr
+            scan.status = "RUNNING"
+            scan.scan_type = "nmap"
+            scan.save(update_fields=["cidr", "status", "scan_type"])
+        except ScanRun.DoesNotExist:
+            scan = ScanRun.objects.create(cidr=cidr, status="RUNNING", scan_type="nmap")
+    else:
+        scan = ScanRun.objects.create(cidr=cidr, status="RUNNING", scan_type="nmap")
     found_ips = []
+    network = ipaddress.ip_network(cidr, strict=False)
+    if network.version == 4:
+        total_hosts = network.num_addresses if network.prefixlen >= 31 else max(1, network.num_addresses - 2)
+    else:
+        total_hosts = max(1, network.num_addresses)
+    self.update_state(state="PROGRESS", meta={"current": 0, "total": total_hosts, "percent": 0})
 
     try:
-        result = subprocess.run(
-            ["nmap", "-sn", cidr, "-oG", "-"],
+        cmd = ["nmap", "-sn", cidr, "--stats-every", "1s", "-oG", "-"]
+        proc = subprocess.Popen(
+            cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
-            check=False,
         )
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr.strip() or "nmap failed")
+        output_lines = []
+        for line in proc.stdout:
+            output_lines.append(line)
+            if "Status: Up" in line:
+                match = re.search(r"Host:\s+(\S+)", line)
+                if match:
+                    found_ips.append(match.group(1))
 
-        for line in result.stdout.splitlines():
-            if "Status: Up" not in line:
-                continue
-            match = re.search(r"Host:\s+(\S+)", line)
-            if match:
-                found_ips.append(match.group(1))
+            progress_match = re.search(r"About\s+([0-9.]+)%\s+done", line)
+            if progress_match:
+                try:
+                    percent = int(float(progress_match.group(1)))
+                except (TypeError, ValueError):
+                    percent = None
+                if percent is not None:
+                    current = int((percent / 100.0) * total_hosts)
+                    self.update_state(
+                        state="PROGRESS",
+                        meta={"current": current, "total": total_hosts, "percent": percent},
+                    )
+
+        returncode = proc.wait()
+        if returncode != 0:
+            tail = "".join(output_lines[-5:]).strip()
+            raise RuntimeError(tail or "nmap failed")
 
         for ip in found_ips:
             Node.objects.create(scan_run=scan, ip_address=ip, name=ip)

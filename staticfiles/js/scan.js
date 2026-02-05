@@ -140,14 +140,38 @@ document.addEventListener('DOMContentLoaded', function () {
       let selectedNode = null;
       cyInstance.on('tap','node',evt=>{
         const tapped = evt.target;
-        if (!selectedNode) { selectedNode = tapped; tapped.style('background-color','#ffc107'); }
-        else {
-          const src = selectedNode.id(), dst = tapped.id();
-          jsonFetch(`/shortest-paths/${encodeURIComponent(src)}/`).then(pd=>{
-            const cost = pd[dst]; if (pathResult) pathResult.innerText = `Shortest path from ${selectedNode.data('label')} to ${tapped.data('label')}: ${cost}`;
-          }).catch(err=>{ if (pathResult) pathResult.innerText = `Path error: ${err.message}`; });
-          selectedNode.style('background-color','#007bff'); selectedNode = null;
+        const original = evt.originalEvent || {};
+
+        if (original.shiftKey) {
+          if (!selectedNode) { selectedNode = tapped; tapped.style('background-color','#ffc107'); }
+          else {
+            const src = selectedNode.data('path_id') || selectedNode.data('node_id') || selectedNode.id();
+            const dst = tapped.data('path_id') || tapped.data('node_id') || tapped.id();
+            if (!/^\d+$/.test(String(src)) || !/^\d+$/.test(String(dst))) {
+              if (pathResult) pathResult.innerText = 'Shortest path unavailable for non-scan nodes.';
+            } else {
+              jsonFetch(`/shortest-paths/${encodeURIComponent(src)}/`).then(pd=>{
+                const cost = pd[dst]; if (pathResult) pathResult.innerText = `Shortest path from ${selectedNode.data('label')} to ${tapped.data('label')}: ${cost}`;
+              }).catch(err=>{ if (pathResult) pathResult.innerText = `Path error: ${err.message}`; });
+            }
+            selectedNode.style('background-color','#007bff'); selectedNode = null;
+          }
+          return;
         }
+
+        const agentId = tapped.data('agent_id');
+        if (agentId) {
+          window.location.href = `/dashboard/agent/${encodeURIComponent(agentId)}/`;
+          return;
+        }
+
+        const nodeId = tapped.data('node_id') || tapped.id();
+        if (/^\d+$/.test(String(nodeId))) {
+          window.location.href = `/dashboard/node/${encodeURIComponent(nodeId)}/`;
+          return;
+        }
+
+        if (pathResult) pathResult.innerText = `No detail page for ${tapped.data('label') || tapped.id()}.`;
       });
 
     } catch (e) { console.warn('Graph render failed:', e.message); }
@@ -240,7 +264,19 @@ document.addEventListener('DOMContentLoaded', function () {
         const data=await res.json(); const taskId=data.task_id; if(!taskId) throw new Error('No task id');
         pollTask({
           statusUrl:`/scan/status/${encodeURIComponent(taskId)}/`,
-          onTick:s=>setStatus(`Scanning… (${s.state})`),
+          onTick:s=>{
+            const p = s.progress;
+            if (p && typeof p === 'object' && p.percent != null) {
+              const detail = p.total ? `${p.current}/${p.total}` : `${p.current || 0}`;
+              setStatus(`Scanning… ${p.percent}% (${detail})`,'info');
+              return;
+            }
+            if (typeof p === 'string') {
+              setStatus(`Scanning… ${p}`,'info');
+              return;
+            }
+            setStatus(`Scanning… (${s.state})`,'info');
+          },
           onDone:s=>{
             if(s.state==='SUCCESS'){ setStatus('Scan complete. Nodes updated.','success'); renderNodes(s.nodes||[]); updateScanHistory(); renderGraph(); }
             else setStatus(`Scan finished: ${s.state}`,'warning');

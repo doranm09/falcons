@@ -501,8 +501,14 @@ class ScanViewTests(TransactionTestCase):
         })
 
         self.assertEqual(response.status_code, 200)
-        self.assertJSONEqual(response.content, {"task_id": mock_task.id})
-        mock_task.assert_called_once_with('192.168.1.0/24')
+        data = response.json()
+        self.assertEqual(data["task_id"], mock_task.id)
+        self.assertIn("scan_id", data)
+        self.assertEqual(data["method"], "ping")
+        mock_task.assert_called_once()
+        args, _kwargs = mock_task.call_args
+        self.assertEqual(args[0], '192.168.1.0/24')
+        self.assertEqual(args[1], data["scan_id"])
 
     def test_start_scan_ajax_get_method(self):
         """Test scan AJAX with GET method returns 405."""

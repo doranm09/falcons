@@ -59,6 +59,31 @@ def http_get_json(url, headers=None):
 
 
 # ---- System info ----
+def ping_host(target, count=1, timeout_ms=1000):
+    system = platform.system().lower()
+    if system == "windows":
+        cmd = ["ping", "-n", str(count), "-w", str(timeout_ms), target]
+    else:
+        timeout_s = max(1, int((timeout_ms + 999) / 1000))
+        cmd = ["ping", "-c", str(count), "-W", str(timeout_s), target]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        return False, None, (result.stdout or "") + (result.stderr or "")
+
+    latency = None
+    for line in result.stdout.splitlines():
+        match = re.search(r"time[=<]?\s*([0-9.]+)\s*ms", line, re.I)
+        if match:
+            try:
+                latency = float(match.group(1))
+            except (TypeError, ValueError):
+                latency = None
+            break
+
+    return True, latency, result.stdout
+
+
 def get_system_info():
     return {
         "agent_id": AGENT_ID,
@@ -417,10 +442,15 @@ def handle_command(cmd):
     print(f"[command] received: {cmd}")
 
     if action == "ping":
-        # Linux ping; adjust for Windows if needed
         target = parameters.get("target") or "8.8.8.8"
-        result = subprocess.run(["ping", "-c", "2", target], capture_output=True, text=True)
-        return_output(cmd_id, result.stdout)
+        ok, latency, output = ping_host(target, count=2, timeout_ms=2000)
+        if ok:
+            if latency is not None:
+                return_output(cmd_id, f"ping ok: {target} ~{latency:.2f} ms\n{output}")
+            else:
+                return_output(cmd_id, output)
+        else:
+            return_output(cmd_id, f"ping failed: {target}\n{output}")
     elif action == "scan":
         cidr = parameters.get("cidr")
         max_hosts = parameters.get("max_hosts")
@@ -437,15 +467,8 @@ def handle_command(cmd):
             for ip in ipaddress.ip_network(cidr, strict=False).hosts():
                 if max_hosts_val and count >= max_hosts_val:
                     break
-                result = subprocess.run(["ping", "-c", "1", "-W", "1", str(ip)], capture_output=True, text=True)
-                if result.returncode == 0:
-                    latency = None
-                    for line in result.stdout.splitlines():
-                        if "time=" in line:
-                            try:
-                                latency = float(line.split("time=")[-1].split()[0])
-                            except Exception:
-                                latency = None
+                ok, latency, _ = ping_host(str(ip), count=1, timeout_ms=1000)
+                if ok:
                     hosts.append({"ip": str(ip), "latency_ms": latency})
                 count += 1
 

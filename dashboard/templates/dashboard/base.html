@@ -168,6 +168,18 @@
   </div>
 
   <main>
+    <div id="scan-banner" class="scan-banner hidden" role="status" aria-live="polite">
+      <div class="scan-banner__left">
+        <span class="scan-banner__dot"></span>
+        <span id="scan-banner-text">Scan running…</span>
+      </div>
+      <div class="scan-banner__right">
+        <div id="scan-banner-progress" class="scan-progress indeterminate">
+          <div class="scan-progress__bar"></div>
+        </div>
+        <span id="scan-banner-percent" class="scan-banner__percent"></span>
+      </div>
+    </div>
     {% block content %}{% endblock %}
     {% block extra_scripts %}{% endblock %}
   </main>
@@ -247,5 +259,6 @@
         }
     });
   </script>
+  <script src="{% static 'js/scan-banner.js' %}"></script>
 </body>
 </html>

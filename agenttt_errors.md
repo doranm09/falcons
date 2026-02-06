@@ -240,3 +240,11 @@ SiemNormalizeError: Invalid timestamp (RFC3164 timestamp missing year)
 - Correlation matches nodes by `asset_ip` or `asset_id` and skips when both missing.
 - Docs updated in `docs/siem_alerts.md`.
 - Tests passed: unit/server/integration correlation tests (4 tests).
+
+## Context for Next Agent (2026-02-06)
+- SIEM Task 13 implemented: hunt workflow with saved searches, tags, and notebooks.
+- Models: Hunt, HuntTag, HuntSearch, HuntNote; migration `0024_hunts.py`.
+- UI pages: `dashboard/templates/dashboard/siem_hunts.html` and `dashboard/templates/dashboard/siem_hunt_detail.html`.
+- Endpoints under `/dashboard/siem/hunts/` added for create, tags, notes, searches, replay.
+- Docs added: `docs/siem_hunts.md`, referenced in `README.md` and `docs/siem_events.md`.
+- Tests passed: hunt unit/server/integration tests (6 tests).

@@ -223,6 +223,7 @@ Documentation:
 - `docs/opensearch.md`
 - `docs/siem_alerts.md`
 - `docs/siem_cases.md`
+- `docs/siem_hunts.md`
 - `docs/threat_intel.md`
 - `docs/siem_syslog_windows.md`
 

@@ -20,6 +20,10 @@ from .models import (
     Case,
     CaseNote,
     CaseEvidence,
+    Hunt,
+    HuntNote,
+    HuntSearch,
+    HuntTag,
     ThreatIntelIndicator,
     ThreatIntelMatch,
 )
@@ -78,6 +82,13 @@ from .siem_query import parse_search_request, search_siem_events
 from .siem_pivot import resolve_siem_pivot
 from .siem_alerting import process_alerts_for_events
 from .siem_cases import build_case_from_alert, export_case_payload
+from .siem_hunts import (
+    build_query_payload_from_form,
+    clean_query_params,
+    parse_hunt_tags,
+    replay_hunt_search,
+    validate_hunt_query,
+)
 from .siem_threat_intel import ingest_indicators, match_indicators, persist_ioc_matches
 from .siem_syslog import syslog_to_event
 from .siem_windows import windows_event_to_event
@@ -1250,6 +1261,101 @@ def siem_case_export(request, case_id):
     response = JsonResponse(payload, json_dumps_params={"indent": 2})
     response["Content-Disposition"] = f'attachment; filename="case_{case.id}.json"'
     return response
+
+
+@require_http_methods(["GET"])
+def siem_hunts_page(request):
+    status = request.GET.get("status", "open")
+    hunts = Hunt.objects.filter(status=status).order_by("-updated_at")[:200]
+    return render(request, "dashboard/siem_hunts.html", {"hunts": hunts, "status": status})
+
+
+@require_http_methods(["POST"])
+def siem_hunt_create(request):
+    name = request.POST.get("name") or "New Hunt"
+    description = request.POST.get("description", "")
+    tags = parse_hunt_tags(request.POST.get("tags", ""))
+
+    base_name = name
+    counter = 1
+    while Hunt.objects.filter(name=name).exists():
+        counter += 1
+        name = f"{base_name} ({counter})"
+
+    hunt = Hunt.objects.create(
+        name=name,
+        description=description,
+        status=Hunt.Status.OPEN,
+        created_by=request.user if request.user.is_authenticated else None,
+    )
+    for tag in tags:
+        HuntTag.objects.get_or_create(hunt=hunt, name=tag)
+    return redirect(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
+
+
+@require_http_methods(["GET"])
+def siem_hunt_detail(request, hunt_id):
+    hunt = get_object_or_404(Hunt, id=hunt_id)
+    return render(request, "dashboard/siem_hunt_detail.html", {"hunt": hunt})
+
+
+@require_http_methods(["POST"])
+def siem_hunt_update_status(request, hunt_id):
+    hunt = get_object_or_404(Hunt, id=hunt_id)
+    status = request.POST.get("status") or Hunt.Status.OPEN
+    hunt.status = status
+    hunt.save(update_fields=["status"])
+    return redirect(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
+
+
+@require_http_methods(["POST"])
+def siem_hunt_add_note(request, hunt_id):
+    hunt = get_object_or_404(Hunt, id=hunt_id)
+    note_text = request.POST.get("note")
+    if note_text:
+        HuntNote.objects.create(
+            hunt=hunt,
+            author=request.user if request.user.is_authenticated else None,
+            title=request.POST.get("title", ""),
+            note=note_text,
+        )
+    return redirect(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
+
+
+@require_http_methods(["POST"])
+def siem_hunt_add_tag(request, hunt_id):
+    hunt = get_object_or_404(Hunt, id=hunt_id)
+    tags = parse_hunt_tags(request.POST.get("tags", ""))
+    for tag in tags:
+        HuntTag.objects.get_or_create(hunt=hunt, name=tag)
+    return redirect(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
+
+
+@require_http_methods(["POST"])
+def siem_hunt_add_search(request, hunt_id):
+    hunt = get_object_or_404(Hunt, id=hunt_id)
+    search_name = request.POST.get("search_name") or "Saved Search"
+    query_params = build_query_payload_from_form(request.POST)
+    try:
+        validate_hunt_query(query_params)
+    except ValueError as exc:
+        messages.error(request, f"Invalid search params: {exc}")
+        return redirect(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
+
+    HuntSearch.objects.create(
+        hunt=hunt,
+        name=search_name,
+        query_params=clean_query_params(query_params),
+    )
+    return redirect(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
+
+
+@require_http_methods(["GET"])
+def siem_hunt_replay_search(request, hunt_id, search_id):
+    hunt = get_object_or_404(Hunt, id=hunt_id)
+    search = get_object_or_404(HuntSearch, id=search_id, hunt=hunt)
+    payload = replay_hunt_search(search.query_params)
+    return JsonResponse({"hunt_id": hunt.id, "search_id": search.id, **payload})
 
 
 @csrf_exempt

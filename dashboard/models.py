@@ -234,6 +234,68 @@ class CaseEvidence(models.Model):
         return f"Evidence {self.id} for Case {self.case_id}"
 
 
+class Hunt(models.Model):
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        CLOSED = "closed", "Closed"
+
+    name = models.CharField(max_length=255, unique=True)
+    description = models.TextField(blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.OPEN)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "updated_at"]),
+        ]
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.status})"
+
+
+class HuntTag(models.Model):
+    hunt = models.ForeignKey(Hunt, on_delete=models.CASCADE, related_name="tags")
+    name = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("hunt", "name")
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} (hunt {self.hunt_id})"
+
+
+class HuntSearch(models.Model):
+    hunt = models.ForeignKey(Hunt, on_delete=models.CASCADE, related_name="searches")
+    name = models.CharField(max_length=255)
+    query_params = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Search {self.name} (hunt {self.hunt_id})"
+
+
+class HuntNote(models.Model):
+    hunt = models.ForeignKey(Hunt, on_delete=models.CASCADE, related_name="notes")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    title = models.CharField(max_length=255, blank=True)
+    note = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Note {self.id} for Hunt {self.hunt_id}"
+
+
 class ThreatIntelIndicator(models.Model):
     class IndicatorType(models.TextChoices):
         IP = "ip", "IP"

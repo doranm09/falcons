@@ -18,6 +18,8 @@ This feature provides a minimal SIEM event store with ingestion and search APIs.
 - `POST /dashboard/siem/alerts/<alert_id>/case/` Promote an alert to a case.
 - `POST /dashboard/siem/threat-intel/ingest/` Ingest threat intel indicators (MISP-like JSON).
 - `GET /dashboard/siem/threat-intel/` List ingested indicators.
+- `POST /dashboard/siem/syslog/` Ingest syslog lines (RFC3164/5424).
+- `POST /dashboard/siem/windows/` Ingest Windows Event Log JSON payloads.
 
 **Authentication**
 - If `SIEM_INGEST_TOKEN` is set, requests must include `X-SIEM-Token: <token>` or `Authorization: Bearer <token>`.
@@ -75,6 +77,9 @@ See `docs/threat_intel.md` for payload formats.
 
 **Host Telemetry**
 The host agent can send `osquery.result` and `fim.change` events to the SIEM pipeline ingest endpoint.
+
+**Syslog + Windows Events**
+See `docs/siem_syslog_windows.md` for payload examples.
 
 **Search Example**
 ```bash

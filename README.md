@@ -54,6 +54,7 @@ This project is a full-stack Django platform that simulates and secures networke
 - Case management with notes, evidence, and exports
 - Threat intel ingestion (MISP-like) and IOC enrichment in alerts
 - Host agent telemetry with osquery + file integrity monitoring (FIM)
+- Syslog and Windows Event Log ingestion endpoints
 
 ### 6. Digital Twin Generation (MiniMega)
 - Generate MiniMega launch scripts and manifests from scans
@@ -223,6 +224,7 @@ Documentation:
 - `docs/siem_alerts.md`
 - `docs/siem_cases.md`
 - `docs/threat_intel.md`
+- `docs/siem_syslog_windows.md`
 
 ---
 

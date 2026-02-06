@@ -222,3 +222,10 @@ TypeError: Direct assignment to the reverse side of a related set is prohibited 
 - SIEM Task 10 implemented: host agent supports osquery + FIM telemetry. See `host_agent/README_OSQUERY_FIM.md`.
 - Telemetry helper module: `host_agent/telemetry.py`.
 - Tests passed: host telemetry tests (5 tests).
+
+## 2026-02-06
+### docker-compose exec -T web /home/appuser/.local/bin/pytest tests/unit/test_siem_syslog.py ...
+**Error**
+```
+SiemNormalizeError: Invalid timestamp (RFC3164 timestamp missing year)
+```

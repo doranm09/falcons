@@ -79,6 +79,8 @@ from .siem_pivot import resolve_siem_pivot
 from .siem_alerting import process_alerts_for_events
 from .siem_cases import build_case_from_alert, export_case_payload
 from .siem_threat_intel import ingest_indicators, match_indicators, persist_ioc_matches
+from .siem_syslog import syslog_to_event
+from .siem_windows import windows_event_to_event
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 RISK_ASSESSMENT_TIMEOUT = 15
@@ -1288,6 +1290,80 @@ def siem_threat_intel_list(request):
         for i in qs.order_by("-updated_at")[:500]
     ]
     return JsonResponse({"count": len(indicators), "results": indicators})
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def siem_syslog_ingest(request):
+    """Ingest syslog lines and forward to SIEM pipeline."""
+    if not _check_siem_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    body = (request.body or b"").decode("utf-8", errors="ignore")
+    lines = [line for line in body.splitlines() if line.strip()]
+    events = [syslog_to_event(line) for line in lines]
+    if not events:
+        return JsonResponse({"error": "No syslog messages provided"}, status=400)
+
+    normalized = [normalize_siem_event(event) for event in events]
+    normalized = match_indicators(normalized)
+    event_records = [
+        {
+            "timestamp": item.get("timestamp"),
+            "source": item.get("source"),
+            "event_type": item.get("event_type"),
+            "severity": item.get("severity"),
+            "asset_id": item.get("asset_id"),
+            "asset_ip": item.get("asset_ip"),
+            "summary": item.get("summary"),
+            "raw": item.get("raw"),
+        }
+        for item in normalized
+    ]
+    created_events = SiemEvent.objects.bulk_create([SiemEvent(**item) for item in event_records], batch_size=200)
+    persist_ioc_matches(normalized, created_events)
+    alerts = process_alerts_for_events(normalized)
+
+    return JsonResponse({"ingested": len(events), "alerts": len(alerts)}, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def siem_windows_ingest(request):
+    """Ingest Windows Event Log payloads (JSON) and forward to SIEM pipeline."""
+    if not _check_siem_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    items = payload if isinstance(payload, list) else [payload]
+    events = [windows_event_to_event(item) for item in items if isinstance(item, dict)]
+    if not events:
+        return JsonResponse({"error": "No events provided"}, status=400)
+
+    normalized = [normalize_siem_event(event) for event in events]
+    normalized = match_indicators(normalized)
+    event_records = [
+        {
+            "timestamp": item.get("timestamp"),
+            "source": item.get("source"),
+            "event_type": item.get("event_type"),
+            "severity": item.get("severity"),
+            "asset_id": item.get("asset_id"),
+            "asset_ip": item.get("asset_ip"),
+            "summary": item.get("summary"),
+            "raw": item.get("raw"),
+        }
+        for item in normalized
+    ]
+    created_events = SiemEvent.objects.bulk_create([SiemEvent(**item) for item in event_records], batch_size=200)
+    persist_ioc_matches(normalized, created_events)
+    alerts = process_alerts_for_events(normalized)
+
+    return JsonResponse({"ingested": len(events), "alerts": len(alerts)}, status=201)
 
 
 @require_GET

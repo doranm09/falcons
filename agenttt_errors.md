@@ -234,3 +234,9 @@ SiemNormalizeError: Invalid timestamp (RFC3164 timestamp missing year)
 - SIEM Task 11 implemented: syslog + Windows Event Log ingestion endpoints.
 - RFC3164 timestamps lack year; syslog ingestion now drops timestamp to use ingest time.
 - Tests passed: syslog/windows ingestion tests (5 tests).
+
+## Context for Next Agent (2026-02-06)
+- SIEM Task 12 implemented: correlation context adds scan and CVE counts to alert summaries via `dashboard/siem_correlation.py` and `dashboard/siem_alerting.py`.
+- Correlation matches nodes by `asset_ip` or `asset_id` and skips when both missing.
+- Docs updated in `docs/siem_alerts.md`.
+- Tests passed: unit/server/integration correlation tests (4 tests).

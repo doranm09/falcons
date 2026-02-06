@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 from django.utils import timezone
 
 from .models import Alert, AlertRule
+from .siem_correlation import resolve_asset_context
 
 
 def _alert_summary(event: Dict[str, Any]) -> str:
@@ -74,6 +75,13 @@ def create_or_update_alert(rule: AlertRule, event: Dict[str, Any]) -> Alert:
         existing.save(update_fields=["count", "last_seen", "summary", "raw_sample"])
         return existing
 
+    context = resolve_asset_context(event)
+    summary = _alert_summary(event)
+    if context.get("scan_vuln_count") is not None:
+        summary = f"{summary} [scan_vulns:{context['scan_vuln_count']}]"
+    if context.get("node_cve_count") is not None:
+        summary = f"{summary} [node_cves:{context['node_cve_count']}]"
+
     alert = Alert.objects.create(
         rule=rule,
         rule_name=rule.name,
@@ -83,7 +91,7 @@ def create_or_update_alert(rule: AlertRule, event: Dict[str, Any]) -> Alert:
         severity=rule.severity if rule.severity is not None else event.get("severity"),
         asset_ip=event.get("asset_ip"),
         asset_id=event.get("asset_id"),
-        summary=_alert_summary(event),
+        summary=summary,
         status=Alert.Status.OPEN,
         dedup_key=dedup_key,
         raw_sample=_alert_raw_sample(event),

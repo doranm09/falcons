@@ -41,3 +41,9 @@ Alerts are grouped by:
 - `asset_id`
 
 If a matching alert is found within the suppression window, the alert count increments and `last_seen` updates.
+
+## Correlation Context
+Alerts append context tags when a matching node is found:
+- `scan_vulns:<count>` for scan-specific vulnerabilities
+- `node_cves:<count>` for global CVE associations on the node
+- Matching uses `asset_ip` or `asset_id` (agent ID) from the event to locate the latest node record.

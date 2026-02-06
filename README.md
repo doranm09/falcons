@@ -93,6 +93,18 @@ The Mappings tab supports:
   `node_name`, `ip_address`, `label`, `notes`, and `active` columns.
 - **Node Metadata** to help match assets (OS, platform, ports, MACs, last heartbeat).
 
+#### Risk Schema Testbed
+To create a synthetic network that matches the risk model schema (and feed it into the
+risk assessment service):
+1. Go to `Risk Analysis -> Risk Assessment` and open the **Testbed** tab.
+2. Provide a CIDR (default `192.168.236.0/24`) and a CVE list (comma or newline separated).
+3. Click **Generate Testbed** to create nodes, mappings, and vulnerabilities.
+4. Go to **Network View** and click **Compute Risk** to see the overlay.
+
+The testbed generator also creates a Purdue-style connected topology (tiered rings with
+north-south links), and the Risk Assessment graph filters to the generated scan run so
+older nodes are hidden.
+
 Mappings are used to attach vulnerability data to the correct risk model nodes so
 the risk engine can compute non‑`unknown` scores.
 

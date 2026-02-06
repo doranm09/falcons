@@ -48,6 +48,7 @@ urlpatterns = [
     path('risk-assessment/probability/', views.risk_assessment_probability_api, name='risk_assessment_probability'),
     path('risk-assessment/network/compute/', views.risk_assessment_network_compute_api, name='risk_assessment_network_compute'),
     path('risk-assessment/mappings/', views.risk_assessment_mappings_api, name='risk_assessment_mappings'),
+    path('risk-assessment/testbed/generate/', views.risk_assessment_testbed_generate, name='risk_assessment_testbed_generate'),
 
     # Network monitoring and Security Onion-like features
     path('network/monitoring/', views.network_monitoring_dashboard, name='network_monitoring'),

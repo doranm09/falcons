@@ -271,3 +271,37 @@ def test_risk_assessment_mappings_post_bulk(user_client):
     mapping = RiskNodeMapping.objects.get(risk_node_id="PLC-4")
     assert mapping.ip_address == "10.3.0.20"
     assert mapping.active is False
+
+
+@pytest.mark.django_db
+def test_risk_assessment_testbed_generate(user_client, monkeypatch):
+    from dashboard import views as dashboard_views
+    payload = {"variables": {"PLC-Main": {}, "Heat-Ctrl": {}}}
+    monkeypatch.setattr(
+        dashboard_views.requests,
+        "get",
+        Mock(return_value=MockResponse(payload)),
+    )
+
+    response = user_client.post(
+        reverse("dashboard:risk_assessment_testbed_generate"),
+        data=json.dumps({
+            "cidr": "192.168.10.0/30",
+            "cves": "CVE-2024-0001\nCVE-2024-0002",
+            "max_cves_per_node": 2,
+        }),
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+
+    body = response.json()
+    assert body["nodes_created"] == 2
+    assert body["mappings_updated"] == 2
+    assert body["links_created"] >= 1
+    assert RiskNodeMapping.objects.filter(risk_node_id="PLC-Main").exists()
+    assert RiskNodeMapping.objects.filter(risk_node_id="Heat-Ctrl").exists()
+
+    nodes = Node.objects.filter(name__in=["PLC-Main", "Heat-Ctrl"])
+    assert nodes.count() == 2
+    for node in nodes:
+        assert node.vulnerability_set.count() == 2

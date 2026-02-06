@@ -41,6 +41,7 @@ from django.views.decorators.http import require_GET
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils.timezone import now
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 import json
@@ -55,7 +56,23 @@ from datetime import timedelta
 from functools import wraps
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
-RISK_ASSESSMENT_TIMEOUT = 5
+RISK_ASSESSMENT_TIMEOUT = 15
+
+
+def _risk_call(func, path, **kwargs):
+    last_exc = None
+    for attempt in range(2):
+        try:
+            response = func(_risk_api_url(path), timeout=RISK_ASSESSMENT_TIMEOUT, **kwargs)
+            response.raise_for_status()
+            return response
+        except Exception as exc:
+            last_exc = exc
+            if attempt == 0:
+                time.sleep(0.5)
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("Risk service request failed.")
 
 def home(request):
     nodes = Node.objects.all().values('ip_address', 'name')
@@ -352,23 +369,38 @@ def history(request):
     return render(request, 'dashboard/history.html', {'runs': run_data})
 
 def graph_data(request):
-    scan_window = now() - timedelta(hours=24)
-    recent_scan_ids = list(
-        ScanRun.objects.filter(nodes__isnull=False, timestamp__gte=scan_window)
-        .order_by('-timestamp')
-        .values_list('id', flat=True)
-        .distinct()
-    )
+    scan_run_id = request.GET.get("scan_run_id")
+    if scan_run_id:
+        try:
+            scan_run_id = int(scan_run_id)
+        except ValueError:
+            return JsonResponse({"error": "Invalid scan_run_id"}, status=400)
 
-    nodes = Node.objects.none()
-    if recent_scan_ids:
         nodes = (
-            Node.objects.filter(scan_run_id__in=recent_scan_ids)
+            Node.objects.filter(scan_run_id=scan_run_id)
             .select_related('scan_run')
             .order_by('-scan_run__timestamp', '-id')
         )
+        latest_ping_scan = ScanRun.objects.filter(id=scan_run_id).first()
+    else:
+        scan_window = now() - timedelta(hours=24)
+        recent_scan_ids = list(
+            ScanRun.objects.filter(nodes__isnull=False, timestamp__gte=scan_window)
+            .order_by('-timestamp')
+            .values_list('id', flat=True)
+            .distinct()
+        )
 
-    latest_ping_scan = ScanRun.objects.filter(scan_type="ping", nodes__isnull=False).order_by('-timestamp').first()
+        nodes = Node.objects.none()
+        if recent_scan_ids:
+            nodes = (
+                Node.objects.filter(scan_run_id__in=recent_scan_ids)
+                .select_related('scan_run')
+                .order_by('-scan_run__timestamp', '-id')
+            )
+
+        latest_ping_scan = ScanRun.objects.filter(scan_type="ping", nodes__isnull=False).order_by('-timestamp').first()
+
     ping_node_by_ip = {}
     if latest_ping_scan:
         for ping_node in Node.objects.filter(scan_run=latest_ping_scan):
@@ -2311,8 +2343,7 @@ def risk_assessment_page(request):
 @require_GET
 def risk_assessment_status_api(request):
     try:
-        response = requests.get(_risk_api_url('/status'), timeout=RISK_ASSESSMENT_TIMEOUT)
-        response.raise_for_status()
+        response = _risk_call(requests.get, '/status')
         return JsonResponse(response.json())
     except Exception as exc:
         return JsonResponse({'error': str(exc)}, status=502)
@@ -2321,8 +2352,7 @@ def risk_assessment_status_api(request):
 @require_GET
 def risk_assessment_nodes_api(request):
     try:
-        response = requests.get(_risk_api_url('/nodes'), timeout=RISK_ASSESSMENT_TIMEOUT)
-        response.raise_for_status()
+        response = _risk_call(requests.get, '/nodes')
         return JsonResponse(response.json())
     except Exception as exc:
         return JsonResponse({'error': str(exc)}, status=502)
@@ -2336,12 +2366,11 @@ def risk_assessment_probability_api(request):
         return JsonResponse({'error': 'Invalid JSON payload.'}, status=400)
 
     try:
-        response = requests.post(
-            _risk_api_url('/probability'),
+        response = _risk_call(
+            requests.post,
+            '/probability',
             json=payload,
-            timeout=RISK_ASSESSMENT_TIMEOUT
         )
-        response.raise_for_status()
         return JsonResponse(response.json())
     except Exception as exc:
         return JsonResponse({'error': str(exc)}, status=502)
@@ -2350,20 +2379,27 @@ def risk_assessment_probability_api(request):
 @require_GET
 def risk_assessment_network_compute_api(request):
     try:
-        nodes_response = requests.get(_risk_api_url('/nodes'), timeout=RISK_ASSESSMENT_TIMEOUT)
-        nodes_response.raise_for_status()
+        scan_run_id = request.GET.get("scan_run_id")
+        if scan_run_id:
+            try:
+                scan_run_id = int(scan_run_id)
+            except ValueError:
+                return JsonResponse({'error': 'Invalid scan_run_id.'}, status=400)
+        else:
+            scan_run_id = None
+
+        nodes_response = _risk_call(requests.get, '/nodes')
         payload = nodes_response.json()
         variables = payload.get("variables", {})
         risk_nodes = list(variables.keys())
 
-        cyber_data, mapped_nodes = build_cyber_data_for_risk_nodes(risk_nodes)
+        cyber_data, mapped_nodes = build_cyber_data_for_risk_nodes(risk_nodes, scan_run_id=scan_run_id)
 
-        probability_response = requests.post(
-            _risk_api_url('/probability'),
+        probability_response = _risk_call(
+            requests.post,
+            '/probability',
             json=cyber_data,
-            timeout=RISK_ASSESSMENT_TIMEOUT
         )
-        probability_response.raise_for_status()
         result_payload = probability_response.json()
         results = result_payload.get("results", {})
 
@@ -2371,6 +2407,7 @@ def risk_assessment_network_compute_api(request):
 
         return JsonResponse({
             "risk_nodes_count": len(risk_nodes),
+            "scan_run_id": scan_run_id,
             "mapped_nodes": summary,
             "results": results,
         })
@@ -2571,6 +2608,195 @@ def risk_assessment_mappings_api(request):
             "active": mapping.active,
             "updated_at": mapping.updated_at.isoformat(),
         }
+    })
+
+
+@require_http_methods(["POST"])
+def risk_assessment_testbed_generate(request):
+    try:
+        payload = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON payload.'}, status=400)
+
+    cidr = str(payload.get("cidr") or "192.168.236.0/24").strip()
+    cve_input = payload.get("cves") or []
+    max_cves = payload.get("max_cves_per_node", 10)
+
+    try:
+        max_cves = int(max_cves)
+    except (TypeError, ValueError):
+        max_cves = 10
+    max_cves = max(0, min(max_cves, 50))
+
+    try:
+        network = ip_network(cidr, strict=False)
+    except ValueError:
+        return JsonResponse({'error': 'Invalid CIDR.'}, status=400)
+
+    if isinstance(cve_input, str):
+        raw = cve_input.replace("\r", "\n").replace(",", "\n")
+        cve_list = [entry.strip().upper() for entry in raw.split("\n") if entry.strip()]
+    elif isinstance(cve_input, list):
+        cve_list = [str(entry).strip().upper() for entry in cve_input if str(entry).strip()]
+    else:
+        cve_list = []
+
+    cve_list = list(dict.fromkeys(cve_list))
+
+    try:
+        response = _risk_call(requests.get, '/nodes')
+        payload = response.json()
+    except Exception as exc:
+        return JsonResponse({'error': f'Risk service unavailable: {exc}'}, status=502)
+
+    variables = payload.get("variables", {})
+    risk_nodes = list(variables.keys()) if isinstance(variables, dict) else []
+    if not risk_nodes:
+        nodes_payload = payload.get("nodes")
+        if isinstance(nodes_payload, list):
+            for node in nodes_payload:
+                if isinstance(node, str):
+                    risk_nodes.append(node)
+                elif isinstance(node, dict):
+                    name = node.get("name") or node.get("node") or node.get("id")
+                    if name:
+                        risk_nodes.append(str(name))
+
+    if not risk_nodes:
+        return JsonResponse({'error': 'No risk nodes returned from risk service.'}, status=400)
+
+    host_iter = network.hosts()
+    assigned_hosts = []
+    for _ in range(len(risk_nodes)):
+        try:
+            assigned_hosts.append(str(next(host_iter)))
+        except StopIteration:
+            break
+
+    if len(assigned_hosts) < len(risk_nodes):
+        return JsonResponse({
+            'error': 'CIDR does not have enough usable addresses for the risk nodes.',
+            'risk_nodes': len(risk_nodes),
+            'available_hosts': len(assigned_hosts),
+        }, status=400)
+
+    scan_run = ScanRun.objects.create(
+        cidr=str(network),
+        status="COMPLETE",
+        scan_type="agent",
+        result_summary=f"Risk testbed generated ({len(risk_nodes)} nodes).",
+    )
+
+    now_ts = timezone.now()
+    vuln_objects = {}
+    if cve_list:
+        for cve in cve_list[:max_cves]:
+            vuln, _ = Vulnerability.objects.update_or_create(
+                cve_id=cve,
+                defaults={
+                    "description": "Synthetic risk testbed vulnerability.",
+                    "severity": "High",
+                    "score": 7.5,
+                    "published": now_ts,
+                    "last_modified": now_ts,
+                },
+            )
+            vuln_objects[cve] = vuln
+
+    created_nodes = 0
+    mappings_updated = 0
+    created_links = 0
+
+    def purdue_tier(risk_node_id: str) -> str:
+        name = risk_node_id.upper()
+        if any(token in name for token in ["ERP", "MES", "CORP", "ENTERPRISE", "BUSINESS", "IT", "OFFICE"]):
+            return "L4-L5"
+        if any(token in name for token in ["DMZ", "FIREWALL", "PROXY", "JUMP", "GATEWAY", "HISTORIAN", "OPC"]):
+            return "L3.5"
+        if any(token in name for token in ["SCADA", "HMI", "SERVER", "OPS", "ENGINEER", "SUPERVISOR"]):
+            return "L3"
+        if any(token in name for token in ["PLC", "RTU", "IED", "DCS", "CONTROLLER", "CTRL"]):
+            return "L2"
+        if any(token in name for token in ["SENSOR", "VALVE", "PUMP", "MOTOR", "HEATER", "PRESSURIZER", "SPRAY", "HV", "PV", "CV", "PT", "LT", "TT", "FT", "PORV"]):
+            return "L0-L1"
+        return "L2"
+
+    with transaction.atomic():
+        created_node_objects = []
+        tiered = []
+        for risk_node_id, ip_addr in zip(risk_nodes, assigned_hosts):
+            tier = purdue_tier(risk_node_id)
+            tiered.append((risk_node_id, ip_addr, tier))
+
+        for risk_node_id, ip_addr, tier in tiered:
+            node = Node.objects.create(
+                scan_run=scan_run,
+                name=risk_node_id,
+                ip_address=ip_addr,
+                status="online",
+                description=f"Generated from risk assessment schema. Purdue tier: {tier}.",
+            )
+            created_nodes += 1
+            created_node_objects.append(node)
+
+            RiskNodeMapping.objects.update_or_create(
+                risk_node_id=risk_node_id,
+                defaults={
+                    "node": node,
+                    "ip_address": ip_addr,
+                    "label": risk_node_id,
+                    "active": True,
+                },
+            )
+            mappings_updated += 1
+
+            if vuln_objects:
+                node.vulnerability_set.add(*vuln_objects.values())
+
+        if created_node_objects:
+            tiers = {"L0-L1": [], "L2": [], "L3": [], "L3.5": [], "L4-L5": []}
+            for (risk_node_id, _ip_addr, tier), node in zip(tiered, created_node_objects):
+                tiers.setdefault(tier, []).append(node)
+
+            tier_order = ["L0-L1", "L2", "L3", "L3.5", "L4-L5"]
+            # Intra-tier ring to show local segmentation
+            for tier_key in tier_order:
+                tier_nodes = tiers.get(tier_key, [])
+                if len(tier_nodes) > 1:
+                    for idx, node in enumerate(tier_nodes):
+                        next_node = tier_nodes[(idx + 1) % len(tier_nodes)]
+                        Link.objects.create(
+                            scan_run=scan_run,
+                            source=node,
+                            destination=next_node,
+                            weight=1.0,
+                        )
+                        created_links += 1
+
+            # Inter-tier north-south links
+            for lower_key, upper_key in zip(tier_order, tier_order[1:]):
+                lower_nodes = tiers.get(lower_key, [])
+                upper_nodes = tiers.get(upper_key, [])
+                if not lower_nodes or not upper_nodes:
+                    continue
+                for idx, node in enumerate(lower_nodes):
+                    target = upper_nodes[idx % len(upper_nodes)]
+                    Link.objects.create(
+                        scan_run=scan_run,
+                        source=node,
+                        destination=target,
+                        weight=1.0,
+                    )
+                    created_links += 1
+
+    return JsonResponse({
+        "scan_run_id": scan_run.id,
+        "cidr": str(network),
+        "risk_nodes": len(risk_nodes),
+        "nodes_created": created_nodes,
+        "mappings_updated": mappings_updated,
+        "links_created": created_links,
+        "cves_applied": list(vuln_objects.keys()),
     })
 
 

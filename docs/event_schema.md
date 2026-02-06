@@ -14,11 +14,32 @@ This project accepts a minimal ECS-inspired event shape to normalize Security On
 - `message` or `summary`: Short human-readable description.
 - `raw`: Full event payload is preserved on ingest.
 
+**ECS-Inspired Fields Used**
+- `@timestamp`: Primary event timestamp.
+- `event.kind`: Always `event`.
+- `event.category`: High-level domain such as `host`, `scan`, `vulnerability`, `package`, `network`.
+- `event.type`: Activity type such as `info`, `start`, `end`, `alert`.
+- `event.action`: Verb such as `heartbeat`, `detected`, `sbom_report`.
+- `event.outcome`: `success`, `failure`, or `unknown`.
+- `event.severity`: Integer severity (0-10).
+- `host.hostname`, `host.ip`, `host.id`.
+- `agent.id`, `agent.name`, `agent.version`.
+- `rule.id`, `rule.name`, `rule.reference` (for CVEs / detections).
+- `labels`: Small key/value context (scan ID, CIDR, SBOM format, etc).
+
 **Event Normalization Rules**
 - `@timestamp` or `event.created` is accepted if `timestamp` is absent.
 - `event.type` or `event.category` is accepted if `event_type` is absent.
 - `host.ip` is accepted if `asset_ip` is absent.
 - `event.severity` is accepted if `severity` is absent.
+
+**Adapter Output Mapping**
+The adapter helpers emit ECS-inspired JSON for core sources. These are available from `/dashboard/siem/adapters/...` endpoints.
+
+- `agent.heartbeat`: `event.category=host`, `event.type=info`, `event.action=heartbeat`, `host.*`, `agent.*`
+- `scan.run`: `event.category=scan`, `event.type=start|end`, `event.action=<scan_type>`, `labels.cidr`, `labels.scan_id`
+- `vulnerability.detected`: `event.category=vulnerability`, `event.type=info`, `rule.id=<CVE>`, `vulnerability.*`, `host.*` (optional)
+- `sbom.report`: `event.category=package`, `event.type=info`, `event.action=sbom_report`, `labels.*`
 
 **Example**
 ```json

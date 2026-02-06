@@ -96,3 +96,10 @@ ERROR tests/integration/test_siem_event_explorer.py
 - Pytest was not available on the host; tests were run inside the container using `python -m pytest`.
 - Test name collision resolved by renaming `tests/integration/test_siem_event_explorer.py` to `tests/integration/test_siem_event_explorer_integration.py`.
 - Django warned: URL namespace `dashboard` isn't unique (existing condition in project).
+
+## 2026-02-06
+### docker-compose exec -T web python -m pytest tests/unit/test_siem_adapters.py ...
+**Error**
+```
+/usr/local/bin/python: No module named pytest
+```

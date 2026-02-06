@@ -6,6 +6,10 @@ This feature provides a minimal SIEM event store with ingestion and search APIs.
 - `POST /dashboard/siem/ingest/` Ingest one event or a list of events.
 - `GET /dashboard/siem/events/` Search events by time range and filters.
 - `GET /dashboard/siem/events/explorer/` UI for searching and pivoting on events.
+- `GET /dashboard/siem/adapters/agent/<agent_id>/` Adapter preview for agent heartbeat events.
+- `GET /dashboard/siem/adapters/scan/<scan_id>/` Adapter preview for scan events.
+- `GET /dashboard/siem/adapters/vuln/<vuln_id>/` Adapter preview for vulnerability events.
+- `GET /dashboard/siem/adapters/sbom/<sbom_id>/` Adapter preview for SBOM events.
 
 **Authentication**
 - If `SIEM_INGEST_TOKEN` is set, requests must include `X-SIEM-Token: <token>` or `Authorization: Bearer <token>`.
@@ -45,6 +49,10 @@ curl "http://localhost:8000/dashboard/siem/events/?event_type=suricata.alert&sta
 - Navigate to `SIEM > Event Explorer` in the sidebar.
 - Use filters and quick ranges to search events.
 - Click `View` to inspect the raw payload.
+
+**Adapter Preview Example**
+```bash
+curl \"http://localhost:8000/dashboard/siem/adapters/agent/agent-01/\"\n```
 
 **Response Format**
 - `count`: Total matching events.

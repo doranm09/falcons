@@ -46,6 +46,7 @@ This project is a full-stack Django platform that simulates and secures networke
 - `/dashboard/siem/events/` search with time range and filters
 - Token-based ingest protection via `SIEM_INGEST_TOKEN`
 - Event Explorer UI with filters and raw payload inspection
+- Adapter preview endpoints for agent, scan, vulnerability, and SBOM events
 
 ### 6. Digital Twin Generation (MiniMega)
 - Generate MiniMega launch scripts and manifests from scans

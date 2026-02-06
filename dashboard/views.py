@@ -1,4 +1,4 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from .models import (
     AgentCommand,
@@ -58,6 +58,12 @@ import time
 from datetime import timedelta
 from functools import wraps
 from .siem import normalize_siem_event, parse_siem_search_params, SiemNormalizeError, SiemQueryError
+from .siem_adapters import (
+    adapt_agent_status,
+    adapt_scan_run,
+    adapt_sbom_report,
+    adapt_vulnerability,
+)
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 RISK_ASSESSMENT_TIMEOUT = 15
@@ -1039,6 +1045,38 @@ def siem_event_explorer(request):
         "default_end": timezone.localtime(now_ts).strftime("%Y-%m-%dT%H:%M"),
     }
     return render(request, "dashboard/siem_events.html", context)
+
+
+@require_http_methods(["GET"])
+def siem_adapter_agent(request, agent_id):
+    agent = get_object_or_404(AgentStatus, agent_id=agent_id)
+    payload = adapt_agent_status(agent)
+    return JsonResponse(payload, json_dumps_params={"indent": 2})
+
+
+@require_http_methods(["GET"])
+def siem_adapter_scan(request, scan_id):
+    scan = get_object_or_404(ScanRun, id=scan_id)
+    payload = adapt_scan_run(scan)
+    return JsonResponse(payload, json_dumps_params={"indent": 2})
+
+
+@require_http_methods(["GET"])
+def siem_adapter_vulnerability(request, vuln_id):
+    vuln = get_object_or_404(Vulnerability, id=vuln_id)
+    node_id = request.GET.get("node_id")
+    node = None
+    if node_id:
+        node = Node.objects.filter(id=node_id).first()
+    payload = adapt_vulnerability(vuln, node=node)
+    return JsonResponse(payload, json_dumps_params={"indent": 2})
+
+
+@require_http_methods(["GET"])
+def siem_adapter_sbom(request, sbom_id):
+    report = get_object_or_404(SbomReport, id=sbom_id)
+    payload = adapt_sbom_report(report)
+    return JsonResponse(payload, json_dumps_params={"indent": 2})
 
 
 @require_GET

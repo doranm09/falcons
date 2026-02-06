@@ -173,3 +173,8 @@ ERROR tests/server/test_siem_pipeline.py
 NameError: name 'reverse' is not defined (siem_toggle_rule)
 IntegrityError: duplicate key value violates unique constraint "dashboard_alertrule_name_key"
 ```
+
+## Context for Next Agent (2026-02-06)
+- SIEM Task 7 implemented: alert rules + dedup/suppression + alert queue UI.
+- Migrations: 0020_alerting.py and 0021_default_alert_rules.py (creates default Suricata rule).
+- Tests passed: alerting tests (6 tests).

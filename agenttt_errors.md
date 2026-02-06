@@ -211,3 +211,9 @@ IntegrityError: duplicate key value violates unique constraint "dashboard_alertr
 ```
 TypeError: Direct assignment to the reverse side of a related set is prohibited (ioc_matches key in SiemEvent payload)
 ```
+
+## Context for Next Agent (2026-02-06)
+- SIEM Task 9 implemented: threat intel indicators + IOC matches + alert enrichment.
+- Migration 0023_threat_intel.py added (fixes model ref to `dashboard.siemevent`).
+- Enrichment runs during SIEM ingest; alerts include IOC tags in summary.
+- Tests passed: threat intel tests (4 tests).

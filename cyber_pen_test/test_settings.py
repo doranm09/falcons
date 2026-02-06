@@ -146,3 +146,7 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # ICS Risk Assessment API
 RISK_ASSESSMENT_API_URL = os.environ.get('RISK_ASSESSMENT_API_URL', 'http://127.0.0.1:7890')
+
+# SIEM ingest settings
+SIEM_INGEST_TOKEN = os.environ.get("SIEM_INGEST_TOKEN", "")
+SIEM_MAX_INGEST_BATCH = int(os.environ.get("SIEM_MAX_INGEST_BATCH", "500"))

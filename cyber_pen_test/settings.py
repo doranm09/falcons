@@ -177,6 +177,10 @@ SLIVER_ARTIFACT_DIR = os.environ.get('SLIVER_ARTIFACT_DIR', str(BASE_DIR / 'sliv
 # ICS Risk Assessment API
 RISK_ASSESSMENT_API_URL = os.environ.get('RISK_ASSESSMENT_API_URL', 'http://127.0.0.1:7890')
 
+# SIEM ingest settings
+SIEM_INGEST_TOKEN = os.environ.get("SIEM_INGEST_TOKEN", "")
+SIEM_MAX_INGEST_BATCH = int(os.environ.get("SIEM_MAX_INGEST_BATCH", "500"))
+
 
 CELERY_BEAT_SCHEDULE = {
     'poll-openvas-results-every-5min': {

@@ -19,6 +19,7 @@ from .models import (
     SbomReport,
     MinimegaExecutionLog,
     RiskNodeMapping,
+    SiemEvent,
 )
 
 @admin.register(Node)
@@ -163,3 +164,11 @@ class MinimegaExecutionLogAdmin(admin.ModelAdmin):
     list_display = ("id", "action", "scan", "status", "returncode", "created_at")
     search_fields = ("action", "scan__cidr", "disk_image", "script_path")
     list_filter = ("action", "status")
+
+
+@admin.register(SiemEvent)
+class SiemEventAdmin(admin.ModelAdmin):
+    list_display = ("id", "event_type", "source", "timestamp", "severity", "asset_ip")
+    search_fields = ("event_type", "source", "summary", "asset_id", "asset_ip")
+    list_filter = ("event_type", "source", "severity")
+    readonly_fields = ("ingested_at",)

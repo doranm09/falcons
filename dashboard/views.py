@@ -12,6 +12,7 @@ from .models import (
     RiskNodeMapping,
     SbomReport,
     ScanRun,
+    SiemEvent,
     Vulnerability,
 )
 import ipaddress
@@ -42,6 +43,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils.timezone import now
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 import json
@@ -49,11 +51,13 @@ import os
 from collections import defaultdict
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Count
 from ipaddress import ip_network
 from pathlib import Path
 import time
 from datetime import timedelta
 from functools import wraps
+from .siem import normalize_siem_event, parse_siem_search_params, SiemNormalizeError, SiemQueryError
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 RISK_ASSESSMENT_TIMEOUT = 15
@@ -903,6 +907,138 @@ def sbom_ingest(request):
         "package_count": report.package_count,
         "agent_id": agent_id,
     })
+
+
+def _check_siem_token(request) -> bool:
+    token = getattr(settings, "SIEM_INGEST_TOKEN", "")
+    if not token:
+        return True
+    header = request.headers.get("X-SIEM-Token") or request.headers.get("Authorization", "")
+    if header.startswith("Bearer "):
+        header = header.split(" ", 1)[1].strip()
+    return header == token
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def siem_event_ingest(request):
+    """Ingest SIEM events into the local event store."""
+    if not _check_siem_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    events = payload if isinstance(payload, list) else [payload]
+    max_batch = getattr(settings, "SIEM_MAX_INGEST_BATCH", 500)
+    if len(events) > max_batch:
+        return JsonResponse({"error": f"Batch too large (max {max_batch})"}, status=413)
+
+    normalized = []
+    errors = []
+    for idx, event in enumerate(events):
+        try:
+            normalized.append(normalize_siem_event(event))
+        except SiemNormalizeError as exc:
+            errors.append({"index": idx, "error": str(exc)})
+
+    if errors:
+        return JsonResponse({"error": "Invalid event payload", "details": errors}, status=400)
+
+    SiemEvent.objects.bulk_create([SiemEvent(**item) for item in normalized], batch_size=200)
+    return JsonResponse({"ingested": len(normalized)}, status=201)
+
+
+@require_http_methods(["GET"])
+def siem_event_search(request):
+    """Search SIEM events by time range and filters."""
+    qs = SiemEvent.objects.all()
+
+    start = request.GET.get("start")
+    end = request.GET.get("end")
+    if start:
+        start_dt = parse_datetime(start)
+        if not start_dt:
+            return JsonResponse({"error": "Invalid start datetime"}, status=400)
+        if timezone.is_naive(start_dt):
+            start_dt = timezone.make_aware(start_dt, timezone=timezone.utc)
+        qs = qs.filter(timestamp__gte=start_dt)
+    if end:
+        end_dt = parse_datetime(end)
+        if not end_dt:
+            return JsonResponse({"error": "Invalid end datetime"}, status=400)
+        if timezone.is_naive(end_dt):
+            end_dt = timezone.make_aware(end_dt, timezone=timezone.utc)
+        qs = qs.filter(timestamp__lte=end_dt)
+
+    try:
+        parsed = parse_siem_search_params(request.GET)
+    except SiemQueryError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    if parsed["event_type"]:
+        qs = qs.filter(event_type=parsed["event_type"])
+    if parsed["source"]:
+        qs = qs.filter(source=parsed["source"])
+    if parsed["asset_id"]:
+        qs = qs.filter(asset_id=parsed["asset_id"])
+    if parsed["asset_ip"]:
+        qs = qs.filter(asset_ip=parsed["asset_ip"])
+    if parsed["severity"] is not None:
+        qs = qs.filter(severity=parsed["severity"])
+    if parsed["query"]:
+        qs = qs.filter(summary__icontains=parsed["query"])
+
+    total = qs.count()
+    results = []
+    for event in qs[parsed["offset"]:parsed["offset"] + parsed["limit"]]:
+        results.append({
+            "id": event.id,
+            "timestamp": event.timestamp.isoformat(),
+            "source": event.source,
+            "event_type": event.event_type,
+            "severity": event.severity,
+            "asset_id": event.asset_id,
+            "asset_ip": event.asset_ip,
+            "summary": event.summary,
+            "raw": event.raw,
+        })
+
+    return JsonResponse({"count": total, "results": results})
+
+
+@require_http_methods(["GET"])
+def siem_event_explorer(request):
+    """Render the SIEM Event Explorer UI."""
+    now_ts = timezone.now()
+    since = now_ts - timedelta(hours=24)
+
+    recent_qs = SiemEvent.objects.filter(timestamp__gte=since)
+    summary = {
+        "total_24h": recent_qs.count(),
+        "sources_24h": recent_qs.values("source").distinct().count(),
+        "types_24h": recent_qs.values("event_type").distinct().count(),
+    }
+
+    top_sources = list(
+        recent_qs.values("source").annotate(count=Count("id")).order_by("-count")[:5]
+    )
+    top_types = list(
+        recent_qs.values("event_type").annotate(count=Count("id")).order_by("-count")[:5]
+    )
+
+    events = list(SiemEvent.objects.all()[:50])
+    context = {
+        "summary": summary,
+        "top_sources": top_sources,
+        "top_types": top_types,
+        "events": events,
+        "default_start": timezone.localtime(since).strftime("%Y-%m-%dT%H:%M"),
+        "default_end": timezone.localtime(now_ts).strftime("%Y-%m-%dT%H:%M"),
+    }
+    return render(request, "dashboard/siem_events.html", context)
 
 
 @require_GET

@@ -40,18 +40,25 @@ This project is a full-stack Django platform that simulates and secures networke
 - Node color/size/styling mapped to attributes
 - Interactive shortest path UI
 
-### 5. Digital Twin Generation (MiniMega)
+### 5. SIEM Event Ingestion (Phase 1)
+- ECS-inspired event schema and normalization
+- `/dashboard/siem/ingest/` endpoint for batch or single-event ingest
+- `/dashboard/siem/events/` search with time range and filters
+- Token-based ingest protection via `SIEM_INGEST_TOKEN`
+- Event Explorer UI with filters and raw payload inspection
+
+### 6. Digital Twin Generation (MiniMega)
 - Generate MiniMega launch scripts and manifests from scans
 - Optional server-side execution with safety gates
 - Download script + manifest bundles
 
-### 6. Sliver C2 Operations
+### 7. Sliver C2 Operations
 - Sliver teamserver management with UI-based create/edit/delete
 - Engagement tracking, sessions, and job queue with live updates
 - Job retry + CSV export, and downloadable loot artifacts
 - Implant generation + deployment workflows
 
-### 7. ICS Risk Assessment
+### 8. ICS Risk Assessment
 - Integrated Risk Assessment UI (Overview, Nodes, Probability)
 - Network risk overlay computed from cyber scan data
 - Proxy endpoints to the ICS risk assessment API
@@ -197,6 +204,13 @@ Compare the last two SBOMs for an agent:
 ```
 /agent/<agent_id>/sbom/diff/
 ```
+
+---
+
+## SIEM Event Ingestion (Phase 1)
+Documentation:
+- `docs/event_schema.md`
+- `docs/siem_events.md`
 
 ---
 

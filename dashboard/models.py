@@ -90,6 +90,28 @@ class MinimegaExecutionLog(models.Model):
         return f"{self.action} @ {self.created_at:%Y-%m-%d %H:%M:%S}"
 
 
+class SiemEvent(models.Model):
+    timestamp = models.DateTimeField(db_index=True)
+    ingested_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    source = models.CharField(max_length=100, db_index=True)
+    event_type = models.CharField(max_length=120, db_index=True)
+    severity = models.IntegerField(null=True, blank=True, db_index=True)
+    asset_id = models.CharField(max_length=128, null=True, blank=True, db_index=True)
+    asset_ip = models.GenericIPAddressField(null=True, blank=True, db_index=True)
+    summary = models.CharField(max_length=512, blank=True)
+    raw = models.JSONField()
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["timestamp", "event_type"]),
+            models.Index(fields=["source", "timestamp"]),
+        ]
+        ordering = ["-timestamp"]
+
+    def __str__(self):
+        return f"{self.event_type} @ {self.timestamp:%Y-%m-%d %H:%M:%S}"
+
+
 class Node(models.Model):
     # Networked endpoint discovered by scans (global inventory or per-run via scan_run FK)
     scan_run = models.ForeignKey(

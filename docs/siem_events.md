@@ -20,6 +20,7 @@ This feature provides a minimal SIEM event store with ingestion and search APIs.
 - `GET /dashboard/siem/audit/` Audit log UI (admin-only).
 - `GET /dashboard/healthz/` Health check JSON.
 - `GET /dashboard/metrics/` Prometheus metrics.
+- `GET /dashboard/siem/export/` Research export (admin/analyst).
 - `POST /dashboard/siem/threat-intel/ingest/` Ingest threat intel indicators (MISP-like JSON).
 - `GET /dashboard/siem/threat-intel/` List ingested indicators.
 - `POST /dashboard/siem/syslog/` Ingest syslog lines (RFC3164/5424).

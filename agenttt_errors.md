@@ -272,3 +272,9 @@ SiemNormalizeError: Invalid timestamp (RFC3164 timestamp missing year)
 - SIEM Event Explorer shows service status badges.
 - Docs added: `docs/siem_health_metrics.md` and updates to `docs/siem_events.md`.
 - Tests passed: health unit/server/integration tests (5 tests).
+
+## Context for Next Agent (2026-02-06)
+- SIEM Task 17 implemented: research export endpoint `/dashboard/siem/export/` with NDJSON (streaming) and optional Parquet (pyarrow).
+- Schema version field included per event; export filtered by start/end timestamps.
+- Docs added: `docs/siem_export.md` and README/docs list updates.
+- Tests passed: export unit/server/integration (4 tests).

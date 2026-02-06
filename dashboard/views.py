@@ -32,7 +32,7 @@ from .models import (
 import ipaddress
 import subprocess
 import requests
-from django.http import JsonResponse, FileResponse, Http404, HttpResponse
+from django.http import JsonResponse, FileResponse, Http404, HttpResponse, StreamingHttpResponse
 from .tasks import (
     scan_network_task,
     launch_openvas_scan_task,
@@ -90,6 +90,12 @@ from .siem_hunts import (
     parse_hunt_tags,
     replay_hunt_search,
     validate_hunt_query,
+)
+from .siem_export import (
+    EXPORT_SCHEMA_VERSION,
+    build_event_queryset,
+    export_parquet_bytes,
+    ndjson_stream,
 )
 from .siem_rbac import get_siem_role, require_siem_role
 from .siem_audit import record_siem_audit
@@ -1123,6 +1129,48 @@ def siem_event_search(request):
         return JsonResponse({"error": str(exc)}, status=400)
     payload = search_siem_events(params)
     return JsonResponse(payload)
+
+
+@require_http_methods(["GET"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_export", resource_type="siem_event")
+def siem_export(request):
+    """Export SIEM events for research reproducibility."""
+    fmt = (request.GET.get("format") or "ndjson").lower()
+    start = request.GET.get("start")
+    end = request.GET.get("end")
+    schema_version = request.GET.get("schema_version") or EXPORT_SCHEMA_VERSION
+
+    qs = build_event_queryset(start, end).order_by("timestamp")
+    filename_suffix = "ndjson" if fmt == "ndjson" else fmt
+    filename = f"siem_export_{timezone.now():%Y%m%d_%H%M%S}.{filename_suffix}"
+
+    if fmt == "parquet":
+        try:
+            payload = export_parquet_bytes(qs, schema_version)
+        except RuntimeError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
+        response = HttpResponse(payload, content_type="application/parquet")
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        record_siem_audit(
+            request,
+            action="siem_export",
+            resource_type="siem_event",
+            metadata={"format": fmt, "schema_version": schema_version},
+        )
+        return response
+
+    response = StreamingHttpResponse(
+        ndjson_stream(qs.iterator(), schema_version),
+        content_type="application/x-ndjson",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    record_siem_audit(
+        request,
+        action="siem_export",
+        resource_type="siem_event",
+        metadata={"format": "ndjson", "schema_version": schema_version},
+    )
+    return response
 
 
 @require_http_methods(["GET"])

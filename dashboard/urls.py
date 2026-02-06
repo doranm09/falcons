@@ -25,6 +25,7 @@ urlpatterns = [
     path('siem/ingest/', views.siem_event_ingest, name='siem_event_ingest'),
     path('siem/pipeline/ingest/', views.siem_pipeline_ingest, name='siem_pipeline_ingest'),
     path('siem/events/', views.siem_event_search, name='siem_event_search'),
+    path('siem/export/', views.siem_export, name='siem_export'),
     path('siem/events/explorer/', views.siem_event_explorer, name='siem_event_explorer'),
     path('siem/adapters/agent/<str:agent_id>/', views.siem_adapter_agent, name='siem_adapter_agent'),
     path('siem/adapters/scan/<int:scan_id>/', views.siem_adapter_scan, name='siem_adapter_scan'),

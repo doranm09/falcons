@@ -103,3 +103,8 @@ ERROR tests/integration/test_siem_event_explorer.py
 ```
 /usr/local/bin/python: No module named pytest
 ```
+
+## Context for Next Agent (2026-02-06)
+- SIEM Task 2 implemented: ECS-inspired adapter helpers in `dashboard/siem_adapters.py` and preview endpoints in `dashboard/urls.py`/`dashboard/views.py`.
+- New adapter tests added in `tests/unit/test_siem_adapters.py`, `tests/server/test_siem_adapters.py`, and `tests/integration/test_siem_adapter_ingest.py`.
+- Attempted to run adapter tests in container via `docker-compose exec -T web python -m pytest ...`, but pytest is missing in that container session.

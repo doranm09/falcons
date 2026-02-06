@@ -120,7 +120,10 @@ def parse_search_request(query_params) -> Dict[str, Any]:
 
     severity = query_params.get("severity")
     if severity not in (None, ""):
-        params["severity"] = int(severity)
+        try:
+            params["severity"] = int(severity)
+        except (TypeError, ValueError):
+            raise ValueError("Invalid severity")
     else:
         params["severity"] = None
 
@@ -143,17 +146,19 @@ def parse_search_request(query_params) -> Dict[str, Any]:
 
     try:
         params["limit"] = max(1, min(int(query_params.get("limit", 100)), 500))
+    except (TypeError, ValueError):
+        raise ValueError("Invalid limit")
+    try:
         params["offset"] = max(0, int(query_params.get("offset", 0)))
-    except ValueError:
-        params["limit"] = 100
-        params["offset"] = 0
+    except (TypeError, ValueError):
+        raise ValueError("Invalid offset")
 
     agg_fields = query_params.get("agg") or ""
     if agg_fields:
         params["agg_fields"] = _parse_fields(agg_fields)
         try:
             params["agg_size"] = max(1, min(int(query_params.get("agg_size", 20)), 100))
-        except ValueError:
-            params["agg_size"] = 20
+        except (TypeError, ValueError):
+            raise ValueError("Invalid agg_size")
 
     return params

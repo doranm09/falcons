@@ -28,6 +28,7 @@ urlpatterns = [
     path('siem/adapters/scan/<int:scan_id>/', views.siem_adapter_scan, name='siem_adapter_scan'),
     path('siem/adapters/vuln/<int:vuln_id>/', views.siem_adapter_vulnerability, name='siem_adapter_vulnerability'),
     path('siem/adapters/sbom/<int:sbom_id>/', views.siem_adapter_sbom, name='siem_adapter_sbom'),
+    path('siem/pivot/', views.siem_pivot_lookup, name='siem_pivot_lookup'),
     path('agent/commands/', views.agent_commands, name='agent_commands'),
     path('agent/command_result/', views.agent_command_result, name='agent_command_result'),
     path('agent/monitoring/', views.agent_monitoring, name='agent_monitoring'),

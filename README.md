@@ -46,6 +46,7 @@ This project is a full-stack Django platform that simulates and secures networke
 - `/dashboard/siem/events/` search with time range and filters
 - Token-based ingest protection via `SIEM_INGEST_TOKEN`
 - Event Explorer UI with filters and raw payload inspection
+- Event Explorer pivot to related node and scan details
 - Adapter preview endpoints for agent, scan, vulnerability, and SBOM events
 - Pipeline ingest endpoint that maps raw sensor payloads to ECS subset
 - OpenSearch log store + Dashboards for indexed SIEM events

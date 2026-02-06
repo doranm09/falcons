@@ -67,6 +67,7 @@ from .siem_adapters import (
 from .siem_pipeline import transform_pipeline_events, SiemPipelineError
 from .opensearch_client import bulk_index_events, OpensearchError
 from .siem_query import parse_search_request, search_siem_events
+from .siem_pivot import resolve_siem_pivot
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 RISK_ASSESSMENT_TIMEOUT = 15
@@ -1014,7 +1015,10 @@ def siem_pipeline_ingest(request):
 @require_http_methods(["GET"])
 def siem_event_search(request):
     """Search SIEM events by time range, filters, and aggregations."""
-    params = parse_search_request(request.GET)
+    try:
+        params = parse_search_request(request.GET)
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
     payload = search_siem_events(params)
     return JsonResponse(payload)
 
@@ -1081,6 +1085,20 @@ def siem_adapter_sbom(request, sbom_id):
     report = get_object_or_404(SbomReport, id=sbom_id)
     payload = adapt_sbom_report(report)
     return JsonResponse(payload, json_dumps_params={"indent": 2})
+
+
+@require_http_methods(["GET"])
+def siem_pivot_lookup(request):
+    asset_ip = request.GET.get("asset_ip")
+    asset_id = request.GET.get("asset_id")
+    if not asset_ip and not asset_id:
+        return JsonResponse({"error": "asset_ip or asset_id is required"}, status=400)
+
+    result = resolve_siem_pivot(asset_ip, asset_id)
+    if not result:
+        return JsonResponse({"found": False})
+
+    return JsonResponse({"found": True, **result})
 
 
 @require_GET

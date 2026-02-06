@@ -11,6 +11,7 @@ This feature provides a minimal SIEM event store with ingestion and search APIs.
 - `GET /dashboard/siem/adapters/scan/<scan_id>/` Adapter preview for scan events.
 - `GET /dashboard/siem/adapters/vuln/<vuln_id>/` Adapter preview for vulnerability events.
 - `GET /dashboard/siem/adapters/sbom/<sbom_id>/` Adapter preview for SBOM events.
+- `GET /dashboard/siem/pivot/?asset_ip=<ip>&asset_id=<id>` Resolve events to nodes and scans.
 
 **Authentication**
 - If `SIEM_INGEST_TOKEN` is set, requests must include `X-SIEM-Token: <token>` or `Authorization: Bearer <token>`.
@@ -80,6 +81,7 @@ curl "http://localhost:8000/dashboard/siem/events/?agg=source,event_type&agg_siz
 - Navigate to `SIEM > Event Explorer` in the sidebar.
 - Use filters and quick ranges to search events.
 - Click `View` to inspect the raw payload.
+- Click `Pivot` to jump to the related node and scan details (if found).
 
 **Adapter Preview Example**
 ```bash

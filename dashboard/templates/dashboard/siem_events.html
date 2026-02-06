@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block content %}
-<div class="container-fluid px-4 py-4" id="siem-explorer" data-search-url="{% url 'dashboard:siem_event_search' %}" data-default-start="{{ default_start }}" data-default-end="{{ default_end }}">
+<div class="container-fluid px-4 py-4" id="siem-explorer" data-search-url="{% url 'dashboard:siem_event_search' %}" data-pivot-url="{% url 'dashboard:siem_pivot_lookup' %}" data-default-start="{{ default_start }}" data-default-end="{{ default_end }}">
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
     <div>
       <h2 class="mb-1">SIEM Event Explorer</h2>
@@ -103,6 +103,16 @@
     </div>
   </div>
 
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <h5 class="card-title mb-0">Event Timeline</h5>
+        <small class="text-muted" id="siem-timeline-label">Last query</small>
+      </div>
+      <div class="siem-timeline" id="siem-timeline-bars"></div>
+    </div>
+  </div>
+
   <div class="card shadow-sm">
     <div class="card-body">
       <div class="table-responsive">
@@ -116,12 +126,13 @@
               <th>Asset IP</th>
               <th>Asset ID</th>
               <th>Summary</th>
+              <th>Pivot</th>
               <th></th>
             </tr>
           </thead>
           <tbody data-testid="siem-events-body">
             {% for event in events %}
-              <tr data-event-id="{{ event.id }}">
+              <tr data-event-id="{{ event.id }}" data-asset-ip="{{ event.asset_ip|default:'' }}" data-asset-id="{{ event.asset_id|default:'' }}">
                 <td>{{ event.timestamp|date:"Y-m-d H:i:s" }}</td>
                 <td><span class="badge bg-light text-dark border">{{ event.source }}</span></td>
                 <td>{{ event.event_type }}</td>
@@ -142,6 +153,9 @@
                 <td>{{ event.asset_id|default:"-" }}</td>
                 <td>{{ event.summary|default:"-" }}</td>
                 <td>
+                  <button class="btn btn-sm btn-outline-secondary" data-action="pivot">Pivot</button>
+                </td>
+                <td>
                   <button class="btn btn-sm btn-outline-primary" data-raw='{{ event.raw|escapejs }}' data-action="view-raw">
                     View
                   </button>
@@ -149,7 +163,7 @@
               </tr>
             {% empty %}
               <tr>
-                <td colspan="8" class="text-muted text-center">No events ingested yet.</td>
+                <td colspan="9" class="text-muted text-center">No events ingested yet.</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -168,6 +182,20 @@
       </div>
       <div class="modal-body">
         <pre class="bg-dark text-light p-3 rounded" id="siem-raw-content"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="siem-pivot-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Asset Pivot</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="siem-pivot-content">
+        <div class="text-muted">Loading pivot details…</div>
       </div>
     </div>
   </div>

@@ -229,3 +229,8 @@ TypeError: Direct assignment to the reverse side of a related set is prohibited 
 ```
 SiemNormalizeError: Invalid timestamp (RFC3164 timestamp missing year)
 ```
+
+## Context for Next Agent (2026-02-06)
+- SIEM Task 11 implemented: syslog + Windows Event Log ingestion endpoints.
+- RFC3164 timestamps lack year; syslog ingestion now drops timestamp to use ingest time.
+- Tests passed: syslog/windows ingestion tests (5 tests).

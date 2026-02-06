@@ -160,3 +160,8 @@ ERROR tests/server/test_siem_pipeline.py
 - SIEM Task 5 implemented: search API now supports multi-value filters (`event_type_in`, `source_in`) and aggregations (`agg`, `agg_size`).
 - New query helper: `dashboard/siem_query.py`.
 - Tests passed: search/aggregation tests (4 tests).
+
+## Context for Next Agent (2026-02-06)
+- SIEM Task 6 implemented: Event Explorer now has timeline bars and asset pivot modal. Pivot endpoint at `/dashboard/siem/pivot/` uses `dashboard/siem_pivot.py`.
+- Added pivot tests (unit/server/integration) and they passed (5 tests).
+- Search validation now returns 400 on invalid `severity`, `limit`, `offset`, or `agg_size`.

@@ -73,6 +73,9 @@ See `docs/opensearch.md` for setup and dashboards instructions.
 When `THREAT_INTEL_ENABLED=1`, ingested events are checked against active indicators. Matches are stored and appended to alert summaries.
 See `docs/threat_intel.md` for payload formats.
 
+**Host Telemetry**
+The host agent can send `osquery.result` and `fim.change` events to the SIEM pipeline ingest endpoint.
+
 **Search Example**
 ```bash
 curl "http://localhost:8000/dashboard/siem/events/?event_type=suricata.alert&start=2026-02-06T12:00:00Z&end=2026-02-06T13:00:00Z"

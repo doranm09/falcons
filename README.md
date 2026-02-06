@@ -53,6 +53,7 @@ This project is a full-stack Django platform that simulates and secures networke
 - Alert queue with deduplication and rule toggles (Sigma + Suricata)
 - Case management with notes, evidence, and exports
 - Threat intel ingestion (MISP-like) and IOC enrichment in alerts
+- Host agent telemetry with osquery + file integrity monitoring (FIM)
 
 ### 6. Digital Twin Generation (MiniMega)
 - Generate MiniMega launch scripts and manifests from scans

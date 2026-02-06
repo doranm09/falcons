@@ -44,6 +44,9 @@ python agent.py <command> [options]
 | `sniff`       | Start packet capture on a specific interface                 |
 | `path`        | Interactively compute shortest path between IPs using RTT    |
 | `cyber`       | Collect cyber template data (OS, libraries, MAC addresses, ports) |
+| `osquery`     | Run an osquery query and send results to SIEM                |
+| `fim-baseline`| Create a file integrity baseline                             |
+| `fim-scan`    | Scan for file integrity changes                              |
 
 ## Capabilities
 
@@ -140,6 +143,9 @@ Enter end IP: 10.0.0.5
 ```bash
 python agent.py cyber --format template --output cyber_data.json
 ```
+
+## Osquery + File Integrity Monitoring (FIM)
+See `README_OSQUERY_FIM.md` for detailed usage and examples.
 
 Collects system data specifically formatted for cyber security testing templates:
 

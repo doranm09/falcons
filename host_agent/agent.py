@@ -15,6 +15,15 @@ from scapy.all import sniff, IP, TCP, UDP, ICMP, Ether, ARP
 import heapq
 import netifaces
 import re
+from telemetry import (
+    run_osquery,
+    build_osquery_event,
+    build_fim_baseline,
+    save_fim_baseline,
+    load_fim_baseline,
+    diff_fim,
+    build_fim_events,
+)
 
 # ---- Config (overridden at runtime from --url / env) ----
 SERVER_URL = "http://localhost:8000"   # will be reassigned in __main__
@@ -28,6 +37,7 @@ REQ_TIMEOUT = (3.0, 10.0)  # (connect, read) seconds
 # Agent version information
 AGENT_VERSION = "1.0.0"
 AGENT_NAME = "CyberTwin Host Agent"
+DEFAULT_FIM_BASELINE = os.path.expanduser("~/.cybertwin/fim_baseline.json")
 
 
 # ---- HTTP helper ----
@@ -393,6 +403,20 @@ def send_heartbeat():
             print(f"[cyber_data] error: {e}")
 
 
+def send_siem_events(events):
+    if not events:
+        return None
+    url = f"{SERVER_URL.rstrip('/')}/siem/pipeline/ingest/"
+    token = os.environ.get("SIEM_INGEST_TOKEN", "").strip()
+    headers = {"X-SIEM-Token": token} if token else None
+    res = http_post_json(url, events, headers=headers)
+    if res is None:
+        print("[siem] failed to post events")
+    else:
+        print(f"[siem] POST status: {res.status_code}")
+    return res
+
+
 def send_network_metadata():
     """Send detailed network connection and interface metadata to server"""
     try:
@@ -505,6 +529,37 @@ def handle_command(cmd):
         return_output(cmd_id, "network metadata posted" if ok else "network metadata failed")
     elif action == "info":
         return_output(cmd_id, json.dumps(get_system_info(), indent=2))
+    elif action == "osquery":
+        query = parameters.get("query")
+        if not query:
+            return_output(cmd_id, "osquery failed: query missing")
+            return
+        try:
+            results = run_osquery(query)
+            event = build_osquery_event(query, results, AGENT_ID, socket.gethostname())
+            send_siem_events([event])
+            return_output(cmd_id, f"osquery ok: {len(results)} rows")
+        except Exception as e:
+            return_output(cmd_id, f"osquery failed: {e}")
+    elif action == "fim_baseline":
+        paths = parameters.get("paths") or []
+        if isinstance(paths, str):
+            paths = [p.strip() for p in paths.split(",") if p.strip()]
+        baseline_path = parameters.get("baseline_path") or DEFAULT_FIM_BASELINE
+        baseline = build_fim_baseline(paths)
+        save_fim_baseline(baseline, baseline_path)
+        return_output(cmd_id, f"fim baseline saved ({len(baseline)} files)")
+    elif action == "fim_scan":
+        paths = parameters.get("paths") or []
+        if isinstance(paths, str):
+            paths = [p.strip() for p in paths.split(",") if p.strip()]
+        baseline_path = parameters.get("baseline_path") or DEFAULT_FIM_BASELINE
+        baseline = load_fim_baseline(baseline_path)
+        current = build_fim_baseline(paths)
+        changes = diff_fim(baseline, current)
+        events = build_fim_events(changes, AGENT_ID, socket.gethostname())
+        send_siem_events(events)
+        return_output(cmd_id, f"fim scan complete: {len(changes)} changes")
     elif action == "sliver_deploy":
         url = parameters.get("url")
         file_name = parameters.get("file_name") or "sliver_implant.bin"
@@ -743,6 +798,14 @@ if __name__ == "__main__":
     cyber_parser = subparsers.add_parser("cyber", help="Collect cyber template data (OS, libraries, MAC addresses, ports)")
     cyber_parser.add_argument("--output", "-o", help="Write cyber template data to a JSON file")
     cyber_parser.add_argument("--format", "-f", choices=["template", "full"], default="template", help="Output format: 'template' for cyber template format, 'full' for detailed data")
+    osquery_parser = subparsers.add_parser("osquery", help="Run an osquery query and send results to SIEM")
+    osquery_parser.add_argument("--query", "-q", required=True, help="osquery SQL query to run")
+    fim_baseline_parser = subparsers.add_parser("fim-baseline", help="Create file integrity baseline")
+    fim_baseline_parser.add_argument("--paths", "-p", required=True, help="Comma-separated file or directory paths")
+    fim_baseline_parser.add_argument("--baseline-path", help="Baseline file path (default: ~/.cybertwin/fim_baseline.json)")
+    fim_scan_parser = subparsers.add_parser("fim-scan", help="Scan for file integrity changes")
+    fim_scan_parser.add_argument("--paths", "-p", required=True, help="Comma-separated file or directory paths")
+    fim_scan_parser.add_argument("--baseline-path", help="Baseline file path (default: ~/.cybertwin/fim_baseline.json)")
 
     args = parser.parse_args()
 
@@ -804,5 +867,28 @@ if __name__ == "__main__":
             print(f"[cyber] Data written to {args.output}")
         else:
             print(json.dumps(output_data, indent=2))
+    elif args.command == "osquery":
+        query = getattr(args, "query", "")
+        try:
+            results = run_osquery(query)
+            event = build_osquery_event(query, results, AGENT_ID, socket.gethostname())
+            print(json.dumps(event, indent=2))
+            send_siem_events([event])
+        except Exception as e:
+            print(f"[osquery] failed: {e}")
+    elif args.command == "fim-baseline":
+        paths = [p.strip() for p in (args.paths or "").split(",") if p.strip()]
+        baseline = build_fim_baseline(paths)
+        save_fim_baseline(baseline, args.baseline_path or DEFAULT_FIM_BASELINE)
+        print(f"[fim] baseline saved ({len(baseline)} files)")
+    elif args.command == "fim-scan":
+        paths = [p.strip() for p in (args.paths or "").split(",") if p.strip()]
+        baseline_path = args.baseline_path or DEFAULT_FIM_BASELINE
+        baseline = load_fim_baseline(baseline_path)
+        current = build_fim_baseline(paths)
+        changes = diff_fim(baseline, current)
+        events = build_fim_events(changes, AGENT_ID, socket.gethostname())
+        send_siem_events(events)
+        print(f"[fim] scan complete: {len(changes)} changes")
     else:
         parser.print_help()

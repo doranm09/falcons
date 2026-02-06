@@ -41,6 +41,13 @@ The adapter helpers emit ECS-inspired JSON for core sources. These are available
 - `vulnerability.detected`: `event.category=vulnerability`, `event.type=info`, `rule.id=<CVE>`, `vulnerability.*`, `host.*` (optional)
 - `sbom.report`: `event.category=package`, `event.type=info`, `event.action=sbom_report`, `labels.*`
 
+**Pipeline Mapping**
+Pipeline ingest maps raw payloads to this schema automatically before normalization:
+- Suricata-like payloads (`alert` field) -> `suricata.alert`
+- Zeek-like payloads (`id_orig_h` or `uid`) -> `zeek.conn` or `zeek.event`
+- Agent-like payloads (`agent_id` or `hostname`) -> `agent.telemetry`
+- Scan-like payloads (`scan_type` or `cidr`) -> `scan.run`
+
 **Example**
 ```json
 {

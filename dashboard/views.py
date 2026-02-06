@@ -64,6 +64,7 @@ from .siem_adapters import (
     adapt_sbom_report,
     adapt_vulnerability,
 )
+from .siem_pipeline import transform_pipeline_events, SiemPipelineError
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 RISK_ASSESSMENT_TIMEOUT = 15
@@ -945,6 +946,43 @@ def siem_event_ingest(request):
     normalized = []
     errors = []
     for idx, event in enumerate(events):
+        try:
+            normalized.append(normalize_siem_event(event))
+        except SiemNormalizeError as exc:
+            errors.append({"index": idx, "error": str(exc)})
+
+    if errors:
+        return JsonResponse({"error": "Invalid event payload", "details": errors}, status=400)
+
+    SiemEvent.objects.bulk_create([SiemEvent(**item) for item in normalized], batch_size=200)
+    return JsonResponse({"ingested": len(normalized)}, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def siem_pipeline_ingest(request):
+    """Ingest raw pipeline events, normalize, and store in the SIEM log store."""
+    if not _check_siem_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    raw_events = payload if isinstance(payload, list) else [payload]
+    max_batch = getattr(settings, "SIEM_MAX_INGEST_BATCH", 500)
+    if len(raw_events) > max_batch:
+        return JsonResponse({"error": f"Batch too large (max {max_batch})"}, status=413)
+
+    try:
+        transformed = transform_pipeline_events(raw_events)
+    except SiemPipelineError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    normalized = []
+    errors = []
+    for idx, event in enumerate(transformed):
         try:
             normalized.append(normalize_siem_event(event))
         except SiemNormalizeError as exc:

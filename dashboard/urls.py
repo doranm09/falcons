@@ -21,6 +21,7 @@ urlpatterns = [
     path('agent/cyber_report/', views.agent_cyber_report, name='agent_cyber_report'),
     path('sbom/', views.sbom_ingest, name='sbom_ingest'),
     path('siem/ingest/', views.siem_event_ingest, name='siem_event_ingest'),
+    path('siem/pipeline/ingest/', views.siem_pipeline_ingest, name='siem_pipeline_ingest'),
     path('siem/events/', views.siem_event_search, name='siem_event_search'),
     path('siem/events/explorer/', views.siem_event_explorer, name='siem_event_explorer'),
     path('siem/adapters/agent/<str:agent_id>/', views.siem_adapter_agent, name='siem_adapter_agent'),

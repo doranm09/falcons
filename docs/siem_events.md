@@ -4,6 +4,7 @@ This feature provides a minimal SIEM event store with ingestion and search APIs.
 
 **Endpoints**
 - `POST /dashboard/siem/ingest/` Ingest one event or a list of events.
+- `POST /dashboard/siem/pipeline/ingest/` Ingest raw pipeline events (auto-mapped to ECS subset).
 - `GET /dashboard/siem/events/` Search events by time range and filters.
 - `GET /dashboard/siem/events/explorer/` UI for searching and pivoting on events.
 - `GET /dashboard/siem/adapters/agent/<agent_id>/` Adapter preview for agent heartbeat events.
@@ -39,6 +40,23 @@ curl -X POST http://localhost:8000/dashboard/siem/ingest/ \
     {"event_type": "agent.heartbeat", "source": "agent", "timestamp": "2026-02-06T12:02:00Z"}
   ]'
 ```
+
+**Pipeline Ingest Example (Suricata-like)**
+```bash
+curl -X POST http://localhost:8000/dashboard/siem/pipeline/ingest/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "alert": {"signature": "ET MALWARE Example", "severity": 2},
+    "src_ip": "10.10.0.20",
+    "timestamp": "2026-02-06T12:05:00Z"
+  }'
+```
+
+**Pipeline Mapping**
+- Suricata-like payloads with `alert` map to `suricata.alert`.
+- Zeek-like payloads with `id_orig_h` or `uid` map to `zeek.conn` or `zeek.event`.
+- Agent-like payloads with `agent_id` map to `agent.telemetry`.
+- Scan-like payloads with `scan_type` or `cidr` map to `scan.run`.
 
 **Search Example**
 ```bash

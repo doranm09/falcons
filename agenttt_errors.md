@@ -126,3 +126,21 @@ ERROR tests/server/test_siem_adapters.py
 !!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
 1 error in 0.13s
 ```
+
+## 2026-02-06
+### docker-compose exec -T web /home/appuser/.local/bin/pytest tests/unit/test_siem_pipeline.py ...
+**Error**
+```
+==================================== ERRORS ====================================
+_____________ ERROR collecting tests/server/test_siem_pipeline.py ______________
+import file mismatch:
+imported module 'test_siem_pipeline' has this __file__ attribute:
+  /code/tests/unit/test_siem_pipeline.py
+which is not the same as the test file we want to collect:
+  /code/tests/server/test_siem_pipeline.py
+HINT: remove __pycache__ / .pyc files and/or use a unique basename for your test file modules
+=========================== short test summary info ============================
+ERROR tests/server/test_siem_pipeline.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 0.12s
+```

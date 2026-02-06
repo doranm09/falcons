@@ -217,3 +217,8 @@ TypeError: Direct assignment to the reverse side of a related set is prohibited 
 - Migration 0023_threat_intel.py added (fixes model ref to `dashboard.siemevent`).
 - Enrichment runs during SIEM ingest; alerts include IOC tags in summary.
 - Tests passed: threat intel tests (4 tests).
+
+## Context for Next Agent (2026-02-06)
+- SIEM Task 10 implemented: host agent supports osquery + FIM telemetry. See `host_agent/README_OSQUERY_FIM.md`.
+- Telemetry helper module: `host_agent/telemetry.py`.
+- Tests passed: host telemetry tests (5 tests).

@@ -185,3 +185,8 @@ IntegrityError: duplicate key value violates unique constraint "dashboard_alertr
 ```
 IntegrityError: duplicate key value violates unique constraint "dashboard_alertrule_name_key" (Suricata Alerts)
 ```
+
+## Context for Next Agent (2026-02-06)
+- SIEM Task 8 implemented: case management with notes, evidence, export, and alert promotion.
+- Migration 0022_cases.py added.
+- Tests passed: case management tests (5 tests).

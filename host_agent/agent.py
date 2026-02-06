@@ -574,7 +574,7 @@ def return_output(cmd_id, output):
 
 
 # ---- SBOM ----
-def post_sbom_to_server(sbom_data, server_url=None, agent_id="unknown"):
+def post_sbom_to_server(sbom_data, server_url=None, agent_id="unknown", vulnerabilities=None):
     """
     server_url:
       - If None, posts to f"{SERVER_URL}/sbom"
@@ -585,7 +585,10 @@ def post_sbom_to_server(sbom_data, server_url=None, agent_id="unknown"):
         "X-Agent-ID": agent_id,
         "X-Timestamp": datetime.utcnow().isoformat() + "Z"
     }
-    res = http_post_json(target, sbom_data, headers=headers)
+    payload = sbom_data
+    if vulnerabilities:
+        payload = {"sbom": sbom_data, "vulnerabilities": vulnerabilities}
+    res = http_post_json(target, payload, headers=headers)
     if res is None:
         print("[sbom] Failed to post (request failed)")
     else:
@@ -733,6 +736,7 @@ if __name__ == "__main__":
     sbom_parser.add_argument("--output", "-o", help="Write SBOM to a file")
     sbom_parser.add_argument("--format", "-f", choices=["raw", "cyclonedx"], default="raw", help="SBOM output format")
     sbom_parser.add_argument("--sbom-url", help="Override SBOM POST URL (default: <server>/sbom)")
+    sbom_parser.add_argument("--vuln-file", help="Optional JSON file with vulnerabilities (e.g., Grype/Trivy output)")
     sniff_parser = subparsers.add_parser("sniff", help="Sniff packets on interface")
     sniff_parser.add_argument("--interface", "-i", required=True, help="Interface to sniff on")
     subparsers.add_parser("path", help="Run Dijkstra to find shortest latency path interactively")
@@ -762,13 +766,20 @@ if __name__ == "__main__":
     elif args.command == "sbom":
         packages = collect_packages()
         sbom = generate_cyclonedx_sbom(packages) if args.format == "cyclonedx" else packages
+        vulnerabilities = None
+        if args.vuln_file:
+            try:
+                with open(args.vuln_file, "r") as f:
+                    vulnerabilities = json.load(f)
+            except Exception as e:
+                print(f"[sbom] Failed to load vuln file: {e}")
         if args.output:
             with open(args.output, "w") as f:
                 json.dump(sbom, f, indent=2)
             print(f"[sbom] SBOM written to {args.output}")
         else:
             print(json.dumps(sbom, indent=2))
-        post_sbom_to_server(sbom_data=sbom, server_url=args.sbom_url, agent_id=AGENT_ID)
+        post_sbom_to_server(sbom_data=sbom, server_url=args.sbom_url, agent_id=AGENT_ID, vulnerabilities=vulnerabilities)
     elif args.command == "sniff":
         sniff_interface(args.interface)
     elif args.command == "path":

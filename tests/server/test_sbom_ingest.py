@@ -3,7 +3,7 @@ import pytest
 
 from django.urls import reverse
 
-from dashboard.models import Node, SbomReport
+from dashboard.models import Node, SbomReport, Vulnerability
 
 
 pytestmark = pytest.mark.django_db
@@ -22,6 +22,10 @@ def test_sbom_ingest_creates_report_and_updates_node(client):
         "components": [
             {"type": "application", "name": "openssl", "version": "1.1.1"},
             {"type": "application", "name": "curl", "version": "8.0.0"},
+        ],
+        "vulnerabilities": [
+            {"id": "CVE-2024-0001", "severity": "High", "cvssScore": 7.5, "description": "Test CVE"},
+            {"id": "CVE-2024-0002", "severity": "Low", "cvssScore": 3.1},
         ],
     }
 
@@ -46,6 +50,11 @@ def test_sbom_ingest_creates_report_and_updates_node(client):
     node = Node.objects.get(agent_id=agent_id)
     assert node.os_info == "ubuntu 22.04"
     assert "openssl@1.1.1" in node.installed_libraries
+
+    vuln = Vulnerability.objects.get(cve_id="CVE-2024-0001")
+    assert vuln.severity == "High"
+    assert vuln.score == 7.5
+    assert node.vulnerability_set.filter(cve_id="CVE-2024-0001").exists()
 
 
 def test_sbom_ingest_requires_agent_id(client):

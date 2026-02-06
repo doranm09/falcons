@@ -24,6 +24,8 @@ from .models import (
     HuntNote,
     HuntSearch,
     HuntTag,
+    SiemUserRole,
+    SiemAuditLog,
     ThreatIntelIndicator,
     ThreatIntelMatch,
 )
@@ -89,12 +91,16 @@ from .siem_hunts import (
     replay_hunt_search,
     validate_hunt_query,
 )
+from .siem_rbac import get_siem_role, require_siem_role
+from .siem_audit import record_siem_audit
 from .siem_threat_intel import ingest_indicators, match_indicators, persist_ioc_matches
 from .siem_syslog import syslog_to_event
 from .siem_windows import windows_event_to_event
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 RISK_ASSESSMENT_TIMEOUT = 15
+SIEM_WRITE_ROLES = (SiemUserRole.Role.ADMIN, SiemUserRole.Role.ANALYST)
+SIEM_ADMIN_ROLES = (SiemUserRole.Role.ADMIN,)
 
 
 def _risk_call(func, path, **kwargs):
@@ -1168,10 +1174,18 @@ def siem_alerts_page(request):
 
 
 @require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_rule_toggle", resource_type="alert_rule")
 def siem_toggle_rule(request, rule_id):
     rule = get_object_or_404(AlertRule, id=rule_id)
     rule.enabled = not rule.enabled
     rule.save(update_fields=["enabled"])
+    record_siem_audit(
+        request,
+        action="siem_rule_toggle",
+        resource_type="alert_rule",
+        resource_id=rule.id,
+        metadata={"enabled": rule.enabled},
+    )
     return redirect(request.META.get("HTTP_REFERER", reverse("dashboard:siem_alerts_page")))
 
 
@@ -1183,6 +1197,7 @@ def siem_cases_page(request):
 
 
 @require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_case_create", resource_type="case")
 def siem_case_create(request):
     title = request.POST.get("title") or "New Case"
     description = request.POST.get("description", "")
@@ -1194,16 +1209,31 @@ def siem_case_create(request):
         status=Case.Status.OPEN,
         created_by=request.user if request.user.is_authenticated else None,
     )
+    record_siem_audit(
+        request,
+        action="siem_case_create",
+        resource_type="case",
+        resource_id=case.id,
+        metadata={"priority": priority},
+    )
     return redirect(reverse("dashboard:siem_case_detail", args=[case.id]))
 
 
 @require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_case_promote_alert", resource_type="case")
 def siem_case_promote_alert(request, alert_id):
     alert = get_object_or_404(Alert, id=alert_id)
     case = build_case_from_alert(alert)
     case.created_by = request.user if request.user.is_authenticated else None
     case.save()
     case.alerts.add(alert)
+    record_siem_audit(
+        request,
+        action="siem_case_promote_alert",
+        resource_type="case",
+        resource_id=case.id,
+        metadata={"alert_id": alert.id},
+    )
     return redirect(reverse("dashboard:siem_case_detail", args=[case.id]))
 
 
@@ -1214,6 +1244,7 @@ def siem_case_detail(request, case_id):
 
 
 @require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_case_update_status", resource_type="case")
 def siem_case_update_status(request, case_id):
     case = get_object_or_404(Case, id=case_id)
     status = request.POST.get("status") or Case.Status.OPEN
@@ -1223,33 +1254,56 @@ def siem_case_update_status(request, case_id):
     if status == Case.Status.OPEN:
         case.closed_at = None
     case.save(update_fields=["status", "closed_at"])
+    record_siem_audit(
+        request,
+        action="siem_case_update_status",
+        resource_type="case",
+        resource_id=case.id,
+        metadata={"status": status},
+    )
     return redirect(reverse("dashboard:siem_case_detail", args=[case.id]))
 
 
 @require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_case_add_note", resource_type="case_note")
 def siem_case_add_note(request, case_id):
     case = get_object_or_404(Case, id=case_id)
     note_text = request.POST.get("note")
     if note_text:
-        CaseNote.objects.create(
+        note = CaseNote.objects.create(
             case=case,
             author=request.user if request.user.is_authenticated else None,
             note=note_text,
+        )
+        record_siem_audit(
+            request,
+            action="siem_case_add_note",
+            resource_type="case_note",
+            resource_id=note.id,
+            metadata={"case_id": case.id},
         )
     return redirect(reverse("dashboard:siem_case_detail", args=[case.id]))
 
 
 @require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_case_add_evidence", resource_type="case_evidence")
 def siem_case_add_evidence(request, case_id):
     case = get_object_or_404(Case, id=case_id)
     label = request.POST.get("label") or "Evidence"
     evidence_type = request.POST.get("evidence_type") or CaseEvidence.EvidenceType.TEXT
     details = request.POST.get("details", "")
-    CaseEvidence.objects.create(
+    evidence = CaseEvidence.objects.create(
         case=case,
         label=label,
         evidence_type=evidence_type,
         details=details,
+    )
+    record_siem_audit(
+        request,
+        action="siem_case_add_evidence",
+        resource_type="case_evidence",
+        resource_id=evidence.id,
+        metadata={"case_id": case.id, "evidence_type": evidence_type},
     )
     return redirect(reverse("dashboard:siem_case_detail", args=[case.id]))
 
@@ -1271,6 +1325,7 @@ def siem_hunts_page(request):
 
 
 @require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_hunt_create", resource_type="hunt")
 def siem_hunt_create(request):
     name = request.POST.get("name") or "New Hunt"
     description = request.POST.get("description", "")
@@ -1290,6 +1345,13 @@ def siem_hunt_create(request):
     )
     for tag in tags:
         HuntTag.objects.get_or_create(hunt=hunt, name=tag)
+    record_siem_audit(
+        request,
+        action="siem_hunt_create",
+        resource_type="hunt",
+        resource_id=hunt.id,
+        metadata={"tags": tags},
+    )
     return redirect(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
 
 
@@ -1300,38 +1362,64 @@ def siem_hunt_detail(request, hunt_id):
 
 
 @require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_hunt_update_status", resource_type="hunt")
 def siem_hunt_update_status(request, hunt_id):
     hunt = get_object_or_404(Hunt, id=hunt_id)
     status = request.POST.get("status") or Hunt.Status.OPEN
     hunt.status = status
     hunt.save(update_fields=["status"])
+    record_siem_audit(
+        request,
+        action="siem_hunt_update_status",
+        resource_type="hunt",
+        resource_id=hunt.id,
+        metadata={"status": status},
+    )
     return redirect(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
 
 
 @require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_hunt_add_note", resource_type="hunt_note")
 def siem_hunt_add_note(request, hunt_id):
     hunt = get_object_or_404(Hunt, id=hunt_id)
     note_text = request.POST.get("note")
     if note_text:
-        HuntNote.objects.create(
+        note = HuntNote.objects.create(
             hunt=hunt,
             author=request.user if request.user.is_authenticated else None,
             title=request.POST.get("title", ""),
             note=note_text,
         )
+        record_siem_audit(
+            request,
+            action="siem_hunt_add_note",
+            resource_type="hunt_note",
+            resource_id=note.id,
+            metadata={"hunt_id": hunt.id},
+        )
     return redirect(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
 
 
 @require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_hunt_add_tag", resource_type="hunt_tag")
 def siem_hunt_add_tag(request, hunt_id):
     hunt = get_object_or_404(Hunt, id=hunt_id)
     tags = parse_hunt_tags(request.POST.get("tags", ""))
     for tag in tags:
         HuntTag.objects.get_or_create(hunt=hunt, name=tag)
+    if tags:
+        record_siem_audit(
+            request,
+            action="siem_hunt_add_tag",
+            resource_type="hunt_tag",
+            resource_id=hunt.id,
+            metadata={"tags": tags},
+        )
     return redirect(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
 
 
 @require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_hunt_add_search", resource_type="hunt_search")
 def siem_hunt_add_search(request, hunt_id):
     hunt = get_object_or_404(Hunt, id=hunt_id)
     search_name = request.POST.get("search_name") or "Saved Search"
@@ -1342,10 +1430,17 @@ def siem_hunt_add_search(request, hunt_id):
         messages.error(request, f"Invalid search params: {exc}")
         return redirect(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
 
-    HuntSearch.objects.create(
+    search = HuntSearch.objects.create(
         hunt=hunt,
         name=search_name,
         query_params=clean_query_params(query_params),
+    )
+    record_siem_audit(
+        request,
+        action="siem_hunt_add_search",
+        resource_type="hunt_search",
+        resource_id=search.id,
+        metadata={"hunt_id": hunt.id},
     )
     return redirect(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
 
@@ -1358,12 +1453,54 @@ def siem_hunt_replay_search(request, hunt_id, search_id):
     return JsonResponse({"hunt_id": hunt.id, "search_id": search.id, **payload})
 
 
+@require_http_methods(["GET"])
+@require_siem_role(SIEM_ADMIN_ROLES, action="siem_audit_view", resource_type="audit_log")
+def siem_audit_log(request):
+    qs = SiemAuditLog.objects.all()
+    action = request.GET.get("action")
+    status = request.GET.get("status")
+    if action:
+        qs = qs.filter(action=action)
+    if status:
+        qs = qs.filter(status=status)
+
+    if request.GET.get("format") == "json":
+        payload = [
+            {
+                "id": entry.id,
+                "timestamp": entry.created_at.isoformat(),
+                "actor_id": entry.actor_id,
+                "role": entry.role,
+                "action": entry.action,
+                "resource_type": entry.resource_type,
+                "resource_id": entry.resource_id,
+                "status": entry.status,
+                "ip_address": entry.ip_address,
+                "metadata": entry.metadata or {},
+            }
+            for entry in qs[:500]
+        ]
+        return JsonResponse({"count": qs.count(), "results": payload})
+
+    return render(request, "dashboard/siem_audit.html", {"entries": qs[:200], "action": action, "status": status})
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def siem_threat_intel_ingest(request):
     """Ingest threat intel indicators from a MISP-like payload or list."""
-    if not _check_siem_token(request):
-        return JsonResponse({"error": "Unauthorized"}, status=401)
+    token_ok = _check_siem_token(request)
+    if not token_ok:
+        role = get_siem_role(request.user)
+        if role not in SIEM_WRITE_ROLES:
+            record_siem_audit(
+                request,
+                action="siem_threat_intel_ingest",
+                resource_type="threat_intel",
+                status="denied",
+                metadata={"role": role},
+            )
+            return JsonResponse({"error": "Forbidden"}, status=403)
 
     try:
         payload = json.loads(request.body or "{}")
@@ -1371,6 +1508,12 @@ def siem_threat_intel_ingest(request):
         return JsonResponse({"error": "Invalid JSON"}, status=400)
 
     stats = ingest_indicators(payload)
+    record_siem_audit(
+        request,
+        action="siem_threat_intel_ingest",
+        resource_type="threat_intel",
+        metadata={"ingested": stats, "token_auth": token_ok},
+    )
     return JsonResponse({"ingested": stats})
 
 

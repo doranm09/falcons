@@ -248,3 +248,11 @@ SiemNormalizeError: Invalid timestamp (RFC3164 timestamp missing year)
 - Endpoints under `/dashboard/siem/hunts/` added for create, tags, notes, searches, replay.
 - Docs added: `docs/siem_hunts.md`, referenced in `README.md` and `docs/siem_events.md`.
 - Tests passed: hunt unit/server/integration tests (6 tests).
+
+## Context for Next Agent (2026-02-06)
+- SIEM Task 14 implemented: RBAC + audit logging.
+- New models: `SiemUserRole`, `SiemAuditLog` with migration `0025_siem_rbac_audit.py`.
+- RBAC helper: `dashboard/siem_rbac.py`; audit helper: `dashboard/siem_audit.py`.
+- SIEM write endpoints now require admin/analyst; audit log view at `/dashboard/siem/audit/` (admin-only).
+- Docs added: `docs/siem_rbac_audit.md` and README/docs updates.
+- Tests passed: RBAC/audit + updated SIEM tests (13 tests).

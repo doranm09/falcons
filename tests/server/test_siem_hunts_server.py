@@ -5,8 +5,8 @@ from dashboard.models import Hunt, HuntNote, HuntSearch, HuntTag
 
 
 @pytest.mark.django_db
-def test_hunt_create_and_detail_flow(client):
-    resp = client.post(
+def test_hunt_create_and_detail_flow(siem_analyst_client):
+    resp = siem_analyst_client.post(
         reverse("dashboard:siem_hunt_create"),
         data={"name": "Hunt Alpha", "description": "Test", "tags": "alpha, beta"},
     )
@@ -16,22 +16,22 @@ def test_hunt_create_and_detail_flow(client):
     assert hunt is not None
     assert HuntTag.objects.filter(hunt=hunt).count() == 2
 
-    detail = client.get(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
+    detail = siem_analyst_client.get(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
     assert detail.status_code == 200
 
 
 @pytest.mark.django_db
-def test_hunt_add_note_and_search_and_replay(client):
+def test_hunt_add_note_and_search_and_replay(siem_analyst_client):
     hunt = Hunt.objects.create(name="Hunt Beta", description="Test")
 
-    note_resp = client.post(
+    note_resp = siem_analyst_client.post(
         reverse("dashboard:siem_hunt_add_note", args=[hunt.id]),
         data={"title": "Hypothesis", "note": "Investigate unusual DNS"},
     )
     assert note_resp.status_code == 302
     assert HuntNote.objects.filter(hunt=hunt).count() == 1
 
-    search_resp = client.post(
+    search_resp = siem_analyst_client.post(
         reverse("dashboard:siem_hunt_add_search", args=[hunt.id]),
         data={"search_name": "Zeek", "event_type": "zeek.conn"},
     )
@@ -39,7 +39,7 @@ def test_hunt_add_note_and_search_and_replay(client):
     search = HuntSearch.objects.filter(hunt=hunt).first()
     assert search is not None
 
-    replay_resp = client.get(
+    replay_resp = siem_analyst_client.get(
         reverse("dashboard:siem_hunt_replay_search", args=[hunt.id, search.id])
     )
     assert replay_resp.status_code == 200

@@ -47,6 +47,7 @@ urlpatterns = [
     path('siem/hunts/<int:hunt_id>/tags/', views.siem_hunt_add_tag, name='siem_hunt_add_tag'),
     path('siem/hunts/<int:hunt_id>/searches/', views.siem_hunt_add_search, name='siem_hunt_add_search'),
     path('siem/hunts/<int:hunt_id>/replay/<int:search_id>/', views.siem_hunt_replay_search, name='siem_hunt_replay_search'),
+    path('siem/audit/', views.siem_audit_log, name='siem_audit_log'),
     path('siem/threat-intel/ingest/', views.siem_threat_intel_ingest, name='siem_threat_intel_ingest'),
     path('siem/threat-intel/', views.siem_threat_intel_list, name='siem_threat_intel_list'),
     path('siem/syslog/', views.siem_syslog_ingest, name='siem_syslog_ingest'),

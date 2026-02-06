@@ -33,9 +33,9 @@ def test_siem_ingest_creates_alert(client):
 
 
 @pytest.mark.django_db
-def test_toggle_rule(client):
+def test_toggle_rule(siem_admin_client):
     rule = AlertRule.objects.create(name="Rule", rule_type="sigma", enabled=True)
-    resp = client.post(reverse("dashboard:siem_toggle_rule", args=[rule.id]))
+    resp = siem_admin_client.post(reverse("dashboard:siem_toggle_rule", args=[rule.id]))
     assert resp.status_code == 302
     rule.refresh_from_db()
     assert rule.enabled is False

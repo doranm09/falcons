@@ -6,6 +6,7 @@ from django.conf import settings
 from django.test import Client
 from django.contrib.auth import get_user_model
 from factories.user_factory import UserFactory
+from dashboard.models import SiemUserRole
 
 
 @pytest.fixture(autouse=True)
@@ -46,6 +47,28 @@ def admin_client(admin_user):
     """Django test client logged in as admin user."""
     client = Client()
     client.login(username=admin_user.username, password="password")
+    return client
+
+
+@pytest.fixture
+def siem_admin_client(admin_user):
+    """Django test client logged in as SIEM admin."""
+    SiemUserRole.objects.update_or_create(
+        user=admin_user, defaults={"role": SiemUserRole.Role.ADMIN}
+    )
+    client = Client()
+    client.login(username=admin_user.username, password="password")
+    return client
+
+
+@pytest.fixture
+def siem_analyst_client(user):
+    """Django test client logged in as SIEM analyst."""
+    SiemUserRole.objects.update_or_create(
+        user=user, defaults={"role": SiemUserRole.Role.ANALYST}
+    )
+    client = Client()
+    client.login(username=user.username, password="password")
     return client
 
 

@@ -296,6 +296,53 @@ class HuntNote(models.Model):
         return f"Note {self.id} for Hunt {self.hunt_id}"
 
 
+class SiemUserRole(models.Model):
+    class Role(models.TextChoices):
+        ADMIN = "admin", "Admin"
+        ANALYST = "analyst", "Analyst"
+        VIEWER = "viewer", "Viewer"
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="siem_role")
+    role = models.CharField(max_length=16, choices=Role.choices, default=Role.VIEWER)
+    assigned_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["role"]),
+        ]
+
+    def __str__(self):
+        return f"{self.user} ({self.role})"
+
+
+class SiemAuditLog(models.Model):
+    class Status(models.TextChoices):
+        SUCCESS = "success", "Success"
+        DENIED = "denied", "Denied"
+        ERROR = "error", "Error"
+
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    role = models.CharField(max_length=16, blank=True)
+    action = models.CharField(max_length=128)
+    resource_type = models.CharField(max_length=64, blank=True)
+    resource_id = models.CharField(max_length=64, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.SUCCESS)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=255, blank=True)
+    metadata = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["action", "status"]),
+            models.Index(fields=["created_at"]),
+        ]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.action} ({self.status})"
+
+
 class ThreatIntelIndicator(models.Model):
     class IndicatorType(models.TextChoices):
         IP = "ip", "IP"

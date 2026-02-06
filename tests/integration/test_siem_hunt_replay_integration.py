@@ -7,9 +7,9 @@ from dashboard.models import Hunt, HuntSearch
 
 
 @pytest.mark.django_db
-def test_hunt_replay_returns_ingested_events(client):
+def test_hunt_replay_returns_ingested_events(siem_analyst_client):
     hunt = Hunt.objects.create(name="Hunt Gamma", description="Integration")
-    client.post(
+    siem_analyst_client.post(
         reverse("dashboard:siem_hunt_add_search", args=[hunt.id]),
         data={"search_name": "Zeek", "event_type": "zeek.conn"},
     )
@@ -21,14 +21,14 @@ def test_hunt_replay_returns_ingested_events(client):
         "timestamp": "2026-02-06T12:30:00Z",
         "message": "conn observed",
     }
-    ingest_resp = client.post(
+    ingest_resp = siem_analyst_client.post(
         reverse("dashboard:siem_event_ingest"),
         data=json.dumps(payload),
         content_type="application/json",
     )
     assert ingest_resp.status_code == 201
 
-    replay_resp = client.get(
+    replay_resp = siem_analyst_client.get(
         reverse("dashboard:siem_hunt_replay_search", args=[hunt.id, search.id])
     )
     assert replay_resp.status_code == 200

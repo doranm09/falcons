@@ -7,7 +7,7 @@ from dashboard.models import Alert, AlertRule, Case
 
 
 @pytest.mark.django_db
-def test_alert_to_case_flow(client):
+def test_alert_to_case_flow(siem_analyst_client):
     rule, _ = AlertRule.objects.get_or_create(
         name="Suricata Alerts",
         defaults={
@@ -31,14 +31,14 @@ def test_alert_to_case_flow(client):
         "message": "ET MALWARE",
         "asset_ip": "10.10.0.11",
     }
-    client.post(
+    siem_analyst_client.post(
         reverse("dashboard:siem_event_ingest"),
         data=json.dumps(payload),
         content_type="application/json",
     )
 
     alert = Alert.objects.first()
-    resp = client.post(reverse("dashboard:siem_case_promote_alert", args=[alert.id]))
+    resp = siem_analyst_client.post(reverse("dashboard:siem_case_promote_alert", args=[alert.id]))
     assert resp.status_code == 302
     case = Case.objects.first()
     assert case.alerts.count() == 1

@@ -20,6 +20,8 @@ from .models import (
     MinimegaExecutionLog,
     RiskNodeMapping,
     SiemEvent,
+    AlertRule,
+    Alert,
 )
 
 @admin.register(Node)
@@ -172,3 +174,18 @@ class SiemEventAdmin(admin.ModelAdmin):
     search_fields = ("event_type", "source", "summary", "asset_id", "asset_ip")
     list_filter = ("event_type", "source", "severity")
     readonly_fields = ("ingested_at",)
+
+
+@admin.register(AlertRule)
+class AlertRuleAdmin(admin.ModelAdmin):
+    list_display = ("name", "rule_type", "enabled", "severity", "suppression_minutes")
+    list_filter = ("rule_type", "enabled")
+    search_fields = ("name", "description", "match_event_type", "match_source")
+
+
+@admin.register(Alert)
+class AlertAdmin(admin.ModelAdmin):
+    list_display = ("id", "rule_name", "status", "severity", "asset_ip", "last_seen", "count")
+    list_filter = ("status", "rule_type")
+    search_fields = ("rule_name", "summary", "asset_ip", "asset_id")
+    readonly_fields = ("first_seen", "last_seen")

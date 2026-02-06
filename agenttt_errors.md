@@ -165,3 +165,11 @@ ERROR tests/server/test_siem_pipeline.py
 - SIEM Task 6 implemented: Event Explorer now has timeline bars and asset pivot modal. Pivot endpoint at `/dashboard/siem/pivot/` uses `dashboard/siem_pivot.py`.
 - Added pivot tests (unit/server/integration) and they passed (5 tests).
 - Search validation now returns 400 on invalid `severity`, `limit`, `offset`, or `agg_size`.
+
+## 2026-02-06
+### docker-compose exec -T web /home/appuser/.local/bin/pytest tests/unit/test_siem_alerting.py ...
+**Error**
+```
+NameError: name 'reverse' is not defined (siem_toggle_rule)
+IntegrityError: duplicate key value violates unique constraint "dashboard_alertrule_name_key"
+```

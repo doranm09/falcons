@@ -112,6 +112,65 @@ class SiemEvent(models.Model):
         return f"{self.event_type} @ {self.timestamp:%Y-%m-%d %H:%M:%S}"
 
 
+class AlertRule(models.Model):
+    class RuleType(models.TextChoices):
+        SIGMA = "sigma", "Sigma"
+        SURICATA = "suricata", "Suricata"
+
+    name = models.CharField(max_length=255, unique=True)
+    description = models.TextField(blank=True)
+    rule_type = models.CharField(max_length=32, choices=RuleType.choices, default=RuleType.SIGMA)
+    enabled = models.BooleanField(default=True)
+    severity = models.IntegerField(null=True, blank=True)
+    match_event_type = models.CharField(max_length=120, blank=True)
+    match_source = models.CharField(max_length=120, blank=True)
+    match_contains = models.CharField(max_length=255, blank=True)
+    suppression_minutes = models.PositiveIntegerField(default=10)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["rule_type", "enabled"]),
+            models.Index(fields=["match_event_type"]),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.rule_type})"
+
+
+class Alert(models.Model):
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        CLOSED = "closed", "Closed"
+
+    rule = models.ForeignKey(AlertRule, null=True, blank=True, on_delete=models.SET_NULL)
+    rule_name = models.CharField(max_length=255)
+    rule_type = models.CharField(max_length=32, blank=True)
+    event_type = models.CharField(max_length=120, blank=True)
+    source = models.CharField(max_length=120, blank=True)
+    severity = models.IntegerField(null=True, blank=True)
+    asset_ip = models.GenericIPAddressField(null=True, blank=True)
+    asset_id = models.CharField(max_length=128, null=True, blank=True)
+    summary = models.CharField(max_length=512, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.OPEN)
+    first_seen = models.DateTimeField(auto_now_add=True)
+    last_seen = models.DateTimeField(auto_now=True)
+    count = models.PositiveIntegerField(default=1)
+    dedup_key = models.CharField(max_length=255, db_index=True)
+    raw_sample = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "last_seen"]),
+            models.Index(fields=["rule_type", "event_type"]),
+        ]
+        ordering = ["-last_seen"]
+
+    def __str__(self):
+        return f"{self.rule_name} ({self.status})"
+
+
 class Node(models.Model):
     # Networked endpoint discovered by scans (global inventory or per-run via scan_run FK)
     scan_run = models.ForeignKey(

@@ -1,4 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
 from django.contrib import messages
 from .models import (
     AgentCommand,
@@ -14,6 +15,8 @@ from .models import (
     ScanRun,
     SiemEvent,
     Vulnerability,
+    AlertRule,
+    Alert,
 )
 import ipaddress
 import subprocess
@@ -68,6 +71,7 @@ from .siem_pipeline import transform_pipeline_events, SiemPipelineError
 from .opensearch_client import bulk_index_events, OpensearchError
 from .siem_query import parse_search_request, search_siem_events
 from .siem_pivot import resolve_siem_pivot
+from .siem_alerting import process_alerts_for_events
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 RISK_ASSESSMENT_TIMEOUT = 15
@@ -958,8 +962,10 @@ def siem_event_ingest(request):
         return JsonResponse({"error": "Invalid event payload", "details": errors}, status=400)
 
     SiemEvent.objects.bulk_create([SiemEvent(**item) for item in normalized], batch_size=200)
+    alerts = process_alerts_for_events(normalized)
 
     response_payload = {"ingested": len(normalized)}
+    response_payload["alerts"] = len(alerts)
     try:
         response_payload["opensearch"] = bulk_index_events(normalized)
     except OpensearchError as exc:
@@ -1002,8 +1008,10 @@ def siem_pipeline_ingest(request):
         return JsonResponse({"error": "Invalid event payload", "details": errors}, status=400)
 
     SiemEvent.objects.bulk_create([SiemEvent(**item) for item in normalized], batch_size=200)
+    alerts = process_alerts_for_events(normalized)
 
     response_payload = {"ingested": len(normalized)}
+    response_payload["alerts"] = len(alerts)
     try:
         response_payload["opensearch"] = bulk_index_events(normalized)
     except OpensearchError as exc:
@@ -1099,6 +1107,22 @@ def siem_pivot_lookup(request):
         return JsonResponse({"found": False})
 
     return JsonResponse({"found": True, **result})
+
+
+@require_http_methods(["GET"])
+def siem_alerts_page(request):
+    status = request.GET.get("status", "open")
+    alerts = Alert.objects.filter(status=status).order_by("-last_seen")[:200]
+    rules = AlertRule.objects.all().order_by("name")
+    return render(request, "dashboard/siem_alerts.html", {"alerts": alerts, "rules": rules, "status": status})
+
+
+@require_http_methods(["POST"])
+def siem_toggle_rule(request, rule_id):
+    rule = get_object_or_404(AlertRule, id=rule_id)
+    rule.enabled = not rule.enabled
+    rule.save(update_fields=["enabled"])
+    return redirect(request.META.get("HTTP_REFERER", reverse("dashboard:siem_alerts_page")))
 
 
 @require_GET

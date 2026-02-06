@@ -144,3 +144,8 @@ ERROR tests/server/test_siem_pipeline.py
 !!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
 1 error in 0.12s
 ```
+
+## Context for Next Agent (2026-02-06)
+- SIEM Task 3 implemented: pipeline ingest at `/dashboard/siem/pipeline/ingest/` with mapping in `dashboard/siem_pipeline.py`.
+- Test name collision resolved by renaming server test to `tests/server/test_siem_pipeline_server.py`.
+- Pipeline tests passed: 5 tests.

@@ -178,3 +178,10 @@ IntegrityError: duplicate key value violates unique constraint "dashboard_alertr
 - SIEM Task 7 implemented: alert rules + dedup/suppression + alert queue UI.
 - Migrations: 0020_alerting.py and 0021_default_alert_rules.py (creates default Suricata rule).
 - Tests passed: alerting tests (6 tests).
+
+## 2026-02-06
+### docker-compose exec -T web /home/appuser/.local/bin/pytest tests/unit/test_siem_cases_unit.py ...
+**Error**
+```
+IntegrityError: duplicate key value violates unique constraint "dashboard_alertrule_name_key" (Suricata Alerts)
+```

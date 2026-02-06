@@ -27,6 +27,7 @@
               <th>Summary</th>
               <th>Count</th>
               <th>Last Seen</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -39,9 +40,15 @@
                 <td>{{ alert.summary|default:"-" }}</td>
                 <td><span class="badge bg-secondary">{{ alert.count }}</span></td>
                 <td>{{ alert.last_seen|date:"Y-m-d H:i:s" }}</td>
+                <td>
+                  <form method="post" action="{% url 'dashboard:siem_case_promote_alert' alert.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-primary">Create Case</button>
+                  </form>
+                </td>
               </tr>
             {% empty %}
-              <tr><td colspan="7" class="text-muted text-center">No alerts yet.</td></tr>
+              <tr><td colspan="8" class="text-muted text-center">No alerts yet.</td></tr>
             {% endfor %}
           </tbody>
         </table>

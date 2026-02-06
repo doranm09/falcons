@@ -171,6 +171,69 @@ class Alert(models.Model):
         return f"{self.rule_name} ({self.status})"
 
 
+class Case(models.Model):
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        CLOSED = "closed", "Closed"
+
+    class Priority(models.TextChoices):
+        LOW = "low", "Low"
+        MEDIUM = "medium", "Medium"
+        HIGH = "high", "High"
+
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.OPEN)
+    priority = models.CharField(max_length=16, choices=Priority.choices, default=Priority.MEDIUM)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    alerts = models.ManyToManyField(Alert, related_name="cases", blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "updated_at"]),
+            models.Index(fields=["priority"]),
+        ]
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"{self.title} ({self.status})"
+
+
+class CaseNote(models.Model):
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="notes")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    note = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Note {self.id} for Case {self.case_id}"
+
+
+class CaseEvidence(models.Model):
+    class EvidenceType(models.TextChoices):
+        TEXT = "text", "Text"
+        URL = "url", "URL"
+        JSON = "json", "JSON"
+
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="evidence")
+    label = models.CharField(max_length=255)
+    evidence_type = models.CharField(max_length=16, choices=EvidenceType.choices, default=EvidenceType.TEXT)
+    details = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Evidence {self.id} for Case {self.case_id}"
+
+
 class Node(models.Model):
     # Networked endpoint discovered by scans (global inventory or per-run via scan_run FK)
     scan_run = models.ForeignKey(

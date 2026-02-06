@@ -17,6 +17,9 @@ from .models import (
     Vulnerability,
     AlertRule,
     Alert,
+    Case,
+    CaseNote,
+    CaseEvidence,
 )
 import ipaddress
 import subprocess
@@ -72,6 +75,7 @@ from .opensearch_client import bulk_index_events, OpensearchError
 from .siem_query import parse_search_request, search_siem_events
 from .siem_pivot import resolve_siem_pivot
 from .siem_alerting import process_alerts_for_events
+from .siem_cases import build_case_from_alert, export_case_payload
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 RISK_ASSESSMENT_TIMEOUT = 15
@@ -1123,6 +1127,94 @@ def siem_toggle_rule(request, rule_id):
     rule.enabled = not rule.enabled
     rule.save(update_fields=["enabled"])
     return redirect(request.META.get("HTTP_REFERER", reverse("dashboard:siem_alerts_page")))
+
+
+@require_http_methods(["GET"])
+def siem_cases_page(request):
+    status = request.GET.get("status", "open")
+    cases = Case.objects.filter(status=status).order_by("-updated_at")[:200]
+    return render(request, "dashboard/siem_cases.html", {"cases": cases, "status": status})
+
+
+@require_http_methods(["POST"])
+def siem_case_create(request):
+    title = request.POST.get("title") or "New Case"
+    description = request.POST.get("description", "")
+    priority = request.POST.get("priority") or Case.Priority.MEDIUM
+    case = Case.objects.create(
+        title=title,
+        description=description,
+        priority=priority,
+        status=Case.Status.OPEN,
+        created_by=request.user if request.user.is_authenticated else None,
+    )
+    return redirect(reverse("dashboard:siem_case_detail", args=[case.id]))
+
+
+@require_http_methods(["POST"])
+def siem_case_promote_alert(request, alert_id):
+    alert = get_object_or_404(Alert, id=alert_id)
+    case = build_case_from_alert(alert)
+    case.created_by = request.user if request.user.is_authenticated else None
+    case.save()
+    case.alerts.add(alert)
+    return redirect(reverse("dashboard:siem_case_detail", args=[case.id]))
+
+
+@require_http_methods(["GET"])
+def siem_case_detail(request, case_id):
+    case = get_object_or_404(Case, id=case_id)
+    return render(request, "dashboard/siem_case_detail.html", {"case": case})
+
+
+@require_http_methods(["POST"])
+def siem_case_update_status(request, case_id):
+    case = get_object_or_404(Case, id=case_id)
+    status = request.POST.get("status") or Case.Status.OPEN
+    case.status = status
+    if status == Case.Status.CLOSED and not case.closed_at:
+        case.closed_at = timezone.now()
+    if status == Case.Status.OPEN:
+        case.closed_at = None
+    case.save(update_fields=["status", "closed_at"])
+    return redirect(reverse("dashboard:siem_case_detail", args=[case.id]))
+
+
+@require_http_methods(["POST"])
+def siem_case_add_note(request, case_id):
+    case = get_object_or_404(Case, id=case_id)
+    note_text = request.POST.get("note")
+    if note_text:
+        CaseNote.objects.create(
+            case=case,
+            author=request.user if request.user.is_authenticated else None,
+            note=note_text,
+        )
+    return redirect(reverse("dashboard:siem_case_detail", args=[case.id]))
+
+
+@require_http_methods(["POST"])
+def siem_case_add_evidence(request, case_id):
+    case = get_object_or_404(Case, id=case_id)
+    label = request.POST.get("label") or "Evidence"
+    evidence_type = request.POST.get("evidence_type") or CaseEvidence.EvidenceType.TEXT
+    details = request.POST.get("details", "")
+    CaseEvidence.objects.create(
+        case=case,
+        label=label,
+        evidence_type=evidence_type,
+        details=details,
+    )
+    return redirect(reverse("dashboard:siem_case_detail", args=[case.id]))
+
+
+@require_http_methods(["GET"])
+def siem_case_export(request, case_id):
+    case = get_object_or_404(Case, id=case_id)
+    payload = export_case_payload(case)
+    response = JsonResponse(payload, json_dumps_params={"indent": 2})
+    response["Content-Disposition"] = f'attachment; filename="case_{case.id}.json"'
+    return response
 
 
 @require_GET

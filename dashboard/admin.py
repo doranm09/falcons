@@ -22,6 +22,9 @@ from .models import (
     SiemEvent,
     AlertRule,
     Alert,
+    Case,
+    CaseNote,
+    CaseEvidence,
 )
 
 @admin.register(Node)
@@ -189,3 +192,23 @@ class AlertAdmin(admin.ModelAdmin):
     list_filter = ("status", "rule_type")
     search_fields = ("rule_name", "summary", "asset_ip", "asset_id")
     readonly_fields = ("first_seen", "last_seen")
+
+
+@admin.register(Case)
+class CaseAdmin(admin.ModelAdmin):
+    list_display = ("id", "title", "status", "priority", "updated_at")
+    list_filter = ("status", "priority")
+    search_fields = ("title", "description")
+    filter_horizontal = ("alerts",)
+
+
+@admin.register(CaseNote)
+class CaseNoteAdmin(admin.ModelAdmin):
+    list_display = ("id", "case", "author", "created_at")
+    search_fields = ("note",)
+
+
+@admin.register(CaseEvidence)
+class CaseEvidenceAdmin(admin.ModelAdmin):
+    list_display = ("id", "case", "label", "evidence_type", "created_at")
+    search_fields = ("label", "details")

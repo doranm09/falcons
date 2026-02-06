@@ -14,6 +14,8 @@ This feature provides a minimal SIEM event store with ingestion and search APIs.
 - `GET /dashboard/siem/pivot/?asset_ip=<ip>&asset_id=<id>` Resolve events to nodes and scans.
 - `GET /dashboard/siem/alerts/` Alert queue UI.
 - `POST /dashboard/siem/rules/<rule_id>/toggle/` Toggle an alert rule.
+- `GET /dashboard/siem/cases/` Case management UI.
+- `POST /dashboard/siem/alerts/<alert_id>/case/` Promote an alert to a case.
 
 **Authentication**
 - If `SIEM_INGEST_TOKEN` is set, requests must include `X-SIEM-Token: <token>` or `Authorization: Bearer <token>`.

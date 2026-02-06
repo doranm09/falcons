@@ -9,6 +9,7 @@ Send syslog lines (RFC3164 or RFC5424) to:
 ```bash
 printf '<34>Oct 11 22:14:15 web01 sshd[123]: Failed password for root\n' | \
   curl -X POST http://localhost:8000/dashboard/siem/syslog/ \
+  -H "X-SIEM-Token: your-token" \
   -H "Content-Type: text/plain" \
   --data-binary @-
 ```
@@ -23,6 +24,8 @@ This maps to SIEM events with:
 Send JSON payloads to:
 
 `POST /dashboard/siem/windows/`
+
+Include `X-SIEM-Token: <token>` (or `Authorization: Bearer <token>`).
 
 ### Example
 ```json

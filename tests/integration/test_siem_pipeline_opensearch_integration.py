@@ -14,7 +14,7 @@ from django.urls import reverse
     OPENSEARCH_INDEX_PREFIX="siem-events",
     OPENSEARCH_VERIFY_TLS=False,
 )
-def test_pipeline_ingest_forwards_to_opensearch(client):
+def test_pipeline_ingest_forwards_to_opensearch(siem_client):
     responses.add(
         responses.POST,
         "http://opensearch:9200/_bulk",
@@ -27,7 +27,7 @@ def test_pipeline_ingest_forwards_to_opensearch(client):
         "src_ip": "10.1.1.14",
         "timestamp": "2026-02-06T12:12:00Z",
     }
-    resp = client.post(
+    resp = siem_client.post(
         reverse("dashboard:siem_pipeline_ingest"),
         data=json.dumps(payload),
         content_type="application/json",

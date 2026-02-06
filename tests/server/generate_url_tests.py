@@ -65,7 +65,7 @@ class TestComprehensiveURLCoverage:
             assert data['task_id'] == 'nmap-task'
 
     @pytest.mark.django_db
-    def test_agent_scan_flow(self, client):
+    def test_agent_scan_flow(self, agent_client):
         """Test agent-based scan start and results ingestion."""
         agent = AgentStatus.objects.create(agent_id='agent-1', hostname='test-host', ip_address='10.0.0.10')
 
@@ -74,7 +74,7 @@ class TestComprehensiveURLCoverage:
             'cidr': '10.0.0.0/24',
             'max_hosts': 10,
         }
-        response = client.post(
+        response = agent_client.post(
             reverse('dashboard:start-agent-scan'),
             json.dumps(start_payload),
             content_type='application/json'
@@ -95,7 +95,7 @@ class TestComprehensiveURLCoverage:
             'scan_id': scan.id,
             'hosts': ['10.0.0.11', '10.0.0.12'],
         }
-        response = client.post(
+        response = agent_client.post(
             reverse('dashboard:agent_scan_results'),
             json.dumps(results_payload),
             content_type='application/json'
@@ -180,19 +180,23 @@ class TestComprehensiveURLCoverage:
         assert 'history' in data
 
     @pytest.mark.django_db
-    def test_agent_report_api_auth_optional(self, client):
-        """Test agent_report: POST /agent/report/ (accepts any data, no auth required)"""
+    def test_agent_report_api_auth_optional(self, agent_client):
+        """Test agent_report: POST /agent/report/ (token required)"""
         # GET should fail
-        response = client.get(reverse('dashboard:agent_report'))
+        response = agent_client.get(reverse('dashboard:agent_report'))
         assert response.status_code == 405
 
         # POST with minimal data
         test_data = {'agent_id': 'test-agent', 'hostname': 'test-host'}
-        response = client.post(reverse('dashboard:agent_report'), json.dumps(test_data), content_type='application/json')
+        response = agent_client.post(
+            reverse('dashboard:agent_report'),
+            json.dumps(test_data),
+            content_type='application/json'
+        )
         assert response.status_code in [200, 400]  # May fail validation
 
     @pytest.mark.django_db
-    def test_agent_cyber_report_api(self, client):
+    def test_agent_cyber_report_api(self, agent_client):
         """Test agent_cyber_report: POST /agent/cyber_report/"""
         # Create node first
         node = Node.objects.create(ip_address="192.168.1.1", name="test-node", agent_id="test-agent")
@@ -207,20 +211,24 @@ class TestComprehensiveURLCoverage:
             }
         }
 
-        response = client.post(reverse('dashboard:agent_cyber_report'), json.dumps(test_data), content_type='application/json')
+        response = agent_client.post(
+            reverse('dashboard:agent_cyber_report'),
+            json.dumps(test_data),
+            content_type='application/json'
+        )
         assert response.status_code == 200
 
     @pytest.mark.django_db
-    def test_agent_commands_api(self, client):
+    def test_agent_commands_api(self, agent_client):
         """Test agent_commands: GET /agent/commands/?agent_id=X"""
-        response = client.get(reverse('dashboard:agent_commands') + '?agent_id=test-agent')
+        response = agent_client.get(reverse('dashboard:agent_commands') + '?agent_id=test-agent')
         assert response.status_code == 200
 
         data = json.loads(response.content)
         assert 'commands' in data
 
     @pytest.mark.django_db
-    def test_agent_command_result_api(self, client):
+    def test_agent_command_result_api(self, agent_client):
         """Test agent_command_result: POST /agent/command_result/"""
         # Create command first
         command = AgentCommand.objects.create(agent_id='test-agent', action='ping')
@@ -231,7 +239,11 @@ class TestComprehensiveURLCoverage:
             'output': 'PING google.com: success'
         }
 
-        response = client.post(reverse('dashboard:agent_command_result'), json.dumps(test_data), content_type='application/json')
+        response = agent_client.post(
+            reverse('dashboard:agent_command_result'),
+            json.dumps(test_data),
+            content_type='application/json'
+        )
         assert response.status_code == 200
 
     @pytest.mark.django_db
@@ -403,14 +415,22 @@ class TestErrorCasesAndEdgeConditions:
         assert response.status_code == 404
 
     @pytest.mark.django_db
-    def test_agent_report_invalid_json(self, client):
+    def test_agent_report_invalid_json(self, agent_client):
         """Test agent_report with invalid JSON"""
-        response = client.post(reverse('dashboard:agent_report'), 'invalid json', content_type='application/json')
+        response = agent_client.post(
+            reverse('dashboard:agent_report'),
+            'invalid json',
+            content_type='application/json'
+        )
         assert response.status_code == 400
 
     @pytest.mark.django_db
-    def test_agent_cyber_report_missing_data(self, client):
+    def test_agent_cyber_report_missing_data(self, agent_client):
         """Test agent_cyber_report with missing required data"""
         test_data = {'agent_id': 'test-agent'}  # Missing cyber_data
-        response = client.post(reverse('dashboard:agent_cyber_report'), json.dumps(test_data), content_type='application/json')
+        response = agent_client.post(
+            reverse('dashboard:agent_cyber_report'),
+            json.dumps(test_data),
+            content_type='application/json'
+        )
         assert response.status_code == 400

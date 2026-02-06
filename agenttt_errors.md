@@ -256,3 +256,11 @@ SiemNormalizeError: Invalid timestamp (RFC3164 timestamp missing year)
 - SIEM write endpoints now require admin/analyst; audit log view at `/dashboard/siem/audit/` (admin-only).
 - Docs added: `docs/siem_rbac_audit.md` and README/docs updates.
 - Tests passed: RBAC/audit + updated SIEM tests (13 tests).
+
+## Context for Next Agent (2026-02-06)
+- SIEM Task 15 implemented: production security with required tokens, secret file support, and TLS env toggles.
+- Settings: `read_secret` helper, `SIEM_INGEST_TOKEN_REQUIRED`, `AGENT_API_TOKEN_REQUIRED`, `AGENT_API_TOKEN`, `OPENSEARCH_PASS` via file, TLS env flags.
+- Agent endpoints now require `X-Agent-Token`; SIEM ingest endpoints require `X-SIEM-Token`.
+- Host agent updated to send `X-Agent-Token` automatically.
+- Docs added: `docs/siem_production_security.md`, plus token updates in other docs.
+- Tests passed: security settings/unit + agent token + SIEM ingest/token flows (25 tests).

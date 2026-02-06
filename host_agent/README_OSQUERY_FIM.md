@@ -48,3 +48,14 @@ Events are sent to `/dashboard/siem/pipeline/ingest/` with:
 - `event_type`: `osquery.result` or `fim.change`
 - `source`: `osquery` or `fim`
 - `raw`: query results or change details
+
+## Authentication
+Set the following environment variables on the agent so requests are authorized:
+```
+export SIEM_INGEST_TOKEN=your-siem-token
+export AGENT_API_TOKEN=your-agent-token
+```
+
+The agent includes these headers automatically:
+- `X-SIEM-Token` for SIEM ingest endpoints
+- `X-Agent-Token` for agent API endpoints

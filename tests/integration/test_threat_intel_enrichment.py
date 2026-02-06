@@ -7,8 +7,8 @@ from dashboard.models import Alert, AlertRule, ThreatIntelMatch
 
 
 @pytest.mark.django_db
-def test_threat_intel_enrichment_in_alerts(client):
-    client.post(
+def test_threat_intel_enrichment_in_alerts(siem_analyst_client):
+    siem_analyst_client.post(
         reverse("dashboard:siem_threat_intel_ingest"),
         data=json.dumps({"indicators": [{"indicator_type": "ip", "value": "10.10.0.13"}]}),
         content_type="application/json",
@@ -38,7 +38,7 @@ def test_threat_intel_enrichment_in_alerts(client):
         "message": "ET MALWARE",
         "asset_ip": "10.10.0.13",
     }
-    resp = client.post(
+    resp = siem_analyst_client.post(
         reverse("dashboard:siem_event_ingest"),
         data=json.dumps(event_payload),
         content_type="application/json",

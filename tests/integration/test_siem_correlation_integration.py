@@ -8,7 +8,7 @@ from dashboard.models import Alert, AlertRule, Node, ScanRun, ScanVulnerability,
 
 
 @pytest.mark.django_db
-def test_pipeline_ingest_adds_correlation_tags(client):
+def test_pipeline_ingest_adds_correlation_tags(siem_client):
     scan_run = ScanRun.objects.create(cidr="10.0.0.0/24")
     node = Node.objects.create(
         scan_run=scan_run,
@@ -47,7 +47,7 @@ def test_pipeline_ingest_adds_correlation_tags(client):
         "ts": 1760088060,
         "message": "pipeline conn",
     }
-    ingest_resp = client.post(
+    ingest_resp = siem_client.post(
         reverse("dashboard:siem_pipeline_ingest"),
         data=json.dumps(payload),
         content_type="application/json",

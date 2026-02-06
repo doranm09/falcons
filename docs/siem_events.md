@@ -24,7 +24,8 @@ This feature provides a minimal SIEM event store with ingestion and search APIs.
 - `POST /dashboard/siem/windows/` Ingest Windows Event Log JSON payloads.
 
 **Authentication**
-- If `SIEM_INGEST_TOKEN` is set, requests must include `X-SIEM-Token: <token>` or `Authorization: Bearer <token>`.
+- SIEM ingest endpoints require `X-SIEM-Token: <token>` or `Authorization: Bearer <token>`.
+- Set `SIEM_INGEST_TOKEN` (or `SIEM_INGEST_TOKEN_FILE`) and keep `SIEM_INGEST_TOKEN_REQUIRED=1` (default). For dev, set `SIEM_INGEST_TOKEN_REQUIRED=0`.
 - `SIEM_MAX_INGEST_BATCH` controls the maximum number of events per request (default 500).
 
 **Ingest Example**

@@ -275,6 +275,8 @@ def start_agent_scan(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def agent_scan_results(request):
+    if not _check_agent_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
@@ -747,6 +749,8 @@ def get_scan_history(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def agent_report(request):
+    if not _check_agent_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
@@ -826,6 +830,8 @@ def agent_report(request):
 @require_http_methods(["POST"])
 def agent_cyber_report(request):
     """Handle cyber template data from agents."""
+    if not _check_agent_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
@@ -848,6 +854,8 @@ def agent_cyber_report(request):
 @require_http_methods(["POST"])
 def sbom_ingest(request):
     """Receive and store SBOM payloads from agents."""
+    if not _check_agent_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
@@ -951,9 +959,25 @@ def sbom_ingest(request):
 
 def _check_siem_token(request) -> bool:
     token = getattr(settings, "SIEM_INGEST_TOKEN", "")
-    if not token:
+    required = getattr(settings, "SIEM_INGEST_TOKEN_REQUIRED", True)
+    if not required:
         return True
+    if not token:
+        return False
     header = request.headers.get("X-SIEM-Token") or request.headers.get("Authorization", "")
+    if header.startswith("Bearer "):
+        header = header.split(" ", 1)[1].strip()
+    return header == token
+
+
+def _check_agent_token(request) -> bool:
+    token = getattr(settings, "AGENT_API_TOKEN", "")
+    required = getattr(settings, "AGENT_API_TOKEN_REQUIRED", True)
+    if not required:
+        return True
+    if not token:
+        return False
+    header = request.headers.get("X-Agent-Token") or request.headers.get("Authorization", "")
     if header.startswith("Bearer "):
         header = header.split(" ", 1)[1].strip()
     return header == token
@@ -1727,6 +1751,8 @@ def agent_sbom_bundle(request, agent_id):
 
 @require_http_methods(["GET"])
 def agent_commands(request):
+    if not _check_agent_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
     agent_id = request.GET.get("agent_id")
     commands = AgentCommand.objects.filter(agent_id=agent_id, acknowledged=False)
     serialized = [
@@ -1741,6 +1767,8 @@ def agent_commands(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def agent_command_result(request):
+    if not _check_agent_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
     data = json.loads(request.body)
     agent_id = data.get("agent_id")
     command_id = data.get("command_id")
@@ -2409,6 +2437,8 @@ def agent_version_api(request):
 @require_http_methods(["POST"])
 def agent_network_metadata(request):
     """Receive detailed network metadata from agents."""
+    if not _check_agent_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:

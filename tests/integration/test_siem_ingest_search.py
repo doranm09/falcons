@@ -5,7 +5,7 @@ from django.urls import reverse
 
 
 @pytest.mark.django_db
-def test_siem_ingest_and_search(client):
+def test_siem_ingest_and_search(siem_client):
     payload = [
         {
             "event_type": "suricata.alert",
@@ -25,14 +25,14 @@ def test_siem_ingest_and_search(client):
         },
     ]
 
-    ingest_resp = client.post(
+    ingest_resp = siem_client.post(
         reverse("dashboard:siem_event_ingest"),
         data=json.dumps(payload),
         content_type="application/json",
     )
     assert ingest_resp.status_code == 201
 
-    search_resp = client.get(
+    search_resp = siem_client.get(
         reverse("dashboard:siem_event_search"),
         {
             "event_type": "suricata.alert",

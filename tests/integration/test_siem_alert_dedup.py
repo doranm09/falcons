@@ -7,7 +7,7 @@ from dashboard.models import Alert, AlertRule
 
 
 @pytest.mark.django_db
-def test_alert_deduplication(client):
+def test_alert_deduplication(siem_client):
     rule, _ = AlertRule.objects.get_or_create(
         name="Suricata Alerts",
         defaults={
@@ -33,13 +33,13 @@ def test_alert_deduplication(client):
         "asset_ip": "10.10.0.10",
     }
 
-    resp1 = client.post(
+    resp1 = siem_client.post(
         reverse("dashboard:siem_event_ingest"),
         data=json.dumps(payload),
         content_type="application/json",
     )
     assert resp1.status_code == 201
-    resp2 = client.post(
+    resp2 = siem_client.post(
         reverse("dashboard:siem_event_ingest"),
         data=json.dumps(payload),
         content_type="application/json",

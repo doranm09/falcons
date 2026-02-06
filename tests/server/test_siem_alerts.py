@@ -7,7 +7,7 @@ from dashboard.models import Alert, AlertRule
 
 
 @pytest.mark.django_db
-def test_siem_ingest_creates_alert(client):
+def test_siem_ingest_creates_alert(siem_client):
     rule = AlertRule.objects.create(
         name="Sigma Rule",
         rule_type="sigma",
@@ -23,7 +23,7 @@ def test_siem_ingest_creates_alert(client):
         "timestamp": "2026-02-06T12:20:00Z",
         "message": "conn observed",
     }
-    resp = client.post(
+    resp = siem_client.post(
         reverse("dashboard:siem_event_ingest"),
         data=json.dumps(payload),
         content_type="application/json",

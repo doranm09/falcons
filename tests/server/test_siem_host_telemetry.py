@@ -5,7 +5,7 @@ from django.urls import reverse
 
 
 @pytest.mark.django_db
-def test_pipeline_ingest_osquery_event(client):
+def test_pipeline_ingest_osquery_event(siem_client):
     payload = {
         "event_type": "osquery.result",
         "source": "osquery",
@@ -13,7 +13,7 @@ def test_pipeline_ingest_osquery_event(client):
         "message": "osquery: select 1",
         "raw": {"query": "select 1", "results": [{"x": 1}]},
     }
-    resp = client.post(
+    resp = siem_client.post(
         reverse("dashboard:siem_pipeline_ingest"),
         data=json.dumps(payload),
         content_type="application/json",

@@ -8,7 +8,7 @@ from dashboard.models import Alert, AlertRule, Node, ScanRun, ScanVulnerability,
 
 
 @pytest.mark.django_db
-def test_siem_alert_includes_correlation_tags(client):
+def test_siem_alert_includes_correlation_tags(siem_client):
     scan_run = ScanRun.objects.create(cidr="10.0.0.0/24")
     node = Node.objects.create(
         scan_run=scan_run,
@@ -49,7 +49,7 @@ def test_siem_alert_includes_correlation_tags(client):
         "message": "conn observed",
         "asset_ip": "10.0.0.9",
     }
-    resp = client.post(
+    resp = siem_client.post(
         reverse("dashboard:siem_event_ingest"),
         data=json.dumps(payload),
         content_type="application/json",

@@ -14,7 +14,7 @@ from django.urls import reverse
     OPENSEARCH_INDEX_PREFIX="siem-events",
     OPENSEARCH_VERIFY_TLS=False,
 )
-def test_siem_ingest_forwards_to_opensearch(client):
+def test_siem_ingest_forwards_to_opensearch(siem_client):
     responses.add(
         responses.POST,
         "http://opensearch:9200/_bulk",
@@ -28,7 +28,7 @@ def test_siem_ingest_forwards_to_opensearch(client):
         "timestamp": "2026-02-06T12:10:00Z",
         "message": "alert",
     }
-    resp = client.post(
+    resp = siem_client.post(
         reverse("dashboard:siem_event_ingest"),
         data=json.dumps(payload),
         content_type="application/json",

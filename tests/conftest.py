@@ -16,6 +16,14 @@ def setup_isolated_media_root(tmp_path):
     settings.MEDIA_ROOT.mkdir(exist_ok=True)
 
 
+@pytest.fixture(autouse=True)
+def setup_siem_tokens(settings):
+    settings.SIEM_INGEST_TOKEN = "test-siem-token"
+    settings.SIEM_INGEST_TOKEN_REQUIRED = True
+    settings.AGENT_API_TOKEN = "test-agent-token"
+    settings.AGENT_API_TOKEN_REQUIRED = True
+
+
 @pytest.fixture
 def user():
     """Create a regular user."""
@@ -51,12 +59,30 @@ def admin_client(admin_user):
 
 
 @pytest.fixture
+def siem_client(settings):
+    """Django test client with SIEM ingest token headers."""
+    client = Client()
+    client.defaults["HTTP_X_SIEM_TOKEN"] = settings.SIEM_INGEST_TOKEN
+    return client
+
+
+@pytest.fixture
+def agent_client(settings):
+    """Django test client with agent token headers."""
+    client = Client()
+    client.defaults["HTTP_X_AGENT_TOKEN"] = settings.AGENT_API_TOKEN
+    return client
+
+
+@pytest.fixture
 def siem_admin_client(admin_user):
     """Django test client logged in as SIEM admin."""
     SiemUserRole.objects.update_or_create(
         user=admin_user, defaults={"role": SiemUserRole.Role.ADMIN}
     )
     client = Client()
+    client.defaults["HTTP_X_SIEM_TOKEN"] = settings.SIEM_INGEST_TOKEN
+    client.defaults["HTTP_X_AGENT_TOKEN"] = settings.AGENT_API_TOKEN
     client.login(username=admin_user.username, password="password")
     return client
 
@@ -68,6 +94,8 @@ def siem_analyst_client(user):
         user=user, defaults={"role": SiemUserRole.Role.ANALYST}
     )
     client = Client()
+    client.defaults["HTTP_X_SIEM_TOKEN"] = settings.SIEM_INGEST_TOKEN
+    client.defaults["HTTP_X_AGENT_TOKEN"] = settings.AGENT_API_TOKEN
     client.login(username=user.username, password="password")
     return client
 

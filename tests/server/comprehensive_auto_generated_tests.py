@@ -690,7 +690,7 @@ class TestIntegration:
 class TestErrorHandling:
     """Error handling and edge case tests."""
 
-    def test_invalid_json_payloads(self, client):
+    def test_invalid_json_payloads(self, agent_client):
         """Test API endpoints handle invalid JSON gracefully."""
         api_endpoints = [
             reverse("dashboard:agent_report"),
@@ -699,7 +699,7 @@ class TestErrorHandling:
         ]
 
         for endpoint in api_endpoints:
-            response = client.post(endpoint, "invalid json", content_type="application/json")
+            response = agent_client.post(endpoint, "invalid json", content_type="application/json")
             assert response.status_code == 400
 
     def test_missing_required_fields(self, client):

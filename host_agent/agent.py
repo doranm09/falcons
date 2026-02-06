@@ -40,6 +40,13 @@ AGENT_NAME = "CyberTwin Host Agent"
 DEFAULT_FIM_BASELINE = os.path.expanduser("~/.cybertwin/fim_baseline.json")
 
 
+def agent_auth_headers():
+    token = os.environ.get("AGENT_API_TOKEN", "").strip()
+    if token:
+        return {"X-Agent-Token": token}
+    return {}
+
+
 # ---- HTTP helper ----
 def http_post_json(url, payload, headers=None):
     try:
@@ -379,7 +386,7 @@ def send_heartbeat():
     data["agent_version"] = AGENT_VERSION
 
     url = f"{SERVER_URL.rstrip('/')}/agent/report/"
-    res = http_post_json(url, data)
+    res = http_post_json(url, data, headers=agent_auth_headers())
     if res is None:
         print("[heartbeat] error (request failed)")
     else:
@@ -394,7 +401,7 @@ def send_heartbeat():
                     "agent_id": AGENT_ID,
                     "cyber_data": cyber_data
                 }
-                cyber_res = http_post_json(cyber_url, cyber_payload)
+                cyber_res = http_post_json(cyber_url, cyber_payload, headers=agent_auth_headers())
                 if cyber_res:
                     print(f"[cyber_data] status={cyber_res.status_code}")
                 else:
@@ -431,7 +438,7 @@ def send_network_metadata():
         }
 
         url = f"{SERVER_URL.rstrip('/')}/agent/network_metadata/"
-        res = http_post_json(url, network_data)
+        res = http_post_json(url, network_data, headers=agent_auth_headers())
         if res:
             print(f"[network_metadata] status={res.status_code}")
             return True
@@ -445,7 +452,7 @@ def send_network_metadata():
 
 def poll_for_commands():
     url = f"{SERVER_URL.rstrip('/')}/agent/commands/?agent_id={AGENT_ID}"
-    res = http_get_json(url)
+    res = http_get_json(url, headers=agent_auth_headers())
     if res is None:
         print("[commands] polling error (request failed)")
         return
@@ -503,7 +510,7 @@ def handle_command(cmd):
                 "hosts": hosts,
             }
             scan_url = f"{SERVER_URL.rstrip('/')}/agent/scan_results/"
-            res = http_post_json(scan_url, payload)
+            res = http_post_json(scan_url, payload, headers=agent_auth_headers())
             status = res.status_code if res else "failed"
             return_output(cmd_id, f"scan complete: {len(hosts)} hosts (status={status})")
         except Exception as e:
@@ -521,7 +528,7 @@ def handle_command(cmd):
             "cyber_data": cyber_data
         }
         cyber_url = f"{SERVER_URL.rstrip('/')}/agent/cyber_report/"
-        cyber_res = http_post_json(cyber_url, cyber_payload)
+        cyber_res = http_post_json(cyber_url, cyber_payload, headers=agent_auth_headers())
         status = cyber_res.status_code if cyber_res else "failed"
         return_output(cmd_id, f"cyber data posted (status={status})")
     elif action == "network_metadata":
@@ -623,7 +630,7 @@ def return_output(cmd_id, output):
         "command_id": cmd_id,
         "output": output
     }
-    res = http_post_json(url, payload)
+    res = http_post_json(url, payload, headers=agent_auth_headers())
     if res is None:
         print("[command_result] failed (request failed)")
 
@@ -640,6 +647,7 @@ def post_sbom_to_server(sbom_data, server_url=None, agent_id="unknown", vulnerab
         "X-Agent-ID": agent_id,
         "X-Timestamp": datetime.utcnow().isoformat() + "Z"
     }
+    headers.update(agent_auth_headers())
     payload = sbom_data
     if vulnerabilities:
         payload = {"sbom": sbom_data, "vulnerabilities": vulnerabilities}

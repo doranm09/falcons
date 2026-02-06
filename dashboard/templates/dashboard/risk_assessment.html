@@ -3,6 +3,7 @@
 
 {% block content %}
 <div class="container-fluid p-4">
+  <form id="risk-csrf-form" class="d-none">{% csrf_token %}</form>
   <div class="row mb-4">
     <div class="col-12">
       <h2><i class="bi bi-shield-exclamation"></i> Risk Assessment</h2>
@@ -16,6 +17,9 @@
     </li>
     <li class="nav-item" role="presentation">
       <button class="nav-link" id="risk-nodes-tab" data-bs-toggle="tab" data-bs-target="#risk-nodes" type="button" role="tab">Nodes</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="risk-mappings-tab" data-bs-toggle="tab" data-bs-target="#risk-mappings" type="button" role="tab">Mappings</button>
     </li>
     <li class="nav-item" role="presentation">
       <button class="nav-link" id="risk-probability-tab" data-bs-toggle="tab" data-bs-target="#risk-probability" type="button" role="tab">Probability</button>
@@ -64,6 +68,53 @@
               <tbody>
                 <tr>
                   <td colspan="2" class="text-center text-muted">Loading nodes…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="risk-mappings" role="tabpanel">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <h5 class="mb-0">Risk Node Mappings</h5>
+          <div class="d-flex gap-2">
+            <label class="visually-hidden" for="risk-mapping-filter">Filter mappings</label>
+            <input class="form-control form-control-sm" id="risk-mapping-filter" placeholder="Filter nodes or IPs">
+            <button class="btn btn-sm btn-outline-primary" id="risk-mappings-refresh">
+              <i class="bi bi-arrow-clockwise"></i> Refresh
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" id="risk-mappings-import">
+              <i class="bi bi-upload"></i> Import CSV
+            </button>
+            <button class="btn btn-sm btn-outline-primary" id="risk-mappings-save-all">
+              <i class="bi bi-save"></i> Save All
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          <input type="file" id="risk-mapping-file" class="d-none" accept=".csv,text/csv">
+          <div id="risk-mapping-summary" class="text-muted mb-2">Loading mappings…</div>
+          <div class="table-responsive">
+            <table class="table table-hover mb-0" id="risk-mapping-table">
+              <thead class="table-light">
+                <tr>
+                  <th>Risk Node ID</th>
+                  <th>Map to Node</th>
+                  <th>IP Address</th>
+                  <th>Label</th>
+                  <th>Notes</th>
+                  <th>Active</th>
+                  <th>Node Metadata</th>
+                  <th>Action</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colspan="9" class="text-center text-muted">Loading mappings…</td>
                 </tr>
               </tbody>
             </table>
@@ -185,8 +236,19 @@
   const resultsEl = document.getElementById('risk-results');
   const riskGraphStatus = document.getElementById('risk-graph-status');
   const riskGraphContainer = document.getElementById('risk-network-graph');
+  const mappingTableBody = document.querySelector('#risk-mapping-table tbody');
+  const mappingFilter = document.getElementById('risk-mapping-filter');
+  const mappingSummary = document.getElementById('risk-mapping-summary');
+  const mappingFileInput = document.getElementById('risk-mapping-file');
+  const mappingImportButton = document.getElementById('risk-mappings-import');
+  const mappingSaveAllButton = document.getElementById('risk-mappings-save-all');
   let riskCy = null;
   let riskGraphElements = [];
+  let riskMappingRows = new Map();
+  let mappingNodeById = new Map();
+  let mappingNodeByName = new Map();
+  let mappingNodeByIp = new Map();
+  let mappingSummaryData = null;
 
   async function fetchStatus() {
     statusEl.textContent = 'Loading status…';
@@ -233,9 +295,448 @@
     });
   }
 
+  function getCSRFToken() {
+    const input = document.querySelector('#risk-csrf-form input[name=csrfmiddlewaretoken]');
+    if (input && input.value) return input.value;
+    const name = 'csrftoken=';
+    const cookies = document.cookie ? document.cookie.split(';') : [];
+    for (let c of cookies) {
+      c = c.trim();
+      if (c.startsWith(name)) return decodeURIComponent(c.slice(name.length));
+    }
+    return '';
+  }
+
+  function escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function applyMappingFilter() {
+    const term = (mappingFilter?.value || '').toLowerCase();
+    const rows = Array.from(mappingTableBody.querySelectorAll('tr'));
+    rows.forEach(row => {
+      const text = row.textContent.toLowerCase();
+      row.style.display = text.includes(term) ? '' : 'none';
+    });
+  }
+
+  function nodeMetaText(node) {
+    if (!node) return '—';
+    const parts = [];
+    if (node.os_info) parts.push(`OS: ${node.os_info}`);
+    if (node.platform_info) parts.push(`Platform: ${node.platform_info}`);
+    if (node.cpu_count) parts.push(`CPU: ${node.cpu_count}`);
+    if (node.memory_total) {
+      const gb = Number(node.memory_total) / (1024 * 1024 * 1024);
+      if (!Number.isNaN(gb)) {
+        parts.push(`RAM: ${gb.toFixed(1)} GB`);
+      }
+    }
+    if (Array.isArray(node.active_ports)) parts.push(`Ports: ${node.active_ports.length}`);
+    if (Array.isArray(node.mac_addresses)) parts.push(`MACs: ${node.mac_addresses.length}`);
+    if (node.last_heartbeat) parts.push(`Last: ${node.last_heartbeat}`);
+    return parts.length ? parts.join(' | ') : '—';
+  }
+
+  function updateMappingSummary(extraMessage) {
+    if (!mappingSummary || !mappingSummaryData) return;
+    const mappedCount = mappingSummaryData.mappings.filter(
+      mapping => mapping.active !== false && (mapping.node_id || mapping.ip_address)
+    ).length;
+    const summaryParts = [`Mapped ${mappedCount} / ${mappingSummaryData.risk_nodes.length}`];
+    if (mappingSummaryData.risk_error) summaryParts.push(`Risk service: ${mappingSummaryData.risk_error}`);
+    if (extraMessage) summaryParts.push(extraMessage);
+    mappingSummary.textContent = summaryParts.join(' • ');
+  }
+
+  function renderMappingTable(data) {
+    if (!mappingTableBody) return;
+    const riskNodes = Array.isArray(data.risk_nodes) ? data.risk_nodes : [];
+    const nodes = Array.isArray(data.nodes) ? data.nodes : [];
+    const mappings = Array.isArray(data.mappings) ? data.mappings : [];
+    const mappingByRisk = new Map(mappings.map(mapping => [String(mapping.risk_node_id), mapping]));
+
+    mappingNodeById = new Map();
+    mappingNodeByName = new Map();
+    mappingNodeByIp = new Map();
+    const nodeOptions = nodes.map(node => {
+      const name = node.name || `Node ${node.id}`;
+      const ip = node.ip_address ? ` (${node.ip_address})` : '';
+      mappingNodeById.set(String(node.id), node);
+      if (node.name) mappingNodeByName.set(node.name.toLowerCase(), String(node.id));
+      if (node.ip_address) mappingNodeByIp.set(node.ip_address, String(node.id));
+      return {
+        value: String(node.id),
+        ip: node.ip_address || '',
+        label: `${name}${ip}`,
+      };
+    });
+
+    mappingTableBody.innerHTML = riskNodes.map(riskId => {
+      const mapping = mappingByRisk.get(String(riskId)) || {};
+      const selectedNodeId = mapping.node_id ? String(mapping.node_id) : '';
+      const label = mapping.label || '';
+      const notes = mapping.notes || '';
+      const ip = mapping.ip_address || '';
+      const active = mapping.active !== false;
+      const metaText = nodeMetaText(mappingNodeById.get(selectedNodeId));
+      const rowOptions = ['<option value="">—</option>'].concat(
+        nodeOptions.map(option => {
+          const selected = option.value === selectedNodeId ? ' selected' : '';
+          return `<option value="${option.value}" data-ip="${escapeHtml(option.ip)}"${selected}>${escapeHtml(option.label)}</option>`;
+        })
+      ).join('');
+
+      return `<tr data-risk-node-id="${escapeHtml(riskId)}">
+        <td class="fw-semibold">${escapeHtml(riskId)}</td>
+        <td>
+          <select class="form-select form-select-sm risk-map-node">
+            ${rowOptions}
+          </select>
+        </td>
+        <td>
+          <input type="text" class="form-control form-control-sm risk-map-ip" value="${escapeHtml(ip)}" placeholder="192.168.1.10">
+        </td>
+        <td>
+          <input type="text" class="form-control form-control-sm risk-map-label" value="${escapeHtml(label)}" placeholder="Optional label">
+        </td>
+        <td>
+          <input type="text" class="form-control form-control-sm risk-map-notes" value="${escapeHtml(notes)}" placeholder="Notes">
+        </td>
+        <td class="text-center">
+          <input type="checkbox" class="form-check-input risk-map-active" ${active ? 'checked' : ''}>
+        </td>
+        <td class="small text-muted risk-map-meta">${escapeHtml(metaText)}</td>
+        <td>
+          <button class="btn btn-sm btn-outline-primary risk-mapping-save">Save</button>
+        </td>
+        <td class="text-muted small risk-map-status">—</td>
+      </tr>`;
+    }).join('');
+
+    riskMappingRows = new Map();
+    Array.from(mappingTableBody.querySelectorAll('tr')).forEach(row => {
+      const riskId = row.dataset.riskNodeId;
+      if (riskId) riskMappingRows.set(riskId, row);
+    });
+    mappingSummaryData = { risk_nodes: riskNodes, mappings, risk_error: data.risk_error };
+    updateMappingSummary();
+    applyMappingFilter();
+  }
+
+  async function fetchMappings() {
+    if (!mappingTableBody) return;
+    mappingTableBody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Loading mappings…</td></tr>';
+    if (mappingSummary) mappingSummary.textContent = 'Loading mappings…';
+    try {
+      const response = await fetch("{% url 'dashboard:risk_assessment_mappings' %}");
+      const data = await response.json();
+      if (!response.ok) {
+        const message = data.error || 'Error loading mappings';
+        mappingTableBody.innerHTML = `<tr><td colspan="9" class="text-center text-muted">${message}</td></tr>`;
+        if (mappingSummary) mappingSummary.textContent = message;
+        return;
+      }
+      if (!data.risk_nodes || data.risk_nodes.length === 0) {
+        mappingTableBody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No risk nodes available.</td></tr>';
+        if (mappingSummary) mappingSummary.textContent = 'No risk nodes available.';
+        return;
+      }
+      renderMappingTable(data);
+    } catch (err) {
+      mappingTableBody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Mappings unavailable.</td></tr>';
+      if (mappingSummary) mappingSummary.textContent = 'Mappings unavailable.';
+    }
+  }
+
+  async function saveMappingRow(row) {
+    const riskNodeId = row.dataset.riskNodeId;
+    const nodeSelect = row.querySelector('.risk-map-node');
+    const ipInput = row.querySelector('.risk-map-ip');
+    const labelInput = row.querySelector('.risk-map-label');
+    const notesInput = row.querySelector('.risk-map-notes');
+    const activeInput = row.querySelector('.risk-map-active');
+    const statusEl = row.querySelector('.risk-map-status');
+
+    if (statusEl) statusEl.textContent = 'Saving…';
+
+    const payload = {
+      risk_node_id: riskNodeId,
+      node_id: nodeSelect?.value || null,
+      ip_address: (ipInput?.value || '').trim(),
+      label: (labelInput?.value || '').trim(),
+      notes: (notesInput?.value || '').trim(),
+      active: activeInput ? activeInput.checked : true,
+    };
+
+    try {
+      const response = await fetch("{% url 'dashboard:risk_assessment_mappings' %}", {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCSRFToken(),
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Save failed');
+      }
+      if (statusEl) statusEl.textContent = `Saved ${new Date().toLocaleTimeString()}`;
+    } catch (err) {
+      if (statusEl) statusEl.textContent = `Error: ${err.message}`;
+    }
+  }
+
+  function collectRowPayload(row) {
+    const riskNodeId = row.dataset.riskNodeId;
+    const nodeSelect = row.querySelector('.risk-map-node');
+    const ipInput = row.querySelector('.risk-map-ip');
+    const labelInput = row.querySelector('.risk-map-label');
+    const notesInput = row.querySelector('.risk-map-notes');
+    const activeInput = row.querySelector('.risk-map-active');
+
+    return {
+      risk_node_id: riskNodeId,
+      node_id: nodeSelect?.value || null,
+      ip_address: (ipInput?.value || '').trim(),
+      label: (labelInput?.value || '').trim(),
+      notes: (notesInput?.value || '').trim(),
+      active: activeInput ? activeInput.checked : true,
+    };
+  }
+
+  function setRowStatus(row, message, isError = false) {
+    const statusEl = row.querySelector('.risk-map-status');
+    if (!statusEl) return;
+    statusEl.textContent = message;
+    statusEl.classList.toggle('text-danger', Boolean(isError));
+    statusEl.classList.toggle('text-muted', !isError);
+  }
+
+  async function saveAllMappings() {
+    if (!mappingTableBody) return;
+    const rows = Array.from(mappingTableBody.querySelectorAll('tr'));
+    rows.forEach(row => setRowStatus(row, 'Saving…'));
+
+    const payload = { mappings: rows.map(collectRowPayload) };
+    try {
+      const response = await fetch("{% url 'dashboard:risk_assessment_mappings' %}", {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCSRFToken(),
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        const errors = Array.isArray(data.errors) ? data.errors : [];
+        const errorsByRisk = new Map();
+        errors.forEach(error => {
+          if (error.risk_node_id) {
+            errorsByRisk.set(String(error.risk_node_id), error.error || 'Error');
+          }
+        });
+        rows.forEach((row, index) => {
+          const riskId = row.dataset.riskNodeId;
+          if (errorsByRisk.has(riskId)) {
+            setRowStatus(row, `Error: ${errorsByRisk.get(riskId)}`, true);
+          } else if (errors.some(err => err.index === index)) {
+            const err = errors.find(entry => entry.index === index);
+            setRowStatus(row, `Error: ${err.error || 'Error'}`, true);
+          } else {
+            setRowStatus(row, `Saved ${new Date().toLocaleTimeString()}`);
+          }
+        });
+        updateMappingSummary('Save all encountered errors');
+        return;
+      }
+      rows.forEach(row => setRowStatus(row, `Saved ${new Date().toLocaleTimeString()}`));
+      updateMappingSummary('Save all completed');
+    } catch (err) {
+      rows.forEach(row => setRowStatus(row, `Error: ${err.message}`, true));
+      updateMappingSummary('Save all failed');
+    }
+  }
+
+  function parseCsvLine(line) {
+    const values = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i += 1) {
+      const char = line[i];
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"';
+          i += 1;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        values.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    values.push(current);
+    return values.map(value => value.trim());
+  }
+
+  function parseCsv(text) {
+    const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    if (!lines.length) return { headers: [], rows: [] };
+    const headers = parseCsvLine(lines[0]).map(header => header.trim());
+    const rows = lines.slice(1).map(line => parseCsvLine(line));
+    return { headers, rows };
+  }
+
+  function applyCsvMappings(records) {
+    if (!records.length) return { updated: 0, missing: 0 };
+    let updated = 0;
+    let missing = 0;
+    records.forEach(record => {
+      const riskNodeId = record.risk_node_id;
+      if (!riskNodeId) return;
+      const row = riskMappingRows.get(riskNodeId);
+      if (!row) {
+        missing += 1;
+        return;
+      }
+
+      const nodeSelect = row.querySelector('.risk-map-node');
+      const ipInput = row.querySelector('.risk-map-ip');
+      const labelInput = row.querySelector('.risk-map-label');
+      const notesInput = row.querySelector('.risk-map-notes');
+      const activeInput = row.querySelector('.risk-map-active');
+      const metaCell = row.querySelector('.risk-map-meta');
+
+      if (record.node_id && nodeSelect) {
+        nodeSelect.value = String(record.node_id);
+      } else if (record.node_name && nodeSelect) {
+        const lookup = mappingNodeByName.get(record.node_name.toLowerCase());
+        if (lookup) nodeSelect.value = lookup;
+      } else if (record.ip_address && nodeSelect) {
+        const lookup = mappingNodeByIp.get(record.ip_address);
+        if (lookup) nodeSelect.value = lookup;
+      }
+
+      if (record.ip_address && ipInput) ipInput.value = record.ip_address;
+      if (record.label && labelInput) labelInput.value = record.label;
+      if (record.notes && notesInput) notesInput.value = record.notes;
+      if (typeof record.active === 'boolean' && activeInput) activeInput.checked = record.active;
+
+      if (metaCell && nodeSelect) {
+        const meta = nodeMetaText(mappingNodeById.get(nodeSelect.value));
+        metaCell.textContent = meta;
+      }
+
+      updated += 1;
+    });
+    return { updated, missing };
+  }
+
+  function csvToRecords(text) {
+    const { headers, rows } = parseCsv(text);
+    const headerMap = headers.map(header => header.toLowerCase());
+    const findIndex = (names) => {
+      for (const name of names) {
+        const idx = headerMap.indexOf(name);
+        if (idx >= 0) return idx;
+      }
+      return -1;
+    };
+
+    const riskIdx = findIndex(['risk_node_id', 'risknode', 'risk_node', 'risknodeid', 'risk id', 'node']);
+    if (riskIdx < 0) return [];
+    const nodeIdIdx = findIndex(['node_id', 'nodeid']);
+    const nodeNameIdx = findIndex(['node_name', 'nodename', 'node name', 'name']);
+    const ipIdx = findIndex(['ip_address', 'ip', 'address']);
+    const labelIdx = findIndex(['label']);
+    const notesIdx = findIndex(['notes', 'note']);
+    const activeIdx = findIndex(['active', 'enabled']);
+
+    return rows.map(row => {
+      const activeRaw = activeIdx >= 0 ? row[activeIdx] : '';
+      const active = activeRaw === '' ? null : ['1', 'true', 'yes', 'on'].includes(String(activeRaw).toLowerCase());
+      return {
+        risk_node_id: (row[riskIdx] || '').trim(),
+        node_id: nodeIdIdx >= 0 ? (row[nodeIdIdx] || '').trim() : '',
+        node_name: nodeNameIdx >= 0 ? (row[nodeNameIdx] || '').trim() : '',
+        ip_address: ipIdx >= 0 ? (row[ipIdx] || '').trim() : '',
+        label: labelIdx >= 0 ? (row[labelIdx] || '').trim() : '',
+        notes: notesIdx >= 0 ? (row[notesIdx] || '').trim() : '',
+        active: active,
+      };
+    });
+  }
+
   document.getElementById('risk-status-refresh').addEventListener('click', fetchStatus);
   document.getElementById('risk-nodes-refresh').addEventListener('click', fetchNodes);
   nodeFilter.addEventListener('input', applyNodeFilter);
+  document.getElementById('risk-mappings-refresh').addEventListener('click', fetchMappings);
+  if (mappingFilter) {
+    mappingFilter.addEventListener('input', applyMappingFilter);
+  }
+  if (mappingTableBody) {
+    mappingTableBody.addEventListener('click', (event) => {
+      const target = event.target;
+      if (target && target.classList.contains('risk-mapping-save')) {
+        const row = target.closest('tr');
+        if (row) {
+          saveMappingRow(row);
+        }
+      }
+    });
+    mappingTableBody.addEventListener('change', (event) => {
+      const target = event.target;
+      if (target && target.classList.contains('risk-map-node')) {
+        const row = target.closest('tr');
+        const ipInput = row?.querySelector('.risk-map-ip');
+        const metaCell = row?.querySelector('.risk-map-meta');
+        const selectedOption = target.selectedOptions?.[0];
+        const ipValue = selectedOption?.dataset?.ip || '';
+        if (ipInput && !ipInput.value && ipValue) {
+          ipInput.value = ipValue;
+        }
+        if (metaCell) {
+          metaCell.textContent = nodeMetaText(mappingNodeById.get(target.value));
+        }
+      }
+    });
+  }
+  if (mappingImportButton && mappingFileInput) {
+    mappingImportButton.addEventListener('click', () => {
+      mappingFileInput.value = '';
+      mappingFileInput.click();
+    });
+    mappingFileInput.addEventListener('change', async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const records = csvToRecords(text);
+        if (!records.length) {
+          updateMappingSummary('CSV import: no valid rows');
+          return;
+        }
+        const { updated, missing } = applyCsvMappings(records);
+        updateMappingSummary(`CSV import: ${updated} updated, ${missing} missing`);
+      } catch (err) {
+        updateMappingSummary(`CSV import failed: ${err.message}`);
+      }
+    });
+  }
+  if (mappingSaveAllButton) {
+    mappingSaveAllButton.addEventListener('click', saveAllMappings);
+  }
 
   document.getElementById('risk-probability-form').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -305,6 +806,7 @@
 
   fetchStatus();
   fetchNodes();
+  fetchMappings();
 
   function setRiskGraphStatus(message) {
     if (riskGraphStatus) {

@@ -60,6 +60,7 @@ This project is a full-stack Django platform that simulates and secures networke
 #### Risk Assessment Views
 - **Overview**: Health/status of the risk assessment service.
 - **Nodes**: List of DBN nodes and their state definitions from the risk service.
+- **Mappings**: Link risk model node IDs to discovered IPs/nodes and manage labels/notes.
 - **Probability**: Run probability queries with optional evidence + cyber data payloads.
 - **Network View**: Graph + table that overlays per-node risk on the live topology.
 
@@ -78,13 +79,19 @@ Results are shown in the Network View graph (color-coded) and in a sortable tabl
    - **Network View** to load the graph and compute risk overlay.
    - **Probability** for manual queries (optional evidence/cyber payloads).
 
-#### Admin Mapping
-To align your discovered nodes with the risk model, manage mappings in the admin UI:
-1. Go to `/admin/` → **Risk Node Mappings**.
-2. Create a mapping for each risk node ID:
-   - Select a **Node** (recommended), or
-   - Provide an **IP address** if the node is not yet registered.
-3. Ensure mappings are **Active**.
+#### Mapping Risk Nodes
+To align your discovered nodes with the risk model, manage mappings in the Risk Assessment UI:
+1. Go to `Risk Analysis -> Risk Assessment` and open the **Mappings** tab.
+2. For each risk node ID, select a **Node** or enter an **IP address**.
+3. Optionally add a label/notes and keep the mapping **Active**.
+
+You can also manage mappings via `/admin/` → **Risk Node Mappings** if needed.
+
+The Mappings tab supports:
+- **Save All** to persist the entire table at once.
+- **Import CSV** to pre-fill rows using a file with `risk_node_id`, plus optional `node_id`,
+  `node_name`, `ip_address`, `label`, `notes`, and `active` columns.
+- **Node Metadata** to help match assets (OS, platform, ports, MACs, last heartbeat).
 
 Mappings are used to attach vulnerability data to the correct risk model nodes so
 the risk engine can compute non‑`unknown` scores.

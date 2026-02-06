@@ -184,3 +184,90 @@ def test_risk_assessment_network_compute_proxy(user_client, monkeypatch):
     posted_payload = mock_post.call_args.kwargs["json"]
     assert "scanned_nodes" in posted_payload
     assert len(posted_payload["scanned_nodes"]) == 2
+
+
+@pytest.mark.django_db
+def test_risk_assessment_mappings_get(user_client, monkeypatch):
+    from dashboard import views as dashboard_views
+    Node.objects.create(
+        name="PLC-1",
+        ip_address="10.1.0.10",
+        os_info="Linux",
+        platform_info="x86_64",
+        cpu_count=4,
+        memory_total=8 * 1024 * 1024 * 1024,
+        active_ports=[22, 443],
+        mac_addresses=["aa:bb:cc:dd:ee:ff"],
+    )
+    Node.objects.create(name="Workstation-1", ip_address="10.1.0.20")
+
+    RiskNodeMapping.objects.create(risk_node_id="PLC-Main", ip_address="10.1.0.10", label="PLC Main")
+
+    nodes_payload = {"variables": {"PLC-Main": {}, "Heat-Ctrl": {}}}
+    monkeypatch.setattr(
+        dashboard_views.requests,
+        "get",
+        Mock(return_value=MockResponse(nodes_payload)),
+    )
+
+    response = user_client.get(reverse("dashboard:risk_assessment_mappings"))
+    assert response.status_code == 200
+    body = response.json()
+    assert "risk_nodes" in body
+    assert "nodes" in body
+    assert "mappings" in body
+    assert "PLC-Main" in body["risk_nodes"]
+    assert any(mapping["risk_node_id"] == "PLC-Main" for mapping in body["mappings"])
+    node_payload = next(node for node in body["nodes"] if node["name"] == "PLC-1")
+    assert node_payload["os_info"] == "Linux"
+    assert node_payload["platform_info"] == "x86_64"
+    assert node_payload["cpu_count"] == 4
+    assert node_payload["memory_total"] == 8 * 1024 * 1024 * 1024
+    assert node_payload["active_ports"] == [22, 443]
+    assert node_payload["mac_addresses"] == ["aa:bb:cc:dd:ee:ff"]
+
+
+@pytest.mark.django_db
+def test_risk_assessment_mappings_post(user_client):
+    node = Node.objects.create(name="PLC-2", ip_address="10.2.0.10")
+    payload = {
+        "risk_node_id": "PLC-2",
+        "node_id": node.id,
+        "ip_address": "",
+        "label": "PLC Two",
+        "notes": "Mapped in UI",
+        "active": True,
+    }
+
+    response = user_client.post(
+        reverse("dashboard:risk_assessment_mappings"),
+        data=json.dumps(payload),
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+
+    mapping = RiskNodeMapping.objects.get(risk_node_id="PLC-2")
+    assert mapping.node_id == node.id
+    assert mapping.label == "PLC Two"
+
+
+@pytest.mark.django_db
+def test_risk_assessment_mappings_post_bulk(user_client):
+    node = Node.objects.create(name="PLC-3", ip_address="10.3.0.10")
+    payload = {
+        "mappings": [
+            {"risk_node_id": "PLC-3", "node_id": node.id, "active": True},
+            {"risk_node_id": "PLC-4", "ip_address": "10.3.0.20", "active": False},
+        ]
+    }
+
+    response = user_client.post(
+        reverse("dashboard:risk_assessment_mappings"),
+        data=json.dumps(payload),
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    assert RiskNodeMapping.objects.filter(risk_node_id="PLC-3").exists()
+    mapping = RiskNodeMapping.objects.get(risk_node_id="PLC-4")
+    assert mapping.ip_address == "10.3.0.20"
+    assert mapping.active is False

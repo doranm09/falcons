@@ -9,8 +9,10 @@ from .models import (
     NetworkMetadata,
     Node,
     NodeInterface,
+    RiskNodeMapping,
     SbomReport,
     ScanRun,
+    Vulnerability,
 )
 import ipaddress
 import subprocess
@@ -27,7 +29,13 @@ from celery.result import AsyncResult
 from .models import Link
 from .risk_assessment import build_cyber_data_for_risk_nodes, summarize_risk_results
 from .utils import dijkstra, list_interfaces
-from .sbom import detect_sbom_format, extract_os_summary_from_sbom, extract_packages_from_sbom, compute_payload_hash
+from .sbom import (
+    detect_sbom_format,
+    extract_os_summary_from_sbom,
+    extract_packages_from_sbom,
+    extract_vulnerabilities_from_sbom,
+    compute_payload_hash,
+)
 from .minimega import build_minimega_script, build_digital_twin_manifest
 from django.views.decorators.http import require_GET
 from django.core.exceptions import ObjectDoesNotExist
@@ -781,6 +789,20 @@ def sbom_ingest(request):
     os_summary = extract_os_summary_from_sbom(payload)
     format_info = detect_sbom_format(payload)
     payload_hash = compute_payload_hash(payload)
+    vulnerabilities = extract_vulnerabilities_from_sbom(data) + extract_vulnerabilities_from_sbom(payload)
+    if vulnerabilities:
+        deduped = {}
+        for vuln in vulnerabilities:
+            cve_id = vuln.get("cve_id")
+            if not cve_id:
+                continue
+            existing = deduped.get(cve_id)
+            if not existing:
+                deduped[cve_id] = vuln
+                continue
+            if (vuln.get("score") or 0) > (existing.get("score") or 0):
+                deduped[cve_id] = vuln
+        vulnerabilities = list(deduped.values())
 
     node = None
     try:
@@ -807,6 +829,41 @@ def sbom_ingest(request):
         os_summary=os_summary,
         sha256=payload_hash,
     )
+
+    if node and vulnerabilities:
+        for vuln in vulnerabilities:
+            cve_id = vuln.get("cve_id") or ""
+            if not cve_id:
+                continue
+            vuln_obj, created = Vulnerability.objects.get_or_create(
+                cve_id=cve_id[:32],
+                defaults={
+                    "description": vuln.get("description") or f"SBOM reported {cve_id}",
+                    "severity": vuln.get("severity") or "",
+                    "score": vuln.get("score"),
+                    "published": now(),
+                    "last_modified": now(),
+                    "references": vuln.get("references") or "",
+                },
+            )
+            if not created:
+                updated = False
+                if vuln.get("description") and vuln_obj.description != vuln.get("description"):
+                    vuln_obj.description = vuln.get("description")
+                    updated = True
+                if vuln.get("severity") and vuln_obj.severity != vuln.get("severity"):
+                    vuln_obj.severity = vuln.get("severity")
+                    updated = True
+                if vuln.get("score") is not None and vuln_obj.score != vuln.get("score"):
+                    vuln_obj.score = vuln.get("score")
+                    updated = True
+                if vuln.get("references") and vuln_obj.references != vuln.get("references"):
+                    vuln_obj.references = vuln.get("references")
+                    updated = True
+                if updated:
+                    vuln_obj.last_modified = now()
+                    vuln_obj.save(update_fields=["description", "severity", "score", "references", "last_modified"])
+            vuln_obj.nodes.add(node)
 
     return JsonResponse({
         "status": "sbom_received",
@@ -2319,6 +2376,202 @@ def risk_assessment_network_compute_api(request):
         })
     except Exception as exc:
         return JsonResponse({'error': str(exc)}, status=502)
+
+
+@require_http_methods(["GET", "POST"])
+def risk_assessment_mappings_api(request):
+    if request.method == "GET":
+        risk_nodes = []
+        risk_error = None
+        try:
+            response = requests.get(_risk_api_url('/nodes'), timeout=RISK_ASSESSMENT_TIMEOUT)
+            response.raise_for_status()
+            payload = response.json()
+            variables = payload.get("variables")
+            if isinstance(variables, dict):
+                risk_nodes = [str(key) for key in variables.keys()]
+            else:
+                nodes_payload = payload.get("nodes")
+                if isinstance(nodes_payload, list):
+                    for node in nodes_payload:
+                        if isinstance(node, str):
+                            risk_nodes.append(node)
+                        elif isinstance(node, dict):
+                            name = node.get("name") or node.get("node") or node.get("id")
+                            if name:
+                                risk_nodes.append(str(name))
+        except Exception as exc:
+            risk_error = str(exc)
+
+        mapping_ids = list(
+            RiskNodeMapping.objects.values_list("risk_node_id", flat=True).distinct()
+        )
+        merged_ids = {rid for rid in risk_nodes if rid}
+        merged_ids.update(mapping_ids)
+        risk_nodes = sorted(merged_ids)
+
+        nodes = []
+        for node in Node.objects.order_by("name", "ip_address"):
+            nodes.append({
+                "id": node.id,
+                "name": node.name,
+                "ip_address": node.ip_address,
+                "os_info": node.os_info,
+                "platform_info": node.platform_info,
+                "cpu_count": node.cpu_count,
+                "memory_total": node.memory_total,
+                "mac_addresses": node.mac_addresses or [],
+                "active_ports": node.active_ports or [],
+                "last_heartbeat": node.last_heartbeat.isoformat() if node.last_heartbeat else None,
+            })
+        mappings = list(
+            RiskNodeMapping.objects.select_related("node").order_by("risk_node_id")
+        )
+
+        mapping_payload = []
+        for mapping in mappings:
+            mapping_payload.append({
+                "risk_node_id": mapping.risk_node_id,
+                "node_id": mapping.node_id,
+                "node_name": mapping.node.name if mapping.node else None,
+                "ip_address": mapping.ip_address,
+                "label": mapping.label,
+                "notes": mapping.notes,
+                "active": mapping.active,
+                "updated_at": mapping.updated_at.isoformat(),
+            })
+
+        response_payload = {
+            "risk_nodes": risk_nodes,
+            "nodes": nodes,
+            "mappings": mapping_payload,
+        }
+        if risk_error:
+            response_payload["risk_error"] = risk_error
+
+        return JsonResponse(response_payload)
+
+    try:
+        payload = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON payload.'}, status=400)
+
+    if isinstance(payload.get("mappings"), list):
+        errors = []
+        saved = []
+        for index, item in enumerate(payload.get("mappings", [])):
+            if not isinstance(item, dict):
+                errors.append({"index": index, "error": "Each mapping must be an object."})
+                continue
+            risk_node_id = str(item.get("risk_node_id") or "").strip()
+            if not risk_node_id:
+                errors.append({"index": index, "error": "risk_node_id is required."})
+                continue
+
+            node_id = item.get("node_id")
+            if node_id in ("", None):
+                node_id = None
+
+            node = None
+            if node_id is not None:
+                try:
+                    node = Node.objects.get(id=node_id)
+                except Node.DoesNotExist:
+                    errors.append({"index": index, "risk_node_id": risk_node_id, "error": "Invalid node_id."})
+                    continue
+
+            ip_address = str(item.get("ip_address") or "").strip() or None
+            if ip_address:
+                try:
+                    ipaddress.ip_address(ip_address)
+                except ValueError:
+                    errors.append({"index": index, "risk_node_id": risk_node_id, "error": "Invalid ip_address."})
+                    continue
+
+            label = str(item.get("label") or "").strip()
+            notes = str(item.get("notes") or "").strip()
+            active = item.get("active", True)
+            if isinstance(active, str):
+                active = active.lower() in ("1", "true", "yes", "on")
+
+            mapping, _ = RiskNodeMapping.objects.update_or_create(
+                risk_node_id=risk_node_id,
+                defaults={
+                    "node": node,
+                    "ip_address": ip_address,
+                    "label": label,
+                    "notes": notes,
+                    "active": bool(active),
+                },
+            )
+
+            saved.append({
+                "risk_node_id": mapping.risk_node_id,
+                "node_id": mapping.node_id,
+                "node_name": mapping.node.name if mapping.node else None,
+                "ip_address": mapping.ip_address,
+                "label": mapping.label,
+                "notes": mapping.notes,
+                "active": mapping.active,
+                "updated_at": mapping.updated_at.isoformat(),
+            })
+
+        if errors:
+            return JsonResponse({"error": "Validation failed.", "errors": errors, "mappings": saved}, status=400)
+
+        return JsonResponse({"mappings": saved})
+
+    risk_node_id = str(payload.get("risk_node_id") or "").strip()
+    if not risk_node_id:
+        return JsonResponse({'error': 'risk_node_id is required.'}, status=400)
+
+    node_id = payload.get("node_id")
+    if node_id in ("", None):
+        node_id = None
+
+    node = None
+    if node_id is not None:
+        try:
+            node = Node.objects.get(id=node_id)
+        except Node.DoesNotExist:
+            return JsonResponse({'error': 'Invalid node_id.'}, status=400)
+
+    ip_address = str(payload.get("ip_address") or "").strip() or None
+    if ip_address:
+        try:
+            ipaddress.ip_address(ip_address)
+        except ValueError:
+            return JsonResponse({'error': 'Invalid ip_address.'}, status=400)
+
+    label = str(payload.get("label") or "").strip()
+    notes = str(payload.get("notes") or "").strip()
+    active = payload.get("active", True)
+    if isinstance(active, str):
+        active = active.lower() in ("1", "true", "yes", "on")
+
+    mapping, _ = RiskNodeMapping.objects.update_or_create(
+        risk_node_id=risk_node_id,
+        defaults={
+            "node": node,
+            "ip_address": ip_address,
+            "label": label,
+            "notes": notes,
+            "active": bool(active),
+        },
+    )
+
+    return JsonResponse({
+        "mapping": {
+            "risk_node_id": mapping.risk_node_id,
+            "node_id": mapping.node_id,
+            "node_name": mapping.node.name if mapping.node else None,
+            "ip_address": mapping.ip_address,
+            "label": mapping.label,
+            "notes": mapping.notes,
+            "active": mapping.active,
+            "updated_at": mapping.updated_at.isoformat(),
+        }
+    })
 
 
 def _risk_api_url(path: str) -> str:

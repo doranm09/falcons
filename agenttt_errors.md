@@ -155,3 +155,8 @@ ERROR tests/server/test_siem_pipeline.py
 - OpenSearch forwarding is enabled via settings (`OPENSEARCH_ENABLED=1`), with bulk indexing implemented in `dashboard/opensearch_client.py`.
 - New docs at `docs/opensearch.md` and updates in `docs/siem_events.md`.
 - Tests run: OpenSearch forwarding tests passed (4 tests).
+
+## Context for Next Agent (2026-02-06)
+- SIEM Task 5 implemented: search API now supports multi-value filters (`event_type_in`, `source_in`) and aggregations (`agg`, `agg_size`).
+- New query helper: `dashboard/siem_query.py`.
+- Tests passed: search/aggregation tests (4 tests).

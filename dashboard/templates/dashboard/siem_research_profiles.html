@@ -1,0 +1,65 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h2 class="mb-1">Research Profiles</h2>
+      <p class="text-muted mb-0">Pinned pipeline, ruleset, and retention settings for deterministic runs.</p>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Version</th>
+              <th>Pipeline</th>
+              <th>Ruleset</th>
+              <th>Retention (days)</th>
+              <th>Max Batch</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for profile in profiles %}
+              <tr>
+                <td>{{ profile.name }}</td>
+                <td>{{ profile.version }}</td>
+                <td>{{ profile.pipeline_version|default:"-" }}</td>
+                <td>{{ profile.ruleset_version|default:"-" }}</td>
+                <td>{{ profile.retention_days }}</td>
+                <td>{{ profile.max_batch }}</td>
+                <td>
+                  {% if profile.active %}
+                    <span class="badge bg-success">Active</span>
+                  {% else %}
+                    <span class="badge bg-secondary">Inactive</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if not profile.active %}
+                    <form method="post" action="{% url 'dashboard:siem_research_profile_activate' profile.id %}">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-primary">Activate</button>
+                    </form>
+                  {% else %}
+                    <span class="text-muted">Current</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="8" class="text-muted text-center">No profiles available.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

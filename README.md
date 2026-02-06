@@ -228,6 +228,7 @@ Documentation:
 - `docs/siem_production_security.md`
 - `docs/siem_health_metrics.md`
 - `docs/siem_export.md`
+- `docs/siem_research_profile.md`
 - `docs/threat_intel.md`
 - `docs/siem_syslog_windows.md`
 

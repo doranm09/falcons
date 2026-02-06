@@ -26,6 +26,7 @@ from .models import (
     HuntTag,
     SiemUserRole,
     SiemAuditLog,
+    ResearchProfile,
     ThreatIntelIndicator,
     ThreatIntelMatch,
 )
@@ -97,6 +98,7 @@ from .siem_export import (
     export_parquet_bytes,
     ndjson_stream,
 )
+from .siem_research import apply_profile_max_batch, activate_profile, get_active_profile
 from .siem_rbac import get_siem_role, require_siem_role
 from .siem_audit import record_siem_audit
 from .siem_threat_intel import ingest_indicators, match_indicators, persist_ioc_matches
@@ -1017,6 +1019,7 @@ def siem_event_ingest(request):
 
     events = payload if isinstance(payload, list) else [payload]
     max_batch = getattr(settings, "SIEM_MAX_INGEST_BATCH", 500)
+    max_batch = apply_profile_max_batch(max_batch)
     if len(events) > max_batch:
         return JsonResponse({"error": f"Batch too large (max {max_batch})"}, status=413)
 
@@ -1073,6 +1076,7 @@ def siem_pipeline_ingest(request):
 
     raw_events = payload if isinstance(payload, list) else [payload]
     max_batch = getattr(settings, "SIEM_MAX_INGEST_BATCH", 500)
+    max_batch = apply_profile_max_batch(max_batch)
     if len(raw_events) > max_batch:
         return JsonResponse({"error": f"Batch too large (max {max_batch})"}, status=413)
 
@@ -1571,6 +1575,39 @@ def siem_audit_log(request):
         return JsonResponse({"count": qs.count(), "results": payload})
 
     return render(request, "dashboard/siem_audit.html", {"entries": qs[:200], "action": action, "status": status})
+
+
+@require_http_methods(["GET"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_research_profiles_view", resource_type="research_profile")
+def siem_research_profiles_page(request):
+    profiles = ResearchProfile.objects.all().order_by("-updated_at")
+    active = profiles.filter(active=True).first()
+    return render(
+        request,
+        "dashboard/siem_research_profiles.html",
+        {"profiles": profiles, "active": active},
+    )
+
+
+@require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_research_profile_activate", resource_type="research_profile")
+def siem_research_profile_activate(request, profile_id):
+    profile = get_object_or_404(ResearchProfile, id=profile_id)
+    activate_profile(profile)
+    record_siem_audit(
+        request,
+        action="siem_research_profile_activate",
+        resource_type="research_profile",
+        resource_id=profile.id,
+        metadata={
+            "name": profile.name,
+            "version": profile.version,
+            "pipeline_version": profile.pipeline_version,
+            "ruleset_version": profile.ruleset_version,
+            "retention_days": profile.retention_days,
+        },
+    )
+    return redirect(reverse("dashboard:siem_research_profiles_page"))
 
 
 @csrf_exempt

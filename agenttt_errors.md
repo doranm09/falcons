@@ -278,3 +278,11 @@ SiemNormalizeError: Invalid timestamp (RFC3164 timestamp missing year)
 - Schema version field included per event; export filtered by start/end timestamps.
 - Docs added: `docs/siem_export.md` and README/docs list updates.
 - Tests passed: export unit/server/integration (4 tests).
+
+## Context for Next Agent (2026-02-06)
+- SIEM Task 18 implemented: research mode profiles with selectable UI and ingest batch override.
+- Model `ResearchProfile` with migration `0026_research_profile.py` and default profile.
+- Profile activation UI at `/dashboard/siem/research/` with activation endpoint.
+- Ingest endpoints now use active profile max_batch.
+- Docs added: `docs/siem_research_profile.md` and README/docs updates.
+- Tests passed: research profile unit/server/integration (3 tests).

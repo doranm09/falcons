@@ -343,6 +343,29 @@ class SiemAuditLog(models.Model):
         return f"{self.action} ({self.status})"
 
 
+class ResearchProfile(models.Model):
+    name = models.CharField(max_length=255, unique=True)
+    version = models.CharField(max_length=64)
+    pipeline_version = models.CharField(max_length=64, blank=True)
+    ruleset_version = models.CharField(max_length=64, blank=True)
+    retention_days = models.PositiveIntegerField(default=30)
+    max_batch = models.PositiveIntegerField(default=500)
+    active = models.BooleanField(default=False)
+    config = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["active"]),
+        ]
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        status = "active" if self.active else "inactive"
+        return f"{self.name} ({self.version}) [{status}]"
+
+
 class ThreatIntelIndicator(models.Model):
     class IndicatorType(models.TextChoices):
         IP = "ip", "IP"

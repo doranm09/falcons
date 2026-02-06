@@ -65,6 +65,7 @@ from .siem_adapters import (
     adapt_vulnerability,
 )
 from .siem_pipeline import transform_pipeline_events, SiemPipelineError
+from .opensearch_client import bulk_index_events, OpensearchError
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 RISK_ASSESSMENT_TIMEOUT = 15
@@ -955,7 +956,14 @@ def siem_event_ingest(request):
         return JsonResponse({"error": "Invalid event payload", "details": errors}, status=400)
 
     SiemEvent.objects.bulk_create([SiemEvent(**item) for item in normalized], batch_size=200)
-    return JsonResponse({"ingested": len(normalized)}, status=201)
+
+    response_payload = {"ingested": len(normalized)}
+    try:
+        response_payload["opensearch"] = bulk_index_events(normalized)
+    except OpensearchError as exc:
+        response_payload["opensearch_error"] = str(exc)
+
+    return JsonResponse(response_payload, status=201)
 
 
 @csrf_exempt
@@ -992,7 +1000,14 @@ def siem_pipeline_ingest(request):
         return JsonResponse({"error": "Invalid event payload", "details": errors}, status=400)
 
     SiemEvent.objects.bulk_create([SiemEvent(**item) for item in normalized], batch_size=200)
-    return JsonResponse({"ingested": len(normalized)}, status=201)
+
+    response_payload = {"ingested": len(normalized)}
+    try:
+        response_payload["opensearch"] = bulk_index_events(normalized)
+    except OpensearchError as exc:
+        response_payload["opensearch_error"] = str(exc)
+
+    return JsonResponse(response_payload, status=201)
 
 
 @require_http_methods(["GET"])

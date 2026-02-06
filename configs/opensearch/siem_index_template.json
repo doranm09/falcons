@@ -1,0 +1,24 @@
+{
+  "index_patterns": ["siem-events-*"],
+  "priority": 100,
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "index.opendistro.index_state_management.policy_id": "siem-events-policy"
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": {"type": "date"},
+        "event_type": {"type": "keyword"},
+        "source": {"type": "keyword"},
+        "severity": {"type": "integer"},
+        "asset_id": {"type": "keyword"},
+        "asset_ip": {"type": "ip"},
+        "summary": {"type": "text"},
+        "raw": {"type": "object", "enabled": true},
+        "ingested_at": {"type": "date"}
+      }
+    }
+  }
+}

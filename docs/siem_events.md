@@ -58,6 +58,10 @@ curl -X POST http://localhost:8000/dashboard/siem/pipeline/ingest/ \
 - Agent-like payloads with `agent_id` map to `agent.telemetry`.
 - Scan-like payloads with `scan_type` or `cidr` map to `scan.run`.
 
+**OpenSearch Forwarding**
+When `OPENSEARCH_ENABLED=1`, ingested events are also indexed into OpenSearch using the `_bulk` API.
+See `docs/opensearch.md` for setup and dashboards instructions.
+
 **Search Example**
 ```bash
 curl "http://localhost:8000/dashboard/siem/events/?event_type=suricata.alert&start=2026-02-06T12:00:00Z&end=2026-02-06T13:00:00Z"

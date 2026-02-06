@@ -1,0 +1,34 @@
+{
+  "policy": {
+    "policy_id": "siem-events-policy",
+    "description": "Retention policy for SIEM events",
+    "default_state": "hot",
+    "states": [
+      {
+        "name": "hot",
+        "actions": [],
+        "transitions": [
+          {
+            "state_name": "delete",
+            "conditions": {
+              "min_index_age": "30d"
+            }
+          }
+        ]
+      },
+      {
+        "name": "delete",
+        "actions": [
+          {"delete": {}}
+        ],
+        "transitions": []
+      }
+    ],
+    "ism_template": [
+      {
+        "index_patterns": ["siem-events-*"],
+        "priority": 100
+      }
+    ]
+  }
+}

@@ -48,6 +48,7 @@ This project is a full-stack Django platform that simulates and secures networke
 - Event Explorer UI with filters and raw payload inspection
 - Adapter preview endpoints for agent, scan, vulnerability, and SBOM events
 - Pipeline ingest endpoint that maps raw sensor payloads to ECS subset
+- OpenSearch log store + Dashboards for indexed SIEM events
 
 ### 6. Digital Twin Generation (MiniMega)
 - Generate MiniMega launch scripts and manifests from scans
@@ -213,6 +214,7 @@ Compare the last two SBOMs for an agent:
 Documentation:
 - `docs/event_schema.md`
 - `docs/siem_events.md`
+- `docs/opensearch.md`
 
 ---
 

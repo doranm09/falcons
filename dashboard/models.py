@@ -234,6 +234,52 @@ class CaseEvidence(models.Model):
         return f"Evidence {self.id} for Case {self.case_id}"
 
 
+class ThreatIntelIndicator(models.Model):
+    class IndicatorType(models.TextChoices):
+        IP = "ip", "IP"
+        DOMAIN = "domain", "Domain"
+        URL = "url", "URL"
+        HASH = "hash", "Hash"
+
+    value = models.CharField(max_length=512, db_index=True)
+    indicator_type = models.CharField(max_length=16, choices=IndicatorType.choices)
+    source = models.CharField(max_length=128, blank=True)
+    description = models.TextField(blank=True)
+    confidence = models.IntegerField(null=True, blank=True)
+    tlp = models.CharField(max_length=16, blank=True)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("indicator_type", "value")
+        indexes = [
+            models.Index(fields=["indicator_type", "active"]),
+            models.Index(fields=["source"]),
+        ]
+
+    def __str__(self):
+        return f"{self.indicator_type}:{self.value}"
+
+
+class ThreatIntelMatch(models.Model):
+    indicator = models.ForeignKey(ThreatIntelIndicator, on_delete=models.CASCADE)
+    event = models.ForeignKey(SiemEvent, on_delete=models.CASCADE, related_name="ioc_matches")
+    matched_field = models.CharField(max_length=64)
+    matched_value = models.CharField(max_length=512)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["matched_field"]),
+            models.Index(fields=["created_at"]),
+        ]
+        unique_together = ("indicator", "event", "matched_field")
+
+    def __str__(self):
+        return f"{self.indicator} -> {self.event_id}"
+
+
 class Node(models.Model):
     # Networked endpoint discovered by scans (global inventory or per-run via scan_run FK)
     scan_run = models.ForeignKey(

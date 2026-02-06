@@ -189,6 +189,9 @@ OPENSEARCH_USER = os.environ.get("OPENSEARCH_USER", "")
 OPENSEARCH_PASS = os.environ.get("OPENSEARCH_PASS", "")
 OPENSEARCH_VERIFY_TLS = os.environ.get("OPENSEARCH_VERIFY_TLS", "1") == "1"
 
+# Threat intel
+THREAT_INTEL_ENABLED = os.environ.get("THREAT_INTEL_ENABLED", "1") == "1"
+
 
 CELERY_BEAT_SCHEDULE = {
     'poll-openvas-results-every-5min': {

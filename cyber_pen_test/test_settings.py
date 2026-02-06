@@ -158,3 +158,6 @@ OPENSEARCH_INDEX_PREFIX = os.environ.get("OPENSEARCH_INDEX_PREFIX", "siem-events
 OPENSEARCH_USER = os.environ.get("OPENSEARCH_USER", "")
 OPENSEARCH_PASS = os.environ.get("OPENSEARCH_PASS", "")
 OPENSEARCH_VERIFY_TLS = os.environ.get("OPENSEARCH_VERIFY_TLS", "1") == "1"
+
+# Threat intel
+THREAT_INTEL_ENABLED = os.environ.get("THREAT_INTEL_ENABLED", "1") == "1"

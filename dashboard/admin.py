@@ -25,6 +25,8 @@ from .models import (
     Case,
     CaseNote,
     CaseEvidence,
+    ThreatIntelIndicator,
+    ThreatIntelMatch,
 )
 
 @admin.register(Node)
@@ -212,3 +214,16 @@ class CaseNoteAdmin(admin.ModelAdmin):
 class CaseEvidenceAdmin(admin.ModelAdmin):
     list_display = ("id", "case", "label", "evidence_type", "created_at")
     search_fields = ("label", "details")
+
+
+@admin.register(ThreatIntelIndicator)
+class ThreatIntelIndicatorAdmin(admin.ModelAdmin):
+    list_display = ("id", "indicator_type", "value", "source", "active", "updated_at")
+    list_filter = ("indicator_type", "active")
+    search_fields = ("value", "description", "source")
+
+
+@admin.register(ThreatIntelMatch)
+class ThreatIntelMatchAdmin(admin.ModelAdmin):
+    list_display = ("id", "indicator", "event", "matched_field", "created_at")
+    list_filter = ("matched_field",)

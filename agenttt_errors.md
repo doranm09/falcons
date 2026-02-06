@@ -190,3 +190,24 @@ IntegrityError: duplicate key value violates unique constraint "dashboard_alertr
 - SIEM Task 8 implemented: case management with notes, evidence, export, and alert promotion.
 - Migration 0022_cases.py added.
 - Tests passed: case management tests (5 tests).
+
+## 2026-02-06
+### docker-compose exec -T web /home/appuser/.local/bin/pytest tests/unit/test_threat_intel.py ...
+**Error**
+```
+ValueError: Related model 'dashboard.siamevent' cannot be resolved (migration 0023_threat_intel.py)
+```
+
+## 2026-02-06
+### docker-compose exec -T web /home/appuser/.local/bin/pytest tests/unit/test_threat_intel.py ...
+**Error**
+```
+IntegrityError: duplicate key value violates unique constraint "dashboard_alertrule_name_key" (Suricata Alerts)
+```
+
+## 2026-02-06
+### docker-compose exec -T web /home/appuser/.local/bin/pytest tests/unit/test_threat_intel.py ...
+**Error**
+```
+TypeError: Direct assignment to the reverse side of a related set is prohibited (ioc_matches key in SiemEvent payload)
+```

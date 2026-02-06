@@ -52,6 +52,7 @@ This project is a full-stack Django platform that simulates and secures networke
 - OpenSearch log store + Dashboards for indexed SIEM events
 - Alert queue with deduplication and rule toggles (Sigma + Suricata)
 - Case management with notes, evidence, and exports
+- Threat intel ingestion (MISP-like) and IOC enrichment in alerts
 
 ### 6. Digital Twin Generation (MiniMega)
 - Generate MiniMega launch scripts and manifests from scans
@@ -220,6 +221,7 @@ Documentation:
 - `docs/opensearch.md`
 - `docs/siem_alerts.md`
 - `docs/siem_cases.md`
+- `docs/threat_intel.md`
 
 ---
 

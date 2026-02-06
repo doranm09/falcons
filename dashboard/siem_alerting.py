@@ -8,6 +8,25 @@ from django.utils import timezone
 from .models import Alert, AlertRule
 
 
+def _alert_summary(event: Dict[str, Any]) -> str:
+    summary = event.get("summary") or ""
+    matches = event.get("ioc_matches") or []
+    if matches:
+        tags = ", ".join({m.get("value") for m in matches if m.get("value")})
+        if tags:
+            summary = f"{summary} [IOC: {tags}]".strip()
+    return summary
+
+
+def _alert_raw_sample(event: Dict[str, Any]) -> Dict[str, Any]:
+    raw = event.get("raw") or {}
+    if not isinstance(raw, dict):
+        raw = {"raw": raw}
+    if event.get("ioc_matches"):
+        raw = {**raw, "ioc_matches": event.get("ioc_matches")}
+    return raw
+
+
 def should_trigger(rule: AlertRule, event: Dict[str, Any]) -> bool:
     if not rule.enabled:
         return False
@@ -64,10 +83,10 @@ def create_or_update_alert(rule: AlertRule, event: Dict[str, Any]) -> Alert:
         severity=rule.severity if rule.severity is not None else event.get("severity"),
         asset_ip=event.get("asset_ip"),
         asset_id=event.get("asset_id"),
-        summary=event.get("summary") or "",
+        summary=_alert_summary(event),
         status=Alert.Status.OPEN,
         dedup_key=dedup_key,
-        raw_sample=event.get("raw"),
+        raw_sample=_alert_raw_sample(event),
     )
     return alert
 

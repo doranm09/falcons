@@ -20,6 +20,8 @@ from .models import (
     Case,
     CaseNote,
     CaseEvidence,
+    ThreatIntelIndicator,
+    ThreatIntelMatch,
 )
 import ipaddress
 import subprocess
@@ -76,6 +78,7 @@ from .siem_query import parse_search_request, search_siem_events
 from .siem_pivot import resolve_siem_pivot
 from .siem_alerting import process_alerts_for_events
 from .siem_cases import build_case_from_alert, export_case_payload
+from .siem_threat_intel import ingest_indicators, match_indicators, persist_ioc_matches
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 RISK_ASSESSMENT_TIMEOUT = 15
@@ -965,7 +968,22 @@ def siem_event_ingest(request):
     if errors:
         return JsonResponse({"error": "Invalid event payload", "details": errors}, status=400)
 
-    SiemEvent.objects.bulk_create([SiemEvent(**item) for item in normalized], batch_size=200)
+    normalized = match_indicators(normalized)
+    event_records = [
+        {
+            "timestamp": item.get("timestamp"),
+            "source": item.get("source"),
+            "event_type": item.get("event_type"),
+            "severity": item.get("severity"),
+            "asset_id": item.get("asset_id"),
+            "asset_ip": item.get("asset_ip"),
+            "summary": item.get("summary"),
+            "raw": item.get("raw"),
+        }
+        for item in normalized
+    ]
+    created_events = SiemEvent.objects.bulk_create([SiemEvent(**item) for item in event_records], batch_size=200)
+    persist_ioc_matches(normalized, created_events)
     alerts = process_alerts_for_events(normalized)
 
     response_payload = {"ingested": len(normalized)}
@@ -1011,7 +1029,22 @@ def siem_pipeline_ingest(request):
     if errors:
         return JsonResponse({"error": "Invalid event payload", "details": errors}, status=400)
 
-    SiemEvent.objects.bulk_create([SiemEvent(**item) for item in normalized], batch_size=200)
+    normalized = match_indicators(normalized)
+    event_records = [
+        {
+            "timestamp": item.get("timestamp"),
+            "source": item.get("source"),
+            "event_type": item.get("event_type"),
+            "severity": item.get("severity"),
+            "asset_id": item.get("asset_id"),
+            "asset_ip": item.get("asset_ip"),
+            "summary": item.get("summary"),
+            "raw": item.get("raw"),
+        }
+        for item in normalized
+    ]
+    created_events = SiemEvent.objects.bulk_create([SiemEvent(**item) for item in event_records], batch_size=200)
+    persist_ioc_matches(normalized, created_events)
     alerts = process_alerts_for_events(normalized)
 
     response_payload = {"ingested": len(normalized)}
@@ -1215,6 +1248,46 @@ def siem_case_export(request, case_id):
     response = JsonResponse(payload, json_dumps_params={"indent": 2})
     response["Content-Disposition"] = f'attachment; filename="case_{case.id}.json"'
     return response
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def siem_threat_intel_ingest(request):
+    """Ingest threat intel indicators from a MISP-like payload or list."""
+    if not _check_siem_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    stats = ingest_indicators(payload)
+    return JsonResponse({"ingested": stats})
+
+
+@require_http_methods(["GET"])
+def siem_threat_intel_list(request):
+    indicator_type = request.GET.get("type")
+    active = request.GET.get("active")
+    qs = ThreatIntelIndicator.objects.all()
+    if indicator_type:
+        qs = qs.filter(indicator_type=indicator_type)
+    if active in ("0", "1"):
+        qs = qs.filter(active=active == "1")
+    indicators = [
+        {
+            "id": i.id,
+            "type": i.indicator_type,
+            "value": i.value,
+            "source": i.source,
+            "confidence": i.confidence,
+            "tlp": i.tlp,
+            "active": i.active,
+        }
+        for i in qs.order_by("-updated_at")[:500]
+    ]
+    return JsonResponse({"count": len(indicators), "results": indicators})
 
 
 @require_GET

@@ -16,6 +16,8 @@ This feature provides a minimal SIEM event store with ingestion and search APIs.
 - `POST /dashboard/siem/rules/<rule_id>/toggle/` Toggle an alert rule.
 - `GET /dashboard/siem/cases/` Case management UI.
 - `POST /dashboard/siem/alerts/<alert_id>/case/` Promote an alert to a case.
+- `POST /dashboard/siem/threat-intel/ingest/` Ingest threat intel indicators (MISP-like JSON).
+- `GET /dashboard/siem/threat-intel/` List ingested indicators.
 
 **Authentication**
 - If `SIEM_INGEST_TOKEN` is set, requests must include `X-SIEM-Token: <token>` or `Authorization: Bearer <token>`.
@@ -66,6 +68,10 @@ curl -X POST http://localhost:8000/dashboard/siem/pipeline/ingest/ \
 **OpenSearch Forwarding**
 When `OPENSEARCH_ENABLED=1`, ingested events are also indexed into OpenSearch using the `_bulk` API.
 See `docs/opensearch.md` for setup and dashboards instructions.
+
+**Threat Intel Enrichment**
+When `THREAT_INTEL_ENABLED=1`, ingested events are checked against active indicators. Matches are stored and appended to alert summaries.
+See `docs/threat_intel.md` for payload formats.
 
 **Search Example**
 ```bash

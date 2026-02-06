@@ -67,6 +67,15 @@ See `docs/opensearch.md` for setup and dashboards instructions.
 curl "http://localhost:8000/dashboard/siem/events/?event_type=suricata.alert&start=2026-02-06T12:00:00Z&end=2026-02-06T13:00:00Z"
 ```
 
+**Aggregation Example**
+```bash
+curl "http://localhost:8000/dashboard/siem/events/?agg=source,event_type&agg_size=10"
+```
+
+**Multi-Value Filters**
+- `event_type_in=suricata.alert,zeek.conn`
+- `source_in=suricata,zeek`
+
 **UI Usage**
 - Navigate to `SIEM > Event Explorer` in the sidebar.
 - Use filters and quick ranges to search events.

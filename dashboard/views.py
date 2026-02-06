@@ -66,6 +66,7 @@ from .siem_adapters import (
 )
 from .siem_pipeline import transform_pipeline_events, SiemPipelineError
 from .opensearch_client import bulk_index_events, OpensearchError
+from .siem_query import parse_search_request, search_siem_events
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 RISK_ASSESSMENT_TIMEOUT = 15
@@ -1012,60 +1013,10 @@ def siem_pipeline_ingest(request):
 
 @require_http_methods(["GET"])
 def siem_event_search(request):
-    """Search SIEM events by time range and filters."""
-    qs = SiemEvent.objects.all()
-
-    start = request.GET.get("start")
-    end = request.GET.get("end")
-    if start:
-        start_dt = parse_datetime(start)
-        if not start_dt:
-            return JsonResponse({"error": "Invalid start datetime"}, status=400)
-        if timezone.is_naive(start_dt):
-            start_dt = timezone.make_aware(start_dt, timezone=timezone.utc)
-        qs = qs.filter(timestamp__gte=start_dt)
-    if end:
-        end_dt = parse_datetime(end)
-        if not end_dt:
-            return JsonResponse({"error": "Invalid end datetime"}, status=400)
-        if timezone.is_naive(end_dt):
-            end_dt = timezone.make_aware(end_dt, timezone=timezone.utc)
-        qs = qs.filter(timestamp__lte=end_dt)
-
-    try:
-        parsed = parse_siem_search_params(request.GET)
-    except SiemQueryError as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
-
-    if parsed["event_type"]:
-        qs = qs.filter(event_type=parsed["event_type"])
-    if parsed["source"]:
-        qs = qs.filter(source=parsed["source"])
-    if parsed["asset_id"]:
-        qs = qs.filter(asset_id=parsed["asset_id"])
-    if parsed["asset_ip"]:
-        qs = qs.filter(asset_ip=parsed["asset_ip"])
-    if parsed["severity"] is not None:
-        qs = qs.filter(severity=parsed["severity"])
-    if parsed["query"]:
-        qs = qs.filter(summary__icontains=parsed["query"])
-
-    total = qs.count()
-    results = []
-    for event in qs[parsed["offset"]:parsed["offset"] + parsed["limit"]]:
-        results.append({
-            "id": event.id,
-            "timestamp": event.timestamp.isoformat(),
-            "source": event.source,
-            "event_type": event.event_type,
-            "severity": event.severity,
-            "asset_id": event.asset_id,
-            "asset_ip": event.asset_ip,
-            "summary": event.summary,
-            "raw": event.raw,
-        })
-
-    return JsonResponse({"count": total, "results": results})
+    """Search SIEM events by time range, filters, and aggregations."""
+    params = parse_search_request(request.GET)
+    payload = search_siem_events(params)
+    return JsonResponse(payload)
 
 
 @require_http_methods(["GET"])

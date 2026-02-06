@@ -149,3 +149,9 @@ ERROR tests/server/test_siem_pipeline.py
 - SIEM Task 3 implemented: pipeline ingest at `/dashboard/siem/pipeline/ingest/` with mapping in `dashboard/siem_pipeline.py`.
 - Test name collision resolved by renaming server test to `tests/server/test_siem_pipeline_server.py`.
 - Pipeline tests passed: 5 tests.
+
+## Context for Next Agent (2026-02-06)
+- SIEM Task 4 implemented: OpenSearch single-node stack + dashboards in both compose files, plus `opensearch-init` applying ISM policy and index template.
+- OpenSearch forwarding is enabled via settings (`OPENSEARCH_ENABLED=1`), with bulk indexing implemented in `dashboard/opensearch_client.py`.
+- New docs at `docs/opensearch.md` and updates in `docs/siem_events.md`.
+- Tests run: OpenSearch forwarding tests passed (4 tests).

@@ -96,6 +96,7 @@ from .siem_audit import record_siem_audit
 from .siem_threat_intel import ingest_indicators, match_indicators, persist_ioc_matches
 from .siem_syslog import syslog_to_event
 from .siem_windows import windows_event_to_event
+from .health import health_snapshot, metrics_payload
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 RISK_ASSESSMENT_TIMEOUT = 15
@@ -983,6 +984,19 @@ def _check_agent_token(request) -> bool:
     return header == token
 
 
+@require_http_methods(["GET"])
+def healthz(request):
+    snapshot = health_snapshot()
+    status_code = 200 if snapshot.get("status") == "ok" else 503
+    return JsonResponse(snapshot, status=status_code)
+
+
+@require_http_methods(["GET"])
+def metrics(request):
+    payload = metrics_payload()
+    return HttpResponse(payload, content_type="text/plain; version=0.0.4")
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def siem_event_ingest(request):
@@ -1132,11 +1146,13 @@ def siem_event_explorer(request):
     )
 
     events = list(SiemEvent.objects.all()[:50])
+    health = health_snapshot()
     context = {
         "summary": summary,
         "top_sources": top_sources,
         "top_types": top_types,
         "events": events,
+        "health": health,
         "default_start": timezone.localtime(since).strftime("%Y-%m-%dT%H:%M"),
         "default_end": timezone.localtime(now_ts).strftime("%Y-%m-%dT%H:%M"),
     }

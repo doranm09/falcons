@@ -226,6 +226,7 @@ Documentation:
 - `docs/siem_hunts.md`
 - `docs/siem_rbac_audit.md`
 - `docs/siem_production_security.md`
+- `docs/siem_health_metrics.md`
 - `docs/threat_intel.md`
 - `docs/siem_syslog_windows.md`
 

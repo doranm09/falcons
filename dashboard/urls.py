@@ -5,6 +5,8 @@ app_name = 'dashboard'
 
 urlpatterns = [
     path('', views.home, name='dashboard-home'),
+    path('healthz/', views.healthz, name='healthz'),
+    path('metrics/', views.metrics, name='metrics'),
     path('scans/', views.network_scans, name='network_scans'),
     path('scan/start/', views.start_scan_ajax, name='start-scan'),
     path('scan/status/<uuid:task_id>/', views.check_scan_status, name='scan-status'),

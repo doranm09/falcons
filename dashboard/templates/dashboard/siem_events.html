@@ -98,6 +98,23 @@
               <li class="text-muted">No data yet.</li>
             {% endfor %}
           </ul>
+          <h5 class="card-title mt-4">Service Status</h5>
+          <ul class="list-unstyled" data-testid="siem-service-status">
+            {% for name, check in health.checks.items %}
+              <li class="d-flex justify-content-between">
+                <span class="text-muted">{{ name|title }}</span>
+                {% if check.status == 'ok' %}
+                  <span class="badge bg-success">ok</span>
+                {% elif check.status == 'disabled' %}
+                  <span class="badge bg-secondary">disabled</span>
+                {% else %}
+                  <span class="badge bg-danger">error</span>
+                {% endif %}
+              </li>
+            {% empty %}
+              <li class="text-muted">No status available.</li>
+            {% endfor %}
+          </ul>
         </div>
       </div>
     </div>

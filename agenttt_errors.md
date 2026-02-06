@@ -264,3 +264,11 @@ SiemNormalizeError: Invalid timestamp (RFC3164 timestamp missing year)
 - Host agent updated to send `X-Agent-Token` automatically.
 - Docs added: `docs/siem_production_security.md`, plus token updates in other docs.
 - Tests passed: security settings/unit + agent token + SIEM ingest/token flows (25 tests).
+
+## Context for Next Agent (2026-02-06)
+- SIEM Task 16 implemented: health checks + metrics.
+- New `dashboard/health.py` with health snapshot + metrics payload.
+- Endpoints: `/dashboard/healthz/` and `/dashboard/metrics/`.
+- SIEM Event Explorer shows service status badges.
+- Docs added: `docs/siem_health_metrics.md` and updates to `docs/siem_events.md`.
+- Tests passed: health unit/server/integration tests (5 tests).

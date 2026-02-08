@@ -286,3 +286,13 @@ SiemNormalizeError: Invalid timestamp (RFC3164 timestamp missing year)
 - Ingest endpoints now use active profile max_batch.
 - Docs added: `docs/siem_research_profile.md` and README/docs updates.
 - Tests passed: research profile unit/server/integration (3 tests).
+
+## 2026-02-08
+### docker-compose exec -T web /home/appuser/.local/bin/pytest tests/server/test_siem_ingest.py ...
+**Error**
+```
+PermissionError: [Errno 1] Operation not permitted (Docker daemon socket) while running `docker-compose`.
+```
+### Context for Next Agent (2026-02-08)
+- Attempts to run `docker-compose` commands now fail due to sandbox restrictions (`PermissionError` on `/var/run/docker.sock`).
+- Tests could not be executed for the latest SIEM ingest refactor; please rerun once Docker access is available.

@@ -992,6 +992,35 @@ def _check_agent_token(request) -> bool:
     return header == token
 
 
+def _persist_normalized_events(normalized):
+    normalized = match_indicators(normalized)
+    event_records = [
+        {
+            "timestamp": item.get("timestamp"),
+            "source": item.get("source"),
+            "event_type": item.get("event_type"),
+            "severity": item.get("severity"),
+            "asset_id": item.get("asset_id"),
+            "asset_ip": item.get("asset_ip"),
+            "summary": item.get("summary"),
+            "raw": item.get("raw"),
+        }
+        for item in normalized
+    ]
+    created_events = SiemEvent.objects.bulk_create(
+        [SiemEvent(**item) for item in event_records], batch_size=200
+    )
+    persist_ioc_matches(normalized, created_events)
+    alerts = process_alerts_for_events(normalized)
+
+    payload = {"ingested": len(normalized), "alerts": len(alerts)}
+    try:
+        payload["opensearch"] = bulk_index_events(normalized)
+    except OpensearchError as exc:
+        payload["opensearch_error"] = str(exc)
+    return payload
+
+
 @require_http_methods(["GET"])
 def healthz(request):
     snapshot = health_snapshot()
@@ -1034,31 +1063,7 @@ def siem_event_ingest(request):
     if errors:
         return JsonResponse({"error": "Invalid event payload", "details": errors}, status=400)
 
-    normalized = match_indicators(normalized)
-    event_records = [
-        {
-            "timestamp": item.get("timestamp"),
-            "source": item.get("source"),
-            "event_type": item.get("event_type"),
-            "severity": item.get("severity"),
-            "asset_id": item.get("asset_id"),
-            "asset_ip": item.get("asset_ip"),
-            "summary": item.get("summary"),
-            "raw": item.get("raw"),
-        }
-        for item in normalized
-    ]
-    created_events = SiemEvent.objects.bulk_create([SiemEvent(**item) for item in event_records], batch_size=200)
-    persist_ioc_matches(normalized, created_events)
-    alerts = process_alerts_for_events(normalized)
-
-    response_payload = {"ingested": len(normalized)}
-    response_payload["alerts"] = len(alerts)
-    try:
-        response_payload["opensearch"] = bulk_index_events(normalized)
-    except OpensearchError as exc:
-        response_payload["opensearch_error"] = str(exc)
-
+    response_payload = _persist_normalized_events(normalized)
     return JsonResponse(response_payload, status=201)
 
 
@@ -1096,31 +1101,7 @@ def siem_pipeline_ingest(request):
     if errors:
         return JsonResponse({"error": "Invalid event payload", "details": errors}, status=400)
 
-    normalized = match_indicators(normalized)
-    event_records = [
-        {
-            "timestamp": item.get("timestamp"),
-            "source": item.get("source"),
-            "event_type": item.get("event_type"),
-            "severity": item.get("severity"),
-            "asset_id": item.get("asset_id"),
-            "asset_ip": item.get("asset_ip"),
-            "summary": item.get("summary"),
-            "raw": item.get("raw"),
-        }
-        for item in normalized
-    ]
-    created_events = SiemEvent.objects.bulk_create([SiemEvent(**item) for item in event_records], batch_size=200)
-    persist_ioc_matches(normalized, created_events)
-    alerts = process_alerts_for_events(normalized)
-
-    response_payload = {"ingested": len(normalized)}
-    response_payload["alerts"] = len(alerts)
-    try:
-        response_payload["opensearch"] = bulk_index_events(normalized)
-    except OpensearchError as exc:
-        response_payload["opensearch_error"] = str(exc)
-
+    response_payload = _persist_normalized_events(normalized)
     return JsonResponse(response_payload, status=201)
 
 
@@ -1680,25 +1661,8 @@ def siem_syslog_ingest(request):
         return JsonResponse({"error": "No syslog messages provided"}, status=400)
 
     normalized = [normalize_siem_event(event) for event in events]
-    normalized = match_indicators(normalized)
-    event_records = [
-        {
-            "timestamp": item.get("timestamp"),
-            "source": item.get("source"),
-            "event_type": item.get("event_type"),
-            "severity": item.get("severity"),
-            "asset_id": item.get("asset_id"),
-            "asset_ip": item.get("asset_ip"),
-            "summary": item.get("summary"),
-            "raw": item.get("raw"),
-        }
-        for item in normalized
-    ]
-    created_events = SiemEvent.objects.bulk_create([SiemEvent(**item) for item in event_records], batch_size=200)
-    persist_ioc_matches(normalized, created_events)
-    alerts = process_alerts_for_events(normalized)
-
-    return JsonResponse({"ingested": len(events), "alerts": len(alerts)}, status=201)
+    response_payload = _persist_normalized_events(normalized)
+    return JsonResponse(response_payload, status=201)
 
 
 @csrf_exempt
@@ -1719,25 +1683,8 @@ def siem_windows_ingest(request):
         return JsonResponse({"error": "No events provided"}, status=400)
 
     normalized = [normalize_siem_event(event) for event in events]
-    normalized = match_indicators(normalized)
-    event_records = [
-        {
-            "timestamp": item.get("timestamp"),
-            "source": item.get("source"),
-            "event_type": item.get("event_type"),
-            "severity": item.get("severity"),
-            "asset_id": item.get("asset_id"),
-            "asset_ip": item.get("asset_ip"),
-            "summary": item.get("summary"),
-            "raw": item.get("raw"),
-        }
-        for item in normalized
-    ]
-    created_events = SiemEvent.objects.bulk_create([SiemEvent(**item) for item in event_records], batch_size=200)
-    persist_ioc_matches(normalized, created_events)
-    alerts = process_alerts_for_events(normalized)
-
-    return JsonResponse({"ingested": len(events), "alerts": len(alerts)}, status=201)
+    response_payload = _persist_normalized_events(normalized)
+    return JsonResponse(response_payload, status=201)
 
 
 @require_GET

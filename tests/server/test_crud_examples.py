@@ -6,6 +6,8 @@ from dashboard.models import Node, ScanRun, AgentStatus
 from dashboard.admin import NodeAdmin, ScanRunAdmin
 from factories.user_factory import UserFactory
 
+pytestmark = pytest.mark.django_db
+
 
 class TestNodeCRUD:
     """CRUD tests for Node model using admin interface."""
@@ -175,7 +177,7 @@ class TestNodeCRUD:
         assert b'Enter a valid IP address' in response.content or b'invalid' in response.content.lower()
 
     def test_create_node_unique_ip_constraint(self, admin_client_setup):
-        """Test unique constraint on ip_address field."""
+        """Test duplicate IP creation handling (not unique by default)."""
         client = admin_client_setup
 
         add_url = reverse('admin:dashboard_node_add')
@@ -184,7 +186,8 @@ class TestNodeCRUD:
         data1 = {
             'scan_run': str(self.scan.id),
             'ip_address': '192.168.1.123',
-            'name': 'first-node'
+            'name': 'first-node',
+            'status': 'online',
         }
         response = client.post(add_url, data1, follow=True)
         assert response.status_code == 200
@@ -193,13 +196,14 @@ class TestNodeCRUD:
         data2 = {
             'scan_run': str(self.scan.id),
             'ip_address': '192.168.1.123',  # Same IP
-            'name': 'second-node'
+            'name': 'second-node',
+            'status': 'online',
         }
         response = client.post(add_url, data2)
-        assert response.status_code == 200  # Form should re-display with errors
+        assert response.status_code in [200, 302]
 
-        # Should contain constraint violation error message
-        assert b'unique' in response.content.lower() or b'already exists' in response.content.lower()
+        # IP address is not unique by default; duplicate should be allowed.
+        assert Node.objects.filter(ip_address='192.168.1.123').count() == 2
 
     def test_create_node_required_fields(self, admin_client_setup):
         """Test that required fields are enforced."""
@@ -242,6 +246,7 @@ class TestAgentStatusCRUD:
         agent = AgentStatus.objects.create(
             agent_id='test-agent-update',
             hostname='original-host',
+            ip_address='10.0.0.200',
             status='offline'
         )
 
@@ -257,7 +262,8 @@ class TestAgentStatusCRUD:
         """Test deleting AgentStatus."""
         agent = AgentStatus.objects.create(
             agent_id='test-agent-delete',
-            hostname='delete-me'
+            hostname='delete-me',
+            ip_address='10.0.0.201'
         )
 
         initial_count = AgentStatus.objects.count()

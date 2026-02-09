@@ -20,7 +20,7 @@ class TestAuthFlowE2E:
         """Test that agent download works without authentication."""
         # Ensure test files exist
         host_agent_dir = Path(settings.BASE_DIR) / 'host_agent'
-        host_agent_dir.mkdir(exist_ok=True, exist_ok=True)
+        host_agent_dir.mkdir(exist_ok=True)
 
         test_file = host_agent_dir / 'agent.py'
         if not test_file.exists():

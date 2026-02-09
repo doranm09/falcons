@@ -88,13 +88,23 @@
               </button>
               <ul class="dropdown-menu">
                 {% if engagement.status == 'ACTIVE' %}
-                <li><a class="dropdown-item text-danger" href="{% url 'sliver:stop_engagement' engagement.id %}">
-                  <i class="bi bi-stop-circle"></i> Stop Engagement
-                </a></li>
+                <li>
+                  <form method="post" action="{% url 'sliver:stop_engagement' engagement.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="dropdown-item text-danger" onclick="return confirm('Stop engagement {{ engagement.name }}?')">
+                      <i class="bi bi-stop-circle"></i> Stop Engagement
+                    </button>
+                  </form>
+                </li>
                 {% else %}
-                <li><a class="dropdown-item text-success" href="{% url 'sliver:start_engagement' engagement.id %}">
-                  <i class="bi bi-play-circle"></i> Start Engagement
-                </a></li>
+                <li>
+                  <form method="post" action="{% url 'sliver:start_engagement' engagement.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="dropdown-item text-success">
+                      <i class="bi bi-play-circle"></i> Start Engagement
+                    </button>
+                  </form>
+                </li>
                 {% endif %}
                 <li><hr class="dropdown-divider"></li>
                 <li><a class="dropdown-item" href="{% url 'sliver:engagement_loot' engagement.id %}">
@@ -147,9 +157,11 @@
             <label for="teamserverSelect" class="form-label">Teamserver *</label>
             <select class="form-select" id="teamserverSelect" name="teamserver_id" required>
               <option value="">Select a teamserver...</option>
-              <!-- These would be populated from Teamserver.objects.all() -->
-              <option value="1">Local Teamserver (192.168.1.100:31337)</option>
-              <option value="2">Production Teamserver (example.com:31337)</option>
+              {% for teamserver in teamservers %}
+              <option value="{{ teamserver.id }}">{{ teamserver.name }} ({{ teamserver.host }}:{{ teamserver.port }})</option>
+              {% empty %}
+              <option value="" disabled>No teamservers configured</option>
+              {% endfor %}
             </select>
           </div>
 

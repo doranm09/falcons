@@ -74,7 +74,7 @@
         <div class="card-header d-flex justify-content-between align-items-center">
           <div>
             <h5 class="mb-1"><i class="bi bi-diagram-3"></i> Network Topology</h5>
-            <small class="text-muted">Tap two nodes to compute shortest path latency.</small>
+            <small class="text-muted">Click a node to view details. Shift+click two nodes to compute shortest path latency.</small>
           </div>
           <div class="btn-group">
             <button class="btn btn-sm btn-outline-primary" id="refresh-topology">
@@ -272,6 +272,7 @@
       <div class="d-flex justify-content-between align-items-center mb-2">
         <h5 class="mb-0">Discovered Nodes</h5>
         <div class="d-flex gap-2">
+          <label class="visually-hidden" for="nodes-filter">Filter nodes</label>
           <input id="nodes-filter" class="form-control form-control-sm" placeholder="Filter (IP/host)">
           <button class="btn btn-sm btn-outline-secondary" id="export-nodes">Export CSV</button>
           <button class="btn btn-sm btn-outline-primary" id="refresh-nodes">Refresh</button>
@@ -326,6 +327,7 @@
       <div class="d-flex justify-content-between align-items-center mb-2">
         <h5 class="mb-0">Vulnerability Findings</h5>
         <div class="d-flex gap-2">
+          <label class="visually-hidden" for="vuln-severity">Filter by severity</label>
           <select id="vuln-severity" class="form-select form-select-sm" style="max-width: 180px;">
             <option value="">All severities</option>
             <option value="High">High</option>

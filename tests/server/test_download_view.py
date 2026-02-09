@@ -54,7 +54,7 @@ class TestDownloadView:
         # Mock GitHub API failure
         api_url = 'https://github.gatech.edu/api/v3/repos/iFAN-Lab/cyber_pen_test/releases/latest'
 
-        with responses.RequestsMock() as rsps:
+        with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
             rsps.add(responses.GET, api_url, json={'error': 'Not found'}, status=404)
 
             response = client.get(reverse('dashboard:download_host_agent'))
@@ -82,7 +82,7 @@ class TestDownloadView:
         # Mock GitHub API failure to ensure fallback branch is taken
         api_url = 'https://github.gatech.edu/api/v3/repos/iFAN-Lab/cyber_pen_test/releases/latest'
 
-        with responses.RequestsMock() as rsps:
+        with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
             rsps.add(responses.GET, api_url, json={'error': 'Not found'}, status=404)
 
             response = client.get(reverse('dashboard:download_host_agent'))

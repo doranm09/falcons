@@ -35,10 +35,19 @@ urlpatterns = [
     path('agent/<str:agent_id>/sbom/diff/', views.agent_sbom_diff, name='agent_sbom_diff'),
     path('agent/<str:agent_id>/sbom/bundle/', views.agent_sbom_bundle, name='agent_sbom_bundle'),
     path('node/<int:node_id>/details/', views.node_details, name='node_details'),
+    path('node/<int:node_id>/', views.node_detail_page, name='node_detail_page'),
     path("vulnerabilities/<int:scan_id>/", views.vulnerability_detail, name="vuln-detail"),
     path('scan/vuln/start/', views.start_openvas_scan, name='start-vuln-scan'),
     path('scan/vuln/status/<int:scan_id>/', views.vuln_scan_status, name='vuln-scan-status'),
     path('paths/<int:start_node_id>/', views.shortest_paths, name='shortest-paths'),
+
+    # Risk assessment (ICS)
+    path('risk-assessment/', views.risk_assessment_page, name='risk_assessment'),
+    path('risk-assessment/status/', views.risk_assessment_status_api, name='risk_assessment_status'),
+    path('risk-assessment/nodes/', views.risk_assessment_nodes_api, name='risk_assessment_nodes'),
+    path('risk-assessment/probability/', views.risk_assessment_probability_api, name='risk_assessment_probability'),
+    path('risk-assessment/network/compute/', views.risk_assessment_network_compute_api, name='risk_assessment_network_compute'),
+    path('risk-assessment/mappings/', views.risk_assessment_mappings_api, name='risk_assessment_mappings'),
 
     # Network monitoring and Security Onion-like features
     path('network/monitoring/', views.network_monitoring_dashboard, name='network_monitoring'),

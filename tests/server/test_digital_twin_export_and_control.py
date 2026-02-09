@@ -2,11 +2,15 @@ import json
 import io
 import zipfile
 import subprocess
+import pytest
 
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from dashboard.models import ScanRun, Node, Link
+
+
+pytestmark = pytest.mark.django_db
 
 
 def _create_scan():

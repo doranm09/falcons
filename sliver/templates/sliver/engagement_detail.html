@@ -1,0 +1,261 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid p-4">
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item"><a href="{% url 'sliver:dashboard' %}">Sliver</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'sliver:engagement_list' %}">Engagements</a></li>
+      <li class="breadcrumb-item active" aria-current="page">{{ engagement.name }}</li>
+    </ol>
+  </nav>
+  <div class="row mb-3">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+      <div>
+        <h2><i class="bi bi-gear"></i> {{ engagement.name }}</h2>
+        <p class="text-muted mb-0">{{ engagement.description|default:"No description provided." }}</p>
+      </div>
+      <div class="d-flex gap-2">
+        {% if engagement.status == 'ACTIVE' %}
+          <form method="post" action="{% url 'sliver:stop_engagement' engagement.id %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Stop engagement {{ engagement.name }}?')">
+              <i class="bi bi-stop-circle"></i> Stop
+            </button>
+          </form>
+        {% else %}
+          <form method="post" action="{% url 'sliver:start_engagement' engagement.id %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-success">
+              <i class="bi bi-play-circle"></i> Start
+            </button>
+          </form>
+        {% endif %}
+        <a href="{% url 'sliver:engagement_sessions' engagement.id %}" class="btn btn-outline-primary">
+          <i class="bi bi-robot"></i> Sessions
+        </a>
+        <a href="{% url 'sliver:engagement_implants' engagement.id %}" class="btn btn-outline-secondary">
+          <i class="bi bi-box"></i> Implants
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="row mb-4">
+    <div class="col-md-3">
+      <div class="card">
+        <div class="card-body text-center">
+          <div class="text-muted small">Status</div>
+          <div class="fw-semibold">{{ engagement.status }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card">
+        <div class="card-body text-center">
+          <div class="text-muted small">Active Sessions</div>
+          <div class="fw-semibold">{{ active_sessions_count }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card">
+        <div class="card-body text-center">
+          <div class="text-muted small">Pending Jobs</div>
+          <div class="fw-semibold">{{ pending_jobs_count }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card">
+        <div class="card-body text-center">
+          <div class="text-muted small">Teamserver</div>
+          <div class="fw-semibold">{{ engagement.teamserver.name }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row mb-4">
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-diagram-3"></i> Engagement Details</h5>
+        </div>
+        <div class="card-body">
+          <div class="mb-3">
+            <div class="text-muted small">Target Scope</div>
+            <div class="fw-semibold">{{ engagement.target_scope|default:"—" }}</div>
+          </div>
+          <div class="mb-3">
+            <div class="text-muted small">Start Date</div>
+            <div class="fw-semibold">{{ engagement.start_date|date:"M j, Y H:i" }}</div>
+          </div>
+          <div class="mb-3">
+            <div class="text-muted small">End Date</div>
+            <div class="fw-semibold">
+              {% if engagement.end_date %}{{ engagement.end_date|date:"M j, Y H:i" }}{% else %}—{% endif %}
+            </div>
+          </div>
+          <div>
+            <div class="text-muted small">Tags</div>
+            {% if engagement.tags %}
+              {% for tag in engagement.tags %}
+                <span class="badge bg-light text-muted">{{ tag }}</span>
+              {% endfor %}
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-robot"></i> Sessions</h5>
+        </div>
+        <div class="card-body p-0">
+          {% if sessions %}
+            <div class="table-responsive">
+              <table class="table table-sm mb-0">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Last Checkin</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for session in sessions|slice:":10" %}
+                  <tr>
+                    <td>
+                      <a href="{% url 'sliver:session_detail' session.session_id %}">
+                        {{ session.name|default:session.session_id }}
+                      </a>
+                    </td>
+                    <td>
+                      <span class="badge bg-{% if session.status == 'ACTIVE' %}success{% elif session.status == 'DEAD' %}danger{% else %}warning{% endif %}">
+                        {{ session.status }}
+                      </span>
+                    </td>
+                    <td>{{ session.last_checkin|timesince }} ago</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="p-3 text-muted">No sessions found.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row mb-4">
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-list-check"></i> Recent Jobs</h5>
+        </div>
+        <div class="card-body p-0">
+          {% if recent_jobs %}
+            <div class="table-responsive">
+              <table class="table table-sm mb-0">
+                <thead>
+                  <tr>
+                    <th>Session</th>
+                    <th>Command</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for job in recent_jobs %}
+                  <tr>
+                    <td>{{ job.session.name|default:job.session.session_id }}</td>
+                    <td>
+                      <a href="{% url 'sliver:job_detail' job.job_id %}">
+                        {{ job.command|truncatechars:40 }}
+                      </a>
+                    </td>
+                    <td>
+                      <span class="badge bg-{% if job.status == 'COMPLETED' %}success{% elif job.status == 'FAILED' %}danger{% elif job.status == 'RUNNING' %}info{% else %}secondary{% endif %}">
+                        {{ job.status }}
+                      </span>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="p-3 text-muted">No jobs found.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-gift"></i> Recent Loot</h5>
+        </div>
+        <div class="card-body p-0">
+          {% if loot %}
+            <div class="table-responsive">
+              <table class="table table-sm mb-0">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Collected</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for item in loot %}
+                  <tr>
+                    <td>{{ item.name|default:item.loot_id }}</td>
+                    <td>{{ item.loot_type }}</td>
+                    <td>{{ item.collected_at|timesince }} ago</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="p-3 text-muted">No loot collected.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-activity"></i> Recent Events</h5>
+        </div>
+        <div class="card-body">
+          {% if events %}
+            <ul class="list-group">
+              {% for event in events %}
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                  <strong>{{ event.event_type }}</strong>
+                  <div class="text-muted small">{{ event.message|default:"No details" }}</div>
+                </div>
+                <small class="text-muted">{{ event.timestamp|timesince }} ago</small>
+              </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="text-muted">No events recorded.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,81 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid p-4">
+  <div class="row mb-4">
+    <div class="col-12">
+      <h2><i class="bi bi-hammer"></i> Generate Implant</h2>
+      <p class="text-muted">Build a Sliver implant/stager for a selected engagement.</p>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-lg-8">
+      <div class="card shadow-sm">
+        <div class="card-header">
+          <h5 class="mb-0">Implant Build Request</h5>
+        </div>
+        <div class="card-body">
+          <form method="post" action="{% url 'sliver:generate_implant' %}">
+            {% csrf_token %}
+            <div class="mb-3">
+              <label for="implantName" class="form-label">Implant Name</label>
+              <input type="text" class="form-control" id="implantName" name="name" placeholder="implant_2026_01">
+              <div class="form-text">Leave blank to auto-generate a name.</div>
+            </div>
+
+            <div class="mb-3">
+              <label for="engagementSelect" class="form-label">Engagement *</label>
+              <select class="form-select" id="engagementSelect" name="engagement_id" required>
+                <option value="">Select an active engagement...</option>
+                {% for engagement in engagements %}
+                <option value="{{ engagement.id }}">{{ engagement.name }}</option>
+                {% empty %}
+                <option value="" disabled>No active engagements found</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="mb-3">
+              <label for="templateSelect" class="form-label">Implant Template *</label>
+              <select class="form-select" id="templateSelect" name="template_id" required>
+                <option value="">Select a template...</option>
+                {% for template in templates %}
+                <option value="{{ template.id }}">{{ template.name }} ({{ template.operating_system }}/{{ template.architecture }})</option>
+                {% empty %}
+                <option value="" disabled>No templates available</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-primary">
+                <i class="bi bi-play-circle"></i> Generate Implant
+              </button>
+              <a href="{% url 'sliver:implant_artifacts' %}" class="btn btn-outline-secondary">
+                View Artifacts
+              </a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card shadow-sm">
+        <div class="card-header">
+          <h5 class="mb-0">Deployment Notes</h5>
+        </div>
+        <div class="card-body">
+          <ul class="mb-0">
+            <li>Generated artifacts are stored in the Sliver artifact directory.</li>
+            <li>Use the artifacts list to download and deploy in your sandbox.</li>
+            <li>Ensure the selected teamserver is reachable before generating.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

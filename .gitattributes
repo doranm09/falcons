@@ -1,0 +1,5 @@
+# Enforce LF for scripts and container entrypoints to avoid /usr/bin/env sh\r errors.
+*.sh text eol=lf
+Dockerfile* text eol=lf
+*.env text eol=lf
+*.env.* text eol=lf

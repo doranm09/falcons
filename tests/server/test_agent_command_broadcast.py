@@ -1,8 +1,12 @@
 import json
+import pytest
 
 from django.urls import reverse
 
 from dashboard.models import AgentStatus, AgentCommand
+
+
+pytestmark = pytest.mark.django_db
 
 
 def test_send_agent_command_broadcast(client):

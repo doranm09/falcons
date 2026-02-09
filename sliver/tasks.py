@@ -1,16 +1,51 @@
+import base64
+import hashlib
+import json
+import shutil
+from pathlib import Path
+
 from celery import shared_task
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
 from django.utils import timezone
+
 from .models import *
-import json
 
 try:
     import sliver as sliver_client
-    from .utils import get_sliver_client, log_audit_action
+    from .utils import get_sliver_client, get_artifact_base_dir, log_audit_action
 except ImportError:
     sliver_client = None
     get_sliver_client = None
     log_audit_action = None
+    get_artifact_base_dir = None
+
+
+def _normalize_sliver_response(response):
+    if isinstance(response, (bytes, bytearray)):
+        try:
+            response = response.decode()
+        except Exception:
+            return {"raw": str(response)}
+    if isinstance(response, str):
+        try:
+            return json.loads(response)
+        except json.JSONDecodeError:
+            return {"raw": response}
+    if isinstance(response, dict):
+        return response
+    return {"raw": str(response)}
+
+
+def _extract_artifact_bytes(payload):
+    if isinstance(payload, (bytes, bytearray)):
+        return bytes(payload)
+    if isinstance(payload, str):
+        try:
+            return base64.b64decode(payload, validate=True)
+        except Exception:
+            return payload.encode()
+    return None
 
 
 @shared_task(bind=True)
@@ -163,11 +198,12 @@ def execute_sliver_command_task(self, session_id, command, user_id=None, paramet
 
 
 @shared_task(bind=True)
-def generate_implant_task(self, engagement_id, template_id, name, user_id):
+def generate_implant_task(self, engagement_id, template_id, name, user_id, artifact_id=None):
     """Generate an implant/stager asynchronously."""
     if not sliver_client or not get_sliver_client:
         return {'error': 'Sliver client not available'}
 
+    artifact = None
     try:
         engagement = Engagement.objects.get(id=engagement_id)
         template = ImplantTemplate.objects.get(id=template_id)
@@ -176,16 +212,65 @@ def generate_implant_task(self, engagement_id, template_id, name, user_id):
 
         # Generate implant using template configuration
         config = template.config
+        if artifact_id:
+            artifact = ImplantArtifact.objects.filter(id=artifact_id).first()
+        if not artifact:
+            artifact = ImplantArtifact.objects.create(
+                name=name,
+                file_name='',
+                engagement=engagement,
+                template=template,
+                generated_by=user,
+                status=ImplantArtifact.Status.RUNNING,
+            )
+        else:
+            artifact.status = ImplantArtifact.Status.RUNNING
+            artifact.save(update_fields=['status'])
 
         # This would need to be adapted based on the actual Sliver implant generation API
-        # Placeholder for implant generation
-        implant_resp = client.rpc.generate(
-            name=name,
-            config=config
-        )
+        implant_resp = client.rpc.generate(name=name, config=config)
+        implant_data = _normalize_sliver_response(implant_resp)
 
-        # Process generated implant
-        implant_data = json.loads(implant_resp)
+        artifact.metadata = implant_data
+
+        base_dir = get_artifact_base_dir() if get_artifact_base_dir else None
+        if base_dir is None:
+            raise RuntimeError("Artifact storage is not configured")
+        base_dir = Path(base_dir)
+        output_dir = base_dir / f"engagement_{engagement.id}" / timezone.now().strftime("%Y%m%d")
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        file_name = artifact.file_name or name
+        if '.' not in Path(file_name).name:
+            ext = template.file_format or template.config.get('format') or 'bin'
+            file_name = f"{file_name}.{ext.lstrip('.')}"
+
+        local_path = output_dir / file_name
+
+        file_bytes = None
+        for key in ('data', 'file', 'content', 'payload'):
+            if key in implant_data:
+                file_bytes = _extract_artifact_bytes(implant_data.get(key))
+                if file_bytes:
+                    break
+
+        if file_bytes:
+            local_path.write_bytes(file_bytes)
+        else:
+            candidate_path = implant_data.get('file_path') or implant_data.get('path')
+            if candidate_path and Path(candidate_path).is_file():
+                shutil.copyfile(candidate_path, local_path)
+
+        if local_path.is_file():
+            artifact.relative_path = str(local_path.relative_to(base_dir))
+            artifact.file_name = local_path.name
+            artifact.file_size = local_path.stat().st_size
+            artifact.sha256 = hashlib.sha256(local_path.read_bytes()).hexdigest()
+            artifact.status = ImplantArtifact.Status.READY
+            artifact.error_message = ""
+        else:
+            artifact.status = ImplantArtifact.Status.FAILED
+            artifact.error_message = "Sliver API did not return implant data or accessible file path."
 
         # Log audit action
         log_audit_action(
@@ -200,15 +285,26 @@ def generate_implant_task(self, engagement_id, template_id, name, user_id):
                 'arch': template.architecture
             }
         )
+        artifact.save()
 
         return {
             'implant_name': name,
-            'file_path': implant_data.get('file_path'),
-            'size': implant_data.get('size'),
-            'template': template.name
+            'file_path': artifact.relative_path,
+            'size': artifact.file_size,
+            'template': template.name,
+            'status': artifact.status,
         }
 
     except Exception as e:
+        if artifact:
+            artifact.status = ImplantArtifact.Status.FAILED
+            artifact.error_message = str(e)
+            artifact.save(update_fields=['status', 'error_message', 'updated_at'])
+        elif artifact_id:
+            ImplantArtifact.objects.filter(id=artifact_id).update(
+                status=ImplantArtifact.Status.FAILED,
+                error_message=str(e),
+            )
         return {'error': str(e)}
 
 
@@ -229,21 +325,44 @@ def collect_loot_task(self, session_id, user_id, loot_type='ALL'):
 
         collected_count = 0
         for loot_item in loot_data.get('loot', []):
-            if loot_item.get('session_id') != session_id:
+            loot_session_id = loot_item.get('SessionID') or loot_item.get('session_id')
+            if loot_session_id != session_id:
                 continue
+
+            loot_id = loot_item.get('LootID') or loot_item.get('loot_id')
+            loot_name = loot_item.get('Name') or loot_item.get('name') or ''
+            loot_type_value = (loot_item.get('Type') or loot_item.get('type') or 'OTHER').upper()
+            file_path = loot_item.get('FilePath') or loot_item.get('file_path') or ''
+            content = loot_item.get('Data') or loot_item.get('data') or ''
+            size_bytes = loot_item.get('Size') or loot_item.get('size') or 0
 
             # Create loot record
             loot_obj = Loot.objects.create(
-                loot_id=loot_item.get('LootID'),
-                name=loot_item.get('Name', ''),
-                loot_type=loot_item.get('Type', 'OTHER').upper(),
+                loot_id=loot_id,
+                name=loot_name,
+                loot_type=loot_type_value,
                 session=session,
                 engagement=session.engagement,
-                file_path=loot_item.get('FilePath', ''),
-                content=loot_item.get('Data', ''),
-                size_bytes=loot_item.get('Size', 0),
+                file_path=file_path,
+                content=content if isinstance(content, str) else '',
+                size_bytes=size_bytes or 0,
                 operator=user
             )
+
+            payload = None
+            for key in ('Data', 'data', 'Content', 'content', 'Payload', 'payload'):
+                if key in loot_item:
+                    payload = loot_item.get(key)
+                    break
+
+            file_bytes = _extract_artifact_bytes(payload) if payload is not None else None
+            if file_bytes:
+                candidate_name = loot_name or Path(file_path).name or f"loot_{loot_id or loot_obj.id}"
+                safe_name = Path(candidate_name).name or f"loot_{loot_obj.id}"
+                loot_obj.local_path.save(safe_name, ContentFile(file_bytes), save=False)
+                loot_obj.size_bytes = len(file_bytes)
+                loot_obj.save(update_fields=['local_path', 'size_bytes', 'updated_at'])
+
             collected_count += 1
 
         # Log audit action

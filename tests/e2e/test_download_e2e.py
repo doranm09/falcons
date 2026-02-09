@@ -12,7 +12,7 @@ class TestDownloadE2E:
         """E2E test for downloading agent ZIP file."""
         # Ensure host_agent directory exists with test files
         host_agent_dir = Path(settings.BASE_DIR) / 'host_agent'
-        host_agent_dir.mkdir(exist_ok=True, exist_ok=True)
+        host_agent_dir.mkdir(exist_ok=True)
 
         test_file = host_agent_dir / 'agent.py'
         if not test_file.exists():
@@ -100,7 +100,7 @@ class TestDownloadE2E:
         # This test verifies the download still works even after caching
         # Setup test files
         host_agent_dir = Path(settings.BASE_DIR) / 'host_agent'
-        host_agent_dir.mkdir(exist_ok=True, exist_ok=True)
+        host_agent_dir.mkdir(exist_ok=True)
 
         test_file = host_agent_dir / 'agent.py'
         if not test_file.exists():

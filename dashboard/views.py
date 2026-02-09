@@ -9,8 +9,10 @@ from .models import (
     NetworkMetadata,
     Node,
     NodeInterface,
+    RiskNodeMapping,
     SbomReport,
     ScanRun,
+    Vulnerability,
 )
 import ipaddress
 import subprocess
@@ -25,8 +27,15 @@ from .tasks import (
 from .openvas_client import openvas_session, get_task_status, get_report_id, download_report
 from celery.result import AsyncResult
 from .models import Link
+from .risk_assessment import build_cyber_data_for_risk_nodes, summarize_risk_results
 from .utils import dijkstra, list_interfaces
-from .sbom import detect_sbom_format, extract_os_summary_from_sbom, extract_packages_from_sbom, compute_payload_hash
+from .sbom import (
+    detect_sbom_format,
+    extract_os_summary_from_sbom,
+    extract_packages_from_sbom,
+    extract_vulnerabilities_from_sbom,
+    compute_payload_hash,
+)
 from .minimega import build_minimega_script, build_digital_twin_manifest
 from django.views.decorators.http import require_GET
 from django.core.exceptions import ObjectDoesNotExist
@@ -46,6 +55,7 @@ from datetime import timedelta
 from functools import wraps
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
+RISK_ASSESSMENT_TIMEOUT = 5
 
 def home(request):
     nodes = Node.objects.all().values('ip_address', 'name')
@@ -87,12 +97,18 @@ def start_scan_ajax(request):
         cidr = request.POST.get("cidr")
         method = (request.POST.get("scan_method") or "ping").lower()
         print(f"[DEBUG] Received CIDR: {cidr}")
+        if not cidr:
+            return JsonResponse({"error": "cidr is required"}, status=400)
+
+        scan = ScanRun.objects.create(cidr=cidr, status="RUNNING", scan_type=method)
         if method == "nmap":
-            task = nmap_discovery_task.delay(cidr)
+            task = nmap_discovery_task.delay(cidr, scan.id)
         else:
-            task = scan_network_task.delay(cidr)
+            task = scan_network_task.delay(cidr, scan.id)
+        scan.task_id = task.id
+        scan.save(update_fields=["task_id"])
         print(f"[DEBUG] Task dispatched: {task.id}")
-        return JsonResponse({"task_id": task.id, "method": method})
+        return JsonResponse({"task_id": task.id, "scan_id": scan.id, "method": method})
     else:
         return JsonResponse({"error": "Only POST allowed"}, status=405)
 
@@ -123,12 +139,21 @@ def check_scan_status(request, task_id):
             ]
         })
 
+    progress = None
+    if isinstance(result.info, dict):
+        progress = {
+            "current": result.info.get("current"),
+            "total": result.info.get("total"),
+            "percent": result.info.get("percent"),
+        }
+
     response = {
         "state": state,
-        "nodes": node_data
+        "nodes": node_data,
+        "progress": progress,
     }
 
-    if state in ['PENDING', 'STARTED']:
+    if state in ['PENDING', 'STARTED'] and progress is None:
         response["progress"] = "Scan is running..."
 
     if hasattr(result, "ready") and result.ready():
@@ -211,7 +236,27 @@ def agent_scan_results(request):
     if not scan:
         scan = ScanRun.objects.create(cidr=cidr, status="IN_PROGRESS", scan_type="agent")
 
+    # Ensure a stable node for the scanning agent itself (agent_id is globally unique)
+    agent_node = None
+    try:
+        agent = AgentStatus.objects.get(agent_id=agent_id)
+    except AgentStatus.DoesNotExist:
+        agent = None
+
+    try:
+        agent_node = Node.objects.get(agent_id=agent_id)
+    except Node.DoesNotExist:
+        if agent:
+            agent_node = Node.objects.create(
+                agent_id=agent_id,
+                name=agent.hostname or f"agent-{agent_id}",
+                ip_address=agent.ip_address,
+                status="online",
+                description=f"Scanner agent {agent_id}",
+            )
+
     created_nodes = 0
+    created_links = 0
     for host in hosts:
         ip_address = host.get("ip") if isinstance(host, dict) else host
         if not ip_address:
@@ -231,8 +276,37 @@ def agent_scan_results(request):
             node.save(update_fields=["status", "description"])
         created_nodes += 1
 
+        # Build directed links (both directions) when we have a scanning agent node
+        if agent_node:
+            latency_ms = None
+            if isinstance(host, dict):
+                latency_ms = host.get("latency_ms")
+            try:
+                weight = float(latency_ms) if latency_ms is not None else 1.0
+            except (TypeError, ValueError):
+                weight = 1.0
+
+            link1, link1_created = Link.objects.update_or_create(
+                scan_run=scan,
+                source=agent_node,
+                destination=node,
+                defaults={"weight": weight},
+            )
+            link2, link2_created = Link.objects.update_or_create(
+                scan_run=scan,
+                source=node,
+                destination=agent_node,
+                defaults={"weight": weight},
+            )
+            if link1_created:
+                created_links += 1
+            if link2_created:
+                created_links += 1
+
     scan.status = "COMPLETE"
     scan.result_summary = f"{created_nodes} hosts reported by agent {agent_id}"
+    if created_links:
+        scan.result_summary += f" ({created_links} links)"
     scan.save(update_fields=["status", "result_summary"])
 
     return JsonResponse({
@@ -264,55 +338,221 @@ def shortest_paths(request, start_node_id=None):
     return JsonResponse(distances_serialized, encoder=DjangoJSONEncoder, safe=False)
 
 def history(request):
-    from .models import Vulnerability
+    from .models import ScanVulnerability
     runs = ScanRun.objects.all().order_by('-timestamp')
 
     run_data = []
     for run in runs:
-        vulns = Vulnerability.objects.filter(scan_run=run)
+        vulns = ScanVulnerability.objects.filter(scan_run=run)
         run_data.append({
             "run": run,
             "vuln_count": vulns.count(),
         })
 
-    return render(request, 'dashboard/history.html', {'runs': runs})
+    return render(request, 'dashboard/history.html', {'runs': run_data})
 
 def graph_data(request):
-    latest_scan = ScanRun.objects.order_by('-timestamp').first()
-    if not latest_scan:
-        return JsonResponse([], safe=False)
+    scan_window = now() - timedelta(hours=24)
+    recent_scan_ids = list(
+        ScanRun.objects.filter(nodes__isnull=False, timestamp__gte=scan_window)
+        .order_by('-timestamp')
+        .values_list('id', flat=True)
+        .distinct()
+    )
 
-    nodes = Node.objects.filter(scan_run=latest_scan)
-    links = Link.objects.filter(scan_run=latest_scan)
+    nodes = Node.objects.none()
+    if recent_scan_ids:
+        nodes = (
+            Node.objects.filter(scan_run_id__in=recent_scan_ids)
+            .select_related('scan_run')
+            .order_by('-scan_run__timestamp', '-id')
+        )
+
+    latest_ping_scan = ScanRun.objects.filter(scan_type="ping", nodes__isnull=False).order_by('-timestamp').first()
+    ping_node_by_ip = {}
+    if latest_ping_scan:
+        for ping_node in Node.objects.filter(scan_run=latest_ping_scan):
+            ping_node_by_ip[ping_node.ip_address] = ping_node.id
 
     elements = []
+    nodes_by_id = {}
+    ip_to_node_id = {}
+    edge_ids = set()
 
+    def add_node(node_id, label, ip=None, status=None, extra=None, node_db_id=None, path_id=None):
+        if node_id in nodes_by_id:
+            return
+        data = {
+            "id": node_id,
+            "label": label,
+        }
+        if ip:
+            data["ip"] = ip
+        if status:
+            data["status"] = status
+        if node_db_id is not None:
+            data["node_id"] = node_db_id
+        if path_id is not None:
+            data["path_id"] = path_id
+        if extra:
+            data.update(extra)
+        nodes_by_id[node_id] = data
+
+    def add_edge(edge_id, source, target, label, raw_weight=1.0, kind=None):
+        if edge_id in edge_ids:
+            return
+        data = {
+            "id": edge_id,
+            "source": source,
+            "target": target,
+            "weight": label,
+            "raw_weight": raw_weight,
+        }
+        if kind:
+            data["kind"] = kind
+        elements.append({"data": data})
+        edge_ids.add(edge_id)
+
+    # Online agents for metadata + optional node enrichment
+    agents = AgentStatus.objects.filter(status="online")
+    agents_by_ip = {a.ip_address: a for a in agents if a.ip_address}
+
+    # Scan nodes (dedupe by IP; keep most recent per IP)
     for node in nodes:
-        # Get cyber template data for enhanced node information
+        if node.ip_address in ip_to_node_id:
+            continue
         cyber_data = node.get_cyber_template_data()
+        node_id = str(node.id)
 
-        elements.append({
-            "data": {
-                "id": str(node.id),
-                "label": node.name,
-                "ip": node.ip_address,
-                "status": node.status,
-                "cyber_data": cyber_data,
-                "has_cyber_data": any(cyber_data.values()),
-            }
-        })
+        agent = agents_by_ip.get(node.ip_address)
+        extra = {
+            "cyber_data": cyber_data,
+            "has_cyber_data": any(cyber_data.values()),
+        }
+        if agent:
+            extra.update({
+                "type": "agent",
+                "agent_id": agent.agent_id,
+                "hostname": agent.hostname,
+                "os_type": agent.os_type,
+            })
 
-    for link in links:
-        elements.append({
-            "data": {
-                "source": str(link.source.id),
-                "target": str(link.destination.id),
-                "weight": f"{link.weight:.2f}",  # for label
-                "raw_weight": link.weight        # for color mapping
-            }
-        })
+        path_id = ping_node_by_ip.get(node.ip_address)
+        add_node(
+            node_id=node_id,
+            label=node.name,
+            ip=node.ip_address,
+            status=node.status,
+            extra=extra,
+            node_db_id=node.id,
+            path_id=path_id,
+        )
+        ip_to_node_id[node.ip_address] = node_id
 
+    # Agent nodes (only if not already represented by scan nodes)
+    for agent in agents:
+        if agent.ip_address and agent.ip_address in ip_to_node_id:
+            continue
+        agent_node = None
+        try:
+            agent_node = Node.objects.filter(agent_id=agent.agent_id).first()
+        except Exception:
+            agent_node = None
+        agent_node_id = f"agent:{agent.agent_id}"
+        add_node(
+            node_id=agent_node_id,
+            label=agent.hostname,
+            ip=agent.ip_address,
+            status=agent.status,
+            extra={
+                "type": "agent",
+                "agent_id": agent.agent_id,
+                "hostname": agent.hostname,
+                "os_type": agent.os_type,
+                "last_heartbeat": agent.last_heartbeat.strftime("%Y-%m-%d %H:%M:%S") if agent.last_heartbeat else "Never",
+            },
+            node_db_id=agent_node.id if agent_node else None,
+            path_id=ping_node_by_ip.get(agent.ip_address),
+        )
+        if agent.ip_address:
+            ip_to_node_id.setdefault(agent.ip_address, agent_node_id)
 
+    # Scan links from latest ping scan (best for latency graph)
+    if latest_ping_scan:
+        ping_links = Link.objects.filter(scan_run=latest_ping_scan).select_related("source", "destination")
+        for link in ping_links:
+            src_ip = link.source.ip_address
+            dst_ip = link.destination.ip_address
+            src_id = ip_to_node_id.get(src_ip, str(link.source.id))
+            dst_id = ip_to_node_id.get(dst_ip, str(link.destination.id))
+            if src_id not in nodes_by_id:
+                add_node(
+                    node_id=src_id,
+                    label=src_ip,
+                    ip=src_ip,
+                    status="unknown",
+                    node_db_id=link.source.id,
+                    path_id=link.source.id,
+                )
+                ip_to_node_id[src_ip] = src_id
+            if dst_id not in nodes_by_id:
+                add_node(
+                    node_id=dst_id,
+                    label=dst_ip,
+                    ip=dst_ip,
+                    status="unknown",
+                    node_db_id=link.destination.id,
+                    path_id=link.destination.id,
+                )
+                ip_to_node_id[dst_ip] = dst_id
+            add_edge(
+                edge_id=f"scan:{link.id}",
+                source=src_id,
+                target=dst_id,
+                label=f"{link.weight:.2f}",
+                raw_weight=link.weight,
+                kind="scan",
+            )
+
+    # Network metadata connections (last hour)
+    recent_connections = NetworkConnection.objects.filter(
+        agent__status="online",
+        last_seen__gte=now() - timedelta(hours=1),
+    ).select_related("agent")
+
+    flows = defaultdict(int)
+    for conn in recent_connections:
+        if not conn.remote_address or conn.remote_address in ["127.0.0.1", "localhost", "::1"]:
+            continue
+
+        src_id = f"agent:{conn.agent.agent_id}"
+        dst_ip = conn.remote_address
+        dst_id = ip_to_node_id.get(dst_ip)
+        if not dst_id:
+            dst_id = f"ip:{dst_ip}"
+            add_node(
+                node_id=dst_id,
+                label=dst_ip,
+                ip=dst_ip,
+                status="unknown",
+                extra={"type": "ip"},
+            )
+            ip_to_node_id[dst_ip] = dst_id
+
+        flow_key = (src_id, dst_id, conn.protocol)
+        flows[flow_key] += 1
+
+    for (src_id, dst_id, protocol), count in flows.items():
+        add_edge(
+            edge_id=f"conn:{src_id}->{dst_id}:{protocol}",
+            source=src_id,
+            target=dst_id,
+            label=f"{protocol} ({count})",
+            raw_weight=1.0,
+            kind="connection",
+        )
+
+    elements = [{"data": data} for data in nodes_by_id.values()] + elements
     return JsonResponse(elements, safe=False)
 
 
@@ -364,6 +604,34 @@ def node_details(request, node_id):
 
     return JsonResponse(node_data)
 
+
+@require_GET
+def node_detail_page(request, node_id):
+    """HTML page for node characteristics and composition."""
+    try:
+        node = Node.objects.get(id=node_id)
+    except Node.DoesNotExist:
+        messages.error(request, "Node not found")
+        return redirect('dashboard:dashboard-home')
+
+    agent_status = None
+    if node.agent_id:
+        try:
+            agent_status = AgentStatus.objects.get(agent_id=node.agent_id)
+        except AgentStatus.DoesNotExist:
+            agent_status = None
+
+    network_metadata = None
+    if agent_status:
+        network_metadata = NetworkMetadata.objects.filter(agent=agent_status).order_by('-timestamp').first()
+
+    return render(request, 'dashboard/node_detail.html', {
+        'node': node,
+        'interfaces': node.interfaces.all(),
+        'agent_status': agent_status,
+        'network_metadata': network_metadata,
+    })
+
 def get_interfaces(request):
     return JsonResponse({'interfaces': list_interfaces()})
 
@@ -395,6 +663,7 @@ def get_scan_history(request):
         "cidr": run.cidr,
         "status": run.status,
         "scan_type": run.scan_type,
+        "task_id": run.task_id,
         "summary": run.result_summary or "-"
     } for run in recent]
     return JsonResponse({"history": history})
@@ -520,6 +789,20 @@ def sbom_ingest(request):
     os_summary = extract_os_summary_from_sbom(payload)
     format_info = detect_sbom_format(payload)
     payload_hash = compute_payload_hash(payload)
+    vulnerabilities = extract_vulnerabilities_from_sbom(data) + extract_vulnerabilities_from_sbom(payload)
+    if vulnerabilities:
+        deduped = {}
+        for vuln in vulnerabilities:
+            cve_id = vuln.get("cve_id")
+            if not cve_id:
+                continue
+            existing = deduped.get(cve_id)
+            if not existing:
+                deduped[cve_id] = vuln
+                continue
+            if (vuln.get("score") or 0) > (existing.get("score") or 0):
+                deduped[cve_id] = vuln
+        vulnerabilities = list(deduped.values())
 
     node = None
     try:
@@ -546,6 +829,41 @@ def sbom_ingest(request):
         os_summary=os_summary,
         sha256=payload_hash,
     )
+
+    if node and vulnerabilities:
+        for vuln in vulnerabilities:
+            cve_id = vuln.get("cve_id") or ""
+            if not cve_id:
+                continue
+            vuln_obj, created = Vulnerability.objects.get_or_create(
+                cve_id=cve_id[:32],
+                defaults={
+                    "description": vuln.get("description") or f"SBOM reported {cve_id}",
+                    "severity": vuln.get("severity") or "",
+                    "score": vuln.get("score"),
+                    "published": now(),
+                    "last_modified": now(),
+                    "references": vuln.get("references") or "",
+                },
+            )
+            if not created:
+                updated = False
+                if vuln.get("description") and vuln_obj.description != vuln.get("description"):
+                    vuln_obj.description = vuln.get("description")
+                    updated = True
+                if vuln.get("severity") and vuln_obj.severity != vuln.get("severity"):
+                    vuln_obj.severity = vuln.get("severity")
+                    updated = True
+                if vuln.get("score") is not None and vuln_obj.score != vuln.get("score"):
+                    vuln_obj.score = vuln.get("score")
+                    updated = True
+                if vuln.get("references") and vuln_obj.references != vuln.get("references"):
+                    vuln_obj.references = vuln.get("references")
+                    updated = True
+                if updated:
+                    vuln_obj.last_modified = now()
+                    vuln_obj.save(update_fields=["description", "severity", "score", "references", "last_modified"])
+            vuln_obj.nodes.add(node)
 
     return JsonResponse({
         "status": "sbom_received",
@@ -697,6 +1015,42 @@ def agent_command_result(request):
         output=output
     )
 
+    if cmd.action == "sliver_deploy":
+        try:
+            from sliver.models import ImplantArtifact
+            from sliver.utils import log_audit_action
+
+            artifact_id = None
+            if isinstance(cmd.parameters, dict):
+                artifact_id = cmd.parameters.get("artifact_id")
+            artifact = None
+            if artifact_id:
+                artifact = ImplantArtifact.objects.select_related('engagement__teamserver').filter(id=artifact_id).first()
+
+            if artifact and artifact.engagement and artifact.engagement.teamserver:
+                normalized = (output or "").lower()
+                if "executed pid=" in normalized:
+                    action = "IMPLANT_EXECUTED"
+                elif "failed" in normalized:
+                    action = "IMPLANT_DEPLOY_FAILED"
+                else:
+                    action = "IMPLANT_DELIVERED"
+
+                log_audit_action(
+                    action=action,
+                    user=None,
+                    teamserver=artifact.engagement.teamserver,
+                    engagement=artifact.engagement,
+                    details={
+                        "artifact_id": artifact.id,
+                        "artifact_name": artifact.name,
+                        "agent_id": agent_id,
+                        "output": output,
+                    }
+                )
+        except Exception:
+            pass
+
     return JsonResponse({"status": "received"})
 
 
@@ -842,12 +1196,22 @@ def agent_details(request, agent_id):
     results = CommandResult.objects.filter(agent_id=agent_id).order_by('-timestamp')[:20]
     sbom_reports = SbomReport.objects.filter(agent_id=agent_id).order_by('-created_at')[:5]
 
+    # Sliver artifacts for quick deployment (if available)
+    try:
+        from sliver.models import ImplantArtifact
+        sliver_artifacts = ImplantArtifact.objects.filter(
+            status='READY'
+        ).order_by('-created_at')[:50]
+    except Exception:
+        sliver_artifacts = []
+
     return render(request, 'dashboard/agent_details.html', {
         'agent': agent,
         'node': node,
         'commands': commands,
         'results': results,
         'sbom_reports': sbom_reports,
+        'sliver_artifacts': sliver_artifacts,
     })
 
 
@@ -1938,3 +2302,278 @@ def network_topology_api(request):
         'edges': edges,
         'timestamp': now().strftime('%Y-%m-%d %H:%M:%S')
     })
+
+
+def risk_assessment_page(request):
+    return render(request, 'dashboard/risk_assessment.html')
+
+
+@require_GET
+def risk_assessment_status_api(request):
+    try:
+        response = requests.get(_risk_api_url('/status'), timeout=RISK_ASSESSMENT_TIMEOUT)
+        response.raise_for_status()
+        return JsonResponse(response.json())
+    except Exception as exc:
+        return JsonResponse({'error': str(exc)}, status=502)
+
+
+@require_GET
+def risk_assessment_nodes_api(request):
+    try:
+        response = requests.get(_risk_api_url('/nodes'), timeout=RISK_ASSESSMENT_TIMEOUT)
+        response.raise_for_status()
+        return JsonResponse(response.json())
+    except Exception as exc:
+        return JsonResponse({'error': str(exc)}, status=502)
+
+
+@require_http_methods(["POST"])
+def risk_assessment_probability_api(request):
+    try:
+        payload = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON payload.'}, status=400)
+
+    try:
+        response = requests.post(
+            _risk_api_url('/probability'),
+            json=payload,
+            timeout=RISK_ASSESSMENT_TIMEOUT
+        )
+        response.raise_for_status()
+        return JsonResponse(response.json())
+    except Exception as exc:
+        return JsonResponse({'error': str(exc)}, status=502)
+
+
+@require_GET
+def risk_assessment_network_compute_api(request):
+    try:
+        nodes_response = requests.get(_risk_api_url('/nodes'), timeout=RISK_ASSESSMENT_TIMEOUT)
+        nodes_response.raise_for_status()
+        payload = nodes_response.json()
+        variables = payload.get("variables", {})
+        risk_nodes = list(variables.keys())
+
+        cyber_data, mapped_nodes = build_cyber_data_for_risk_nodes(risk_nodes)
+
+        probability_response = requests.post(
+            _risk_api_url('/probability'),
+            json=cyber_data,
+            timeout=RISK_ASSESSMENT_TIMEOUT
+        )
+        probability_response.raise_for_status()
+        result_payload = probability_response.json()
+        results = result_payload.get("results", {})
+
+        summary = summarize_risk_results(mapped_nodes, results)
+
+        return JsonResponse({
+            "risk_nodes_count": len(risk_nodes),
+            "mapped_nodes": summary,
+            "results": results,
+        })
+    except Exception as exc:
+        return JsonResponse({'error': str(exc)}, status=502)
+
+
+@require_http_methods(["GET", "POST"])
+def risk_assessment_mappings_api(request):
+    if request.method == "GET":
+        risk_nodes = []
+        risk_error = None
+        try:
+            response = requests.get(_risk_api_url('/nodes'), timeout=RISK_ASSESSMENT_TIMEOUT)
+            response.raise_for_status()
+            payload = response.json()
+            variables = payload.get("variables")
+            if isinstance(variables, dict):
+                risk_nodes = [str(key) for key in variables.keys()]
+            else:
+                nodes_payload = payload.get("nodes")
+                if isinstance(nodes_payload, list):
+                    for node in nodes_payload:
+                        if isinstance(node, str):
+                            risk_nodes.append(node)
+                        elif isinstance(node, dict):
+                            name = node.get("name") or node.get("node") or node.get("id")
+                            if name:
+                                risk_nodes.append(str(name))
+        except Exception as exc:
+            risk_error = str(exc)
+
+        mapping_ids = list(
+            RiskNodeMapping.objects.values_list("risk_node_id", flat=True).distinct()
+        )
+        merged_ids = {rid for rid in risk_nodes if rid}
+        merged_ids.update(mapping_ids)
+        risk_nodes = sorted(merged_ids)
+
+        nodes = []
+        for node in Node.objects.order_by("name", "ip_address"):
+            nodes.append({
+                "id": node.id,
+                "name": node.name,
+                "ip_address": node.ip_address,
+                "os_info": node.os_info,
+                "platform_info": node.platform_info,
+                "cpu_count": node.cpu_count,
+                "memory_total": node.memory_total,
+                "mac_addresses": node.mac_addresses or [],
+                "active_ports": node.active_ports or [],
+                "last_heartbeat": node.last_heartbeat.isoformat() if node.last_heartbeat else None,
+            })
+        mappings = list(
+            RiskNodeMapping.objects.select_related("node").order_by("risk_node_id")
+        )
+
+        mapping_payload = []
+        for mapping in mappings:
+            mapping_payload.append({
+                "risk_node_id": mapping.risk_node_id,
+                "node_id": mapping.node_id,
+                "node_name": mapping.node.name if mapping.node else None,
+                "ip_address": mapping.ip_address,
+                "label": mapping.label,
+                "notes": mapping.notes,
+                "active": mapping.active,
+                "updated_at": mapping.updated_at.isoformat(),
+            })
+
+        response_payload = {
+            "risk_nodes": risk_nodes,
+            "nodes": nodes,
+            "mappings": mapping_payload,
+        }
+        if risk_error:
+            response_payload["risk_error"] = risk_error
+
+        return JsonResponse(response_payload)
+
+    try:
+        payload = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON payload.'}, status=400)
+
+    if isinstance(payload.get("mappings"), list):
+        errors = []
+        saved = []
+        for index, item in enumerate(payload.get("mappings", [])):
+            if not isinstance(item, dict):
+                errors.append({"index": index, "error": "Each mapping must be an object."})
+                continue
+            risk_node_id = str(item.get("risk_node_id") or "").strip()
+            if not risk_node_id:
+                errors.append({"index": index, "error": "risk_node_id is required."})
+                continue
+
+            node_id = item.get("node_id")
+            if node_id in ("", None):
+                node_id = None
+
+            node = None
+            if node_id is not None:
+                try:
+                    node = Node.objects.get(id=node_id)
+                except Node.DoesNotExist:
+                    errors.append({"index": index, "risk_node_id": risk_node_id, "error": "Invalid node_id."})
+                    continue
+
+            ip_address = str(item.get("ip_address") or "").strip() or None
+            if ip_address:
+                try:
+                    ipaddress.ip_address(ip_address)
+                except ValueError:
+                    errors.append({"index": index, "risk_node_id": risk_node_id, "error": "Invalid ip_address."})
+                    continue
+
+            label = str(item.get("label") or "").strip()
+            notes = str(item.get("notes") or "").strip()
+            active = item.get("active", True)
+            if isinstance(active, str):
+                active = active.lower() in ("1", "true", "yes", "on")
+
+            mapping, _ = RiskNodeMapping.objects.update_or_create(
+                risk_node_id=risk_node_id,
+                defaults={
+                    "node": node,
+                    "ip_address": ip_address,
+                    "label": label,
+                    "notes": notes,
+                    "active": bool(active),
+                },
+            )
+
+            saved.append({
+                "risk_node_id": mapping.risk_node_id,
+                "node_id": mapping.node_id,
+                "node_name": mapping.node.name if mapping.node else None,
+                "ip_address": mapping.ip_address,
+                "label": mapping.label,
+                "notes": mapping.notes,
+                "active": mapping.active,
+                "updated_at": mapping.updated_at.isoformat(),
+            })
+
+        if errors:
+            return JsonResponse({"error": "Validation failed.", "errors": errors, "mappings": saved}, status=400)
+
+        return JsonResponse({"mappings": saved})
+
+    risk_node_id = str(payload.get("risk_node_id") or "").strip()
+    if not risk_node_id:
+        return JsonResponse({'error': 'risk_node_id is required.'}, status=400)
+
+    node_id = payload.get("node_id")
+    if node_id in ("", None):
+        node_id = None
+
+    node = None
+    if node_id is not None:
+        try:
+            node = Node.objects.get(id=node_id)
+        except Node.DoesNotExist:
+            return JsonResponse({'error': 'Invalid node_id.'}, status=400)
+
+    ip_address = str(payload.get("ip_address") or "").strip() or None
+    if ip_address:
+        try:
+            ipaddress.ip_address(ip_address)
+        except ValueError:
+            return JsonResponse({'error': 'Invalid ip_address.'}, status=400)
+
+    label = str(payload.get("label") or "").strip()
+    notes = str(payload.get("notes") or "").strip()
+    active = payload.get("active", True)
+    if isinstance(active, str):
+        active = active.lower() in ("1", "true", "yes", "on")
+
+    mapping, _ = RiskNodeMapping.objects.update_or_create(
+        risk_node_id=risk_node_id,
+        defaults={
+            "node": node,
+            "ip_address": ip_address,
+            "label": label,
+            "notes": notes,
+            "active": bool(active),
+        },
+    )
+
+    return JsonResponse({
+        "mapping": {
+            "risk_node_id": mapping.risk_node_id,
+            "node_id": mapping.node_id,
+            "node_name": mapping.node.name if mapping.node else None,
+            "ip_address": mapping.ip_address,
+            "label": mapping.label,
+            "notes": mapping.notes,
+            "active": mapping.active,
+            "updated_at": mapping.updated_at.isoformat(),
+        }
+    })
+
+
+def _risk_api_url(path: str) -> str:
+    base = getattr(settings, 'RISK_ASSESSMENT_API_URL', 'http://127.0.0.1:7890')
+    return f"{base.rstrip('/')}/{path.lstrip('/')}"

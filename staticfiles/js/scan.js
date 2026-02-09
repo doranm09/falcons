@@ -64,6 +64,9 @@ document.addEventListener('DOMContentLoaded', function () {
           status === 'complete' || status === 'completed' ? 'success' :
           status === 'running' || status === 'in_progress' ? 'info' :
           status === 'failed' ? 'danger' : 'secondary';
+        const reportHref = run.scan_type === 'openvas' && run.id
+          ? `/vulnerabilities/${encodeURIComponent(run.id)}/`
+          : null;
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${escapeHtml(run.timestamp || '')}</td>
@@ -72,7 +75,9 @@ document.addEventListener('DOMContentLoaded', function () {
           <td>${escapeHtml(run.summary || run.result_summary || '-')}</td>
           <td>
             <div class="btn-group btn-group-sm">
-              <button class="btn btn-outline-primary" disabled>Report</button>
+              ${reportHref
+                ? `<a class="btn btn-outline-primary" href="${reportHref}">Report</a>`
+                : `<button class="btn btn-outline-primary" disabled>Report</button>`}
               <button class="btn btn-outline-secondary" disabled>Rescan</button>
               <button class="btn btn-outline-danger" disabled>Cancel</button>
             </div>
@@ -135,14 +140,38 @@ document.addEventListener('DOMContentLoaded', function () {
       let selectedNode = null;
       cyInstance.on('tap','node',evt=>{
         const tapped = evt.target;
-        if (!selectedNode) { selectedNode = tapped; tapped.style('background-color','#ffc107'); }
-        else {
-          const src = selectedNode.id(), dst = tapped.id();
-          jsonFetch(`/shortest-paths/${encodeURIComponent(src)}/`).then(pd=>{
-            const cost = pd[dst]; if (pathResult) pathResult.innerText = `Shortest path from ${selectedNode.data('label')} to ${tapped.data('label')}: ${cost}`;
-          }).catch(err=>{ if (pathResult) pathResult.innerText = `Path error: ${err.message}`; });
-          selectedNode.style('background-color','#007bff'); selectedNode = null;
+        const original = evt.originalEvent || {};
+
+        if (original.shiftKey) {
+          if (!selectedNode) { selectedNode = tapped; tapped.style('background-color','#ffc107'); }
+          else {
+            const src = selectedNode.data('path_id') || selectedNode.data('node_id') || selectedNode.id();
+            const dst = tapped.data('path_id') || tapped.data('node_id') || tapped.id();
+            if (!/^\d+$/.test(String(src)) || !/^\d+$/.test(String(dst))) {
+              if (pathResult) pathResult.innerText = 'Shortest path unavailable for non-scan nodes.';
+            } else {
+              jsonFetch(`/shortest-paths/${encodeURIComponent(src)}/`).then(pd=>{
+                const cost = pd[dst]; if (pathResult) pathResult.innerText = `Shortest path from ${selectedNode.data('label')} to ${tapped.data('label')}: ${cost}`;
+              }).catch(err=>{ if (pathResult) pathResult.innerText = `Path error: ${err.message}`; });
+            }
+            selectedNode.style('background-color','#007bff'); selectedNode = null;
+          }
+          return;
         }
+
+        const agentId = tapped.data('agent_id');
+        if (agentId) {
+          window.location.href = `/dashboard/agent/${encodeURIComponent(agentId)}/`;
+          return;
+        }
+
+        const nodeId = tapped.data('node_id') || tapped.id();
+        if (/^\d+$/.test(String(nodeId))) {
+          window.location.href = `/dashboard/node/${encodeURIComponent(nodeId)}/`;
+          return;
+        }
+
+        if (pathResult) pathResult.innerText = `No detail page for ${tapped.data('label') || tapped.id()}.`;
       });
 
     } catch (e) { console.warn('Graph render failed:', e.message); }
@@ -212,13 +241,13 @@ document.addEventListener('DOMContentLoaded', function () {
   if (btnDownloadPng) btnDownloadPng.addEventListener('click', exportPng);
 
   // --- Polling ---
-  function pollTask({ statusUrl, onTick, onDone, onError, intervalMs=2000 }) {
+  function pollTask({ statusUrl, onTick, onDone, onError, intervalMs=2000, doneStates=['SUCCESS','FAILURE','REVOKED'] }) {
     let stopped=false;
     async function tick(){
       if(stopped) return;
       try{
         const data=await jsonFetch(statusUrl); onTick && onTick(data);
-        if(['SUCCESS','FAILURE','REVOKED'].includes(data.state)){ stopped=true; onDone && onDone(data); return; }
+        if(doneStates.includes(data.state)){ stopped=true; onDone && onDone(data); return; }
       }catch(err){ stopped=true; onError && onError(err); return; }
       setTimeout(tick, intervalMs);
     }
@@ -235,7 +264,19 @@ document.addEventListener('DOMContentLoaded', function () {
         const data=await res.json(); const taskId=data.task_id; if(!taskId) throw new Error('No task id');
         pollTask({
           statusUrl:`/scan/status/${encodeURIComponent(taskId)}/`,
-          onTick:s=>setStatus(`Scanning… (${s.state})`),
+          onTick:s=>{
+            const p = s.progress;
+            if (p && typeof p === 'object' && p.percent != null) {
+              const detail = p.total ? `${p.current}/${p.total}` : `${p.current || 0}`;
+              setStatus(`Scanning… ${p.percent}% (${detail})`,'info');
+              return;
+            }
+            if (typeof p === 'string') {
+              setStatus(`Scanning… ${p}`,'info');
+              return;
+            }
+            setStatus(`Scanning… (${s.state})`,'info');
+          },
           onDone:s=>{
             if(s.state==='SUCCESS'){ setStatus('Scan complete. Nodes updated.','success'); renderNodes(s.nodes||[]); updateScanHistory(); renderGraph(); }
             else setStatus(`Scan finished: ${s.state}`,'warning');
@@ -256,12 +297,29 @@ document.addEventListener('DOMContentLoaded', function () {
       try {
         const formData=new FormData(vulnForm);
         const res=await fetch('/scan/vuln/start/',{method:'POST',headers:{'X-CSRFToken':getCSRFToken()},body:formData});
-        const {task_id}=await res.json(); if(!task_id) throw new Error('No task id');
-        setStatus(`OpenVAS scan launched (task ${task_id}).`,'warning');
+        const data=await res.json(); const scan_id=data.scan_id; if(!scan_id) throw new Error(data.error || 'No scan id');
+        const reportHref = `/vulnerabilities/${encodeURIComponent(scan_id)}/`;
+        setStatus(`OpenVAS scan queued (scan ${scan_id}).`,'warning');
         pollTask({
-          statusUrl:`/scan/vuln/status/${encodeURIComponent(task_id)}/`,
-          onTick:s=>setStatus(`OpenVAS scanning… (${s.state})`,'warning'),
-          onDone:s=>{ setStatus(`OpenVAS done: ${s.state}`,'success'); updateScanHistory(); disableForm(vulnForm,false); },
+          statusUrl:`/scan/vuln/status/${encodeURIComponent(scan_id)}/`,
+          doneStates:['Done','ERROR'],
+          onTick:s=>{
+            if (s.state === 'LAUNCHING') {
+              setStatus('OpenVAS scan launching…','warning');
+              return;
+            }
+            const progress = s.progress ? ` ${s.progress}%` : '';
+            setStatus(`OpenVAS scanning… (${s.state}${progress})`,'warning');
+          },
+          onDone:s=>{
+            if (s.state === 'Done') {
+              setStatus(`OpenVAS done. Report ready: ${reportHref}`,'success');
+            } else {
+              setStatus(`OpenVAS error: ${s.error || s.state}`,'danger');
+            }
+            updateScanHistory();
+            disableForm(vulnForm,false);
+          },
           onError:err=>{ setStatus(`OpenVAS status failed (${err.message})`,'muted'); disableForm(vulnForm,false); }
         });
       } catch(err){ setStatus(`Could not start OpenVAS: ${err.message}`,'danger'); disableForm(vulnForm,false); }

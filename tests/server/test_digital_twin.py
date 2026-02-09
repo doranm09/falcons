@@ -1,8 +1,12 @@
 import json
+import pytest
 
 from django.urls import reverse
 
 from dashboard.models import ScanRun, Node, Link, SbomReport
+
+
+pytestmark = pytest.mark.django_db
 
 
 def _create_scan_with_nodes():

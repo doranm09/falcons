@@ -108,6 +108,9 @@
         <a class="nav-link" href="{% url 'dashboard:shortest-paths' %}">
           <i class="bi bi-signpost"></i> Attack Paths
         </a>
+        <a class="nav-link" href="{% url 'dashboard:risk_assessment' %}">
+          <i class="bi bi-shield-exclamation"></i> Risk Assessment
+        </a>
         <a class="nav-link" href="http://127.0.0.1:9001">
           <i class="bi bi-code-square"></i> Code Analysis
         </a>
@@ -125,11 +128,17 @@
         <a class="nav-link" href="{% url 'sliver:engagement_list' %}">
           <i class="bi bi-gear"></i> Engagements
         </a>
+        <a class="nav-link" href="{% url 'sliver:teamserver_list' %}">
+          <i class="bi bi-server"></i> Teamservers
+        </a>
         <a class="nav-link" href="{% url 'sliver:session_list' %}">
           <i class="bi bi-robot"></i> Active Sessions
         </a>
         <a class="nav-link" href="{% url 'sliver:job_list' %}">
           <i class="bi bi-activity"></i> Job Queue
+        </a>
+        <a class="nav-link" href="{% url 'sliver:implant_artifacts' %}">
+          <i class="bi bi-box"></i> Implant Artifacts
         </a>
         <a class="nav-link" href="{% url 'sliver:loot_list' %}">
           <i class="bi bi-gift"></i> Collected Loot
@@ -162,6 +171,28 @@
   </div>
 
   <main>
+    <div id="scan-banner" class="scan-banner hidden" role="status" aria-live="polite">
+      <div class="scan-banner__left">
+        <span class="scan-banner__dot"></span>
+        <span id="scan-banner-text">Scan running…</span>
+      </div>
+      <div class="scan-banner__right">
+        <div id="scan-banner-progress" class="scan-progress indeterminate">
+          <div class="scan-progress__bar"></div>
+        </div>
+        <span id="scan-banner-percent" class="scan-banner__percent"></span>
+      </div>
+    </div>
+    {% if messages %}
+    <div class="container-fluid px-4 pt-3">
+      {% for message in messages %}
+      <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
     {% block content %}{% endblock %}
     {% block extra_scripts %}{% endblock %}
   </main>
@@ -241,5 +272,6 @@
         }
     });
   </script>
+  <script src="{% static 'js/scan-banner.js' %}"></script>
 </body>
 </html>

@@ -1,0 +1,196 @@
+{% extends "dashboard/base.html" %}
+
+{% block content %}
+<div class="container-fluid p-4">
+  <div class="row mb-3">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+      <div>
+        <h2 class="mb-1"><i class="bi bi-info-circle"></i> Node Details</h2>
+        <p class="text-muted mb-0">{{ node.name }} — {{ node.ip_address }}</p>
+      </div>
+      <div class="d-flex gap-2">
+        {% if agent_status %}
+          <a class="btn btn-outline-primary" href="{% url 'dashboard:agent_details' agent_status.agent_id %}">
+            <i class="bi bi-robot"></i> Agent View
+          </a>
+        {% endif %}
+        <a class="btn btn-outline-secondary" href="{% url 'dashboard:dashboard-home' %}">
+          <i class="bi bi-arrow-left"></i> Back
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="row mb-4">
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-diagram-3"></i> Summary</h5>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-6">
+              <div class="text-muted small">Status</div>
+              <div class="fw-semibold">{{ node.status }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-muted small">Last Heartbeat</div>
+              <div class="fw-semibold">
+                {% if node.last_heartbeat %}{{ node.last_heartbeat|date:"Y-m-d H:i:s" }}{% else %}Never{% endif %}
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="text-muted small">CPU Cores</div>
+              <div class="fw-semibold">{{ node.cpu_count|default:"—" }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-muted small">Memory</div>
+              <div class="fw-semibold">
+                {% if node.memory_total %}{{ node.memory_total|filesizeformat }}{% else %}—{% endif %}
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="text-muted small">Platform</div>
+              <div class="fw-semibold">{{ node.platform_info|default:"—" }}</div>
+            </div>
+            <div class="col-12">
+              <div class="text-muted small">Description</div>
+              <div>{{ node.description|default:"—" }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-hdd-network"></i> Interfaces</h5>
+        </div>
+        <div class="card-body">
+          {% if interfaces %}
+            <div class="table-responsive">
+              <table class="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>IP</th>
+                    <th>MAC</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for iface in interfaces %}
+                  <tr>
+                    <td><code>{{ iface.name }}</code></td>
+                    <td>{{ iface.ip }}</td>
+                    <td>{{ iface.mac }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="text-muted">No interface data available.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row mb-4">
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-shield-check"></i> Cyber Template</h5>
+        </div>
+        <div class="card-body">
+          <div class="mb-3">
+            <div class="text-muted small">OS</div>
+            <div class="fw-semibold">{{ node.os_info|default:"Unknown" }}</div>
+          </div>
+          <div class="mb-3">
+            <div class="text-muted small">MAC Addresses</div>
+            {% if node.mac_addresses %}
+              <ul class="mb-0">
+                {% for mac in node.mac_addresses %}
+                  <li><code>{{ mac }}</code></li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <div class="text-muted">—</div>
+            {% endif %}
+          </div>
+          <div class="mb-3">
+            <div class="text-muted small">Installed Libraries (sample)</div>
+            {% if node.installed_libraries %}
+              <ul class="mb-0">
+                {% for lib in node.installed_libraries|slice:":20" %}
+                  <li>{{ lib }}</li>
+                {% endfor %}
+              </ul>
+              {% if node.installed_libraries|length > 20 %}
+                <div class="text-muted small mt-2">Showing first 20 of {{ node.installed_libraries|length }}.</div>
+              {% endif %}
+            {% else %}
+              <div class="text-muted">—</div>
+            {% endif %}
+          </div>
+          <div>
+            <div class="text-muted small">Active Ports (sample)</div>
+            {% if node.active_ports %}
+              <ul class="mb-0">
+                {% for port in node.active_ports|slice:":20" %}
+                  <li><code>{{ port.id|default:"unknown" }}</code> {{ port.Protocol|default:"" }} {{ port.status|default:"" }}</li>
+                {% endfor %}
+              </ul>
+              {% if node.active_ports|length > 20 %}
+                <div class="text-muted small mt-2">Showing first 20 of {{ node.active_ports|length }}.</div>
+              {% endif %}
+            {% else %}
+              <div class="text-muted">—</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-activity"></i> Network Metadata</h5>
+        </div>
+        <div class="card-body">
+          {% if network_metadata %}
+            <div class="row g-3">
+              <div class="col-6">
+                <div class="text-muted small">Collected</div>
+                <div class="fw-semibold">{{ network_metadata.timestamp|date:"Y-m-d H:i:s" }}</div>
+              </div>
+              <div class="col-6">
+                <div class="text-muted small">Connections</div>
+                <div class="fw-semibold">{{ network_metadata.total_connections }}</div>
+              </div>
+              <div class="col-6">
+                <div class="text-muted small">Interfaces</div>
+                <div class="fw-semibold">{{ network_metadata.total_interfaces }}</div>
+              </div>
+              <div class="col-6">
+                <div class="text-muted small">Collection Time</div>
+                <div class="fw-semibold">
+                  {% if network_metadata.collection_duration_ms %}
+                    {{ network_metadata.collection_duration_ms|floatformat:"0" }} ms
+                  {% else %}
+                    —
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          {% else %}
+            <div class="text-muted">No network metadata reported.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,165 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid p-4">
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item"><a href="{% url 'sliver:dashboard' %}">Sliver</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'sliver:job_list' %}">Jobs</a></li>
+      <li class="breadcrumb-item active" aria-current="page">{{ job.job_id }}</li>
+    </ol>
+  </nav>
+  <div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+      <div>
+        <h2><i class="bi bi-terminal"></i> Job Details</h2>
+        <p class="text-muted">Execution output and metadata for this job.</p>
+      </div>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="{% url 'sliver:job_list' %}">
+          <i class="bi bi-arrow-left"></i> Back to Jobs
+        </a>
+        <a class="btn btn-outline-primary" href="{% url 'sliver:session_detail' job.session.session_id %}">
+          <i class="bi bi-robot"></i> View Session
+        </a>
+        <form method="post" action="{% url 'sliver:retry_job' job.job_id %}" onsubmit="return confirm('Retry job {{ job.job_id }}?')">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-outline-warning">
+            <i class="bi bi-arrow-repeat"></i> Retry Job
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-lg-4">
+      <div class="card shadow-sm">
+        <div class="card-header">
+          <h5 class="mb-0">Job Metadata</h5>
+        </div>
+        <div class="card-body">
+          <dl class="row mb-0">
+            <dt class="col-sm-5">Job ID</dt>
+            <dd class="col-sm-7"><code>{{ job.job_id }}</code></dd>
+
+            <dt class="col-sm-5">Status</dt>
+            <dd class="col-sm-7">
+              <span class="badge bg-{% if job.status == 'COMPLETED' %}success{% elif job.status == 'FAILED' %}danger{% elif job.status == 'RUNNING' %}info{% else %}secondary{% endif %}">
+                {{ job.status }}
+              </span>
+            </dd>
+
+            <dt class="col-sm-5">Session</dt>
+            <dd class="col-sm-7">{{ job.session.name|default:job.session.session_id }}</dd>
+
+            <dt class="col-sm-5">Command</dt>
+            <dd class="col-sm-7">{{ job.command }}</dd>
+
+            <dt class="col-sm-5">Started</dt>
+            <dd class="col-sm-7">{{ job.started_at|date:"M j, Y H:i" }}</dd>
+
+            <dt class="col-sm-5">Completed</dt>
+            <dd class="col-sm-7">
+              {% if job.completed_at %}
+                {{ job.completed_at|date:"M j, Y H:i" }}
+              {% else %}
+                —
+              {% endif %}
+            </dd>
+
+            <dt class="col-sm-5">Exit Code</dt>
+            <dd class="col-sm-7">
+              {% if job.exit_code is not None %}
+                {{ job.exit_code }}
+              {% else %}
+                —
+              {% endif %}
+            </dd>
+
+            {% if job.template %}
+            <dt class="col-sm-5">Template</dt>
+            <dd class="col-sm-7">{{ job.template.name }}</dd>
+            {% endif %}
+          </dl>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-8">
+      <div class="card shadow-sm mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <h5 class="mb-0">Output</h5>
+          <div class="btn-group">
+            <button class="btn btn-sm btn-outline-secondary" type="button" data-copy-target="job-output">
+              <i class="bi bi-clipboard"></i> Copy
+            </button>
+            <a class="btn btn-sm btn-outline-secondary" href="{% url 'sliver:job_output' job.job_id %}" target="_blank" rel="noopener">
+              <i class="bi bi-box-arrow-up-right"></i> Open
+            </a>
+            <a class="btn btn-sm btn-outline-secondary" href="{% url 'sliver:job_output' job.job_id %}?download=1">
+              <i class="bi bi-download"></i> Download
+            </a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% if job.output %}
+          <pre id="job-output" class="mb-0">{{ job.output }}</pre>
+          {% else %}
+          <p id="job-output" class="text-muted mb-0">No output captured.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <h5 class="mb-0">Errors</h5>
+          <div class="btn-group">
+            <button class="btn btn-sm btn-outline-secondary" type="button" data-copy-target="job-error">
+              <i class="bi bi-clipboard"></i> Copy
+            </button>
+            <a class="btn btn-sm btn-outline-secondary" href="{% url 'sliver:job_error' job.job_id %}" target="_blank" rel="noopener">
+              <i class="bi bi-box-arrow-up-right"></i> Open
+            </a>
+            <a class="btn btn-sm btn-outline-secondary" href="{% url 'sliver:job_error' job.job_id %}?download=1">
+              <i class="bi bi-download"></i> Download
+            </a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% if job.error %}
+          <pre id="job-error" class="mb-0">{{ job.error }}</pre>
+          {% else %}
+          <p id="job-error" class="text-muted mb-0">No errors reported.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-copy-target]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const targetId = button.getAttribute('data-copy-target');
+        const target = document.getElementById(targetId);
+        if (!target) return;
+        const text = target.textContent || '';
+        try {
+          await navigator.clipboard.writeText(text);
+          button.textContent = 'Copied';
+          setTimeout(() => {
+            button.innerHTML = '<i class="bi bi-clipboard"></i> Copy';
+          }, 1500);
+        } catch (err) {
+          alert('Copy failed');
+        }
+      });
+    });
+  });
+</script>
+{% endblock %}

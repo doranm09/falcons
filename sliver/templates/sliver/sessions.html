@@ -14,9 +14,12 @@
           <p class="text-muted">Manage beacons and interactive sessions</p>
         </div>
         <div>
-          <a href="{% url 'sliver:refresh_sessions' %}" class="btn btn-outline-primary">
-            <i class="bi bi-arrow-clockwise"></i> Refresh Sessions
-          </a>
+          <form method="post" action="{% url 'sliver:refresh_sessions' %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-primary">
+              <i class="bi bi-arrow-clockwise"></i> Refresh Sessions
+            </button>
+          </form>
         </div>
       </div>
     </div>
@@ -44,21 +47,67 @@
     </div>
   </div>
 
+  <!-- Summary -->
+  <div class="row mb-4">
+    <div class="col-md-3 col-sm-6 mb-3">
+      <div class="card h-100">
+        <div class="card-body text-center">
+          <div class="text-muted small">Total Sessions</div>
+          <div class="h4 mb-0">{{ summary.total }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+      <div class="card h-100">
+        <div class="card-body text-center">
+          <div class="text-muted small">Online</div>
+          <div class="h4 mb-0">{{ summary.online }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+      <div class="card h-100">
+        <div class="card-body text-center">
+          <div class="text-muted small">Active</div>
+          <div class="h4 mb-0">{{ summary.active }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+      <div class="card h-100">
+        <div class="card-body text-center">
+          <div class="text-muted small">Dead/Disconnected</div>
+          <div class="h4 mb-0">{{ summary.dead|add:summary.disconnected }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Sessions Table -->
   <div class="row">
     <div class="col-12">
       <div class="card shadow-sm">
-        <div class="card-header d-flex justify-content-between align-items-center">
-          <h5 class="mb-0">Active Sessions</h5>
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <h5 class="mb-0">Active Sessions</h5>
+            <span id="sliver-live-status" class="badge bg-secondary">Live</span>
+            <small id="sliver-live-updated" class="text-muted">Not updated yet</small>
+            <button class="btn btn-sm btn-outline-secondary" type="button" id="sliver-live-refresh">
+              <i class="bi bi-arrow-clockwise"></i> Refresh
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" type="button" id="sliver-live-toggle">
+              Pause
+            </button>
+          </div>
           <div class="input-group" style="max-width: 300px;">
+            <label class="visually-hidden" for="sessionSearch">Search sessions</label>
             <input type="text" class="form-control" placeholder="Search sessions..." id="sessionSearch">
-            <button class="btn btn-outline-secondary" type="button" id="sessionSearchBtn">
+            <button class="btn btn-outline-secondary" type="button" id="sessionSearchBtn" aria-label="Search sessions">
               <i class="bi bi-search"></i>
             </button>
           </div>
         </div>
         <div class="card-body p-0">
-          {% if page_obj %}
           <div class="table-responsive">
             <table class="table table-hover mb-0" id="sessionsTable">
               <thead class="table-light">
@@ -75,8 +124,9 @@
                 </tr>
               </thead>
               <tbody>
+                {% if page_obj and page_obj.object_list %}
                 {% for session in page_obj %}
-                <tr class="{% if session.is_online %}table-info{% endif %}">
+                <tr class="{% if session.is_online_status %}table-info{% endif %}">
                   <td>
                     <div>
                       <strong>{{ session.name|default:session.session_id|truncatechars:20 }}</strong>
@@ -93,7 +143,7 @@
                     <span class="badge bg-{% if session.status == 'ACTIVE' %}success{% elif session.status == 'DEAD' %}danger{% else %}warning{% endif %}">
                       {{ session.status }}
                     </span>
-                    {% if session.is_online %}
+                    {% if session.is_online_status %}
                     <small class="text-success d-block">Online</small>
                     {% else %}
                     <small class="text-muted d-block">Offline</small>
@@ -137,33 +187,52 @@
                               title="Execute Command">
                         <i class="bi bi-terminal"></i>
                       </button>
+                      <button type="button" class="btn btn-sm btn-outline-secondary template-btn"
+                              data-session-id="{{ session.session_id }}"
+                              data-session-name="{{ session.name|default:session.session_id }}"
+                              title="Run Template">
+                        <i class="bi bi-list-check"></i>
+                      </button>
+                      <form method="post" action="{% url 'sliver:collect_loot' session.session_id %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-success" title="Collect Loot">
+                          <i class="bi bi-download"></i>
+                        </button>
+                      </form>
                       <div class="dropdown">
                         <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
                           <i class="bi bi-three-dots"></i>
                         </button>
                         <ul class="dropdown-menu">
-                          <li><a class="dropdown-item" href="#" onclick="runTemplateFromSession('{{ session.session_id }}', 'recon')">
-                            <i class="bi bi-search"></i> Recon Commands
+                          <li><a class="dropdown-item" href="{% url 'sliver:session_detail' session.session_id %}">
+                            <i class="bi bi-info-circle"></i> Session Details
                           </a></li>
-                          <li><a class="dropdown-item" href="#" onclick="runTemplateFromSession('{{ session.session_id }}', 'loot')">
-                            <i class="bi bi-gift"></i> Loot Commands
+                          <li><a class="dropdown-item" href="{% url 'sliver:session_detail' session.session_id %}" target="_blank" rel="noopener">
+                            <i class="bi bi-box-arrow-up-right"></i> Open in New Tab
+                          </a></li>
+                          <li><a class="dropdown-item" href="{% url 'sliver:session_jobs' session.session_id %}">
+                            <i class="bi bi-list-ul"></i> View Jobs
                           </a></li>
                           <li><hr class="dropdown-divider"></li>
-                          <li><a class="dropdown-item" href="#" onclick="collectLoot('{{ session.session_id }}')">
-                            <i class="bi bi-download"></i> Download Loot
-                          </a></li>
+                          <li><button type="button" class="dropdown-item copy-value" data-copy="{{ session.session_id }}" data-copy-label="Copy Session ID">
+                            <i class="bi bi-clipboard"></i> Copy Session ID
+                          </button></li>
+                          <li><button type="button" class="dropdown-item copy-value" data-copy="{{ session.hostname|default:session.remote_address }}" data-copy-label="Copy Host">
+                            <i class="bi bi-clipboard"></i> Copy Host
+                          </button></li>
                         </ul>
                       </div>
                     </div>
                   </td>
                 </tr>
                 {% endfor %}
+                {% endif %}
               </tbody>
             </table>
           </div>
 
           <!-- Pagination -->
-          {% if page_obj.has_other_pages %}
+          {% if page_obj and page_obj.has_other_pages %}
           <div class="d-flex justify-content-center p-3">
             <nav aria-label="Page navigation">
               <ul class="pagination">
@@ -190,14 +259,12 @@
             </nav>
           </div>
           {% endif %}
-          {% else %}
-          <div class="text-center py-5">
+          <div id="sessionsEmptyState" class="text-center py-5 {% if page_obj and page_obj.object_list %}d-none{% endif %}">
             <i class="bi bi-robot-x h1 text-muted"></i>
             <h4 class="text-muted">No Sessions Found</h4>
             <p class="text-muted">No active beacons or interactive sessions are available.</p>
             <p class="text-muted">Make sure your implants are deployed and connected to the teamserver.</p>
           </div>
-          {% endif %}
         </div>
       </div>
     </div>
@@ -234,55 +301,135 @@
   </div>
 </div>
 
+<!-- Run Template Modal -->
+<div class="modal fade" id="templateModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-list-check"></i> Run Task Template - <span id="templateSessionName"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="" id="templateForm">
+        {% csrf_token %}
+        <input type="hidden" name="session_id" id="templateSessionId">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="templateSelect" class="form-label">Template</label>
+            <select class="form-select" id="templateSelect" name="template_id" required>
+              <option value="">Select template...</option>
+              {% for template in templates %}
+              <option value="{{ template.id }}">{{ template.name }} ({{ template.category }})</option>
+              {% endfor %}
+            </select>
+            <div class="form-text">Templates run asynchronously and appear in the job queue.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Run Template</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <script>
 // Handle command execution modal
 document.addEventListener('DOMContentLoaded', function() {
-    const executeButtons = document.querySelectorAll('.execute-btn');
+    const table = document.getElementById('sessionsTable');
     const commandModal = new bootstrap.Modal(document.getElementById('commandModal'));
     const commandForm = document.getElementById('commandForm');
     const modalSessionId = document.getElementById('modalSessionId');
     const modalSessionName = document.getElementById('modalSessionName');
 
-    executeButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            const sessionId = this.getAttribute('data-session-id');
-            const sessionName = this.getAttribute('data-session-name');
+    if (table) {
+        table.addEventListener('click', function(event) {
+            const executeBtn = event.target.closest('.execute-btn');
+            const templateBtn = event.target.closest('.template-btn');
+            const copyBtn = event.target.closest('.copy-value');
 
-            modalSessionId.value = sessionId;
-            modalSessionName.textContent = sessionName;
-            commandForm.action = `/sliver/sessions/${sessionId}/execute/`;
-            commandModal.show();
+            if (executeBtn) {
+                const sessionId = executeBtn.getAttribute('data-session-id');
+                const sessionName = executeBtn.getAttribute('data-session-name');
+
+                modalSessionId.value = sessionId;
+                modalSessionName.textContent = sessionName;
+                commandForm.action = `/sliver/sessions/${sessionId}/execute/`;
+                commandModal.show();
+                return;
+            }
+
+            if (templateBtn) {
+                const sessionId = templateBtn.getAttribute('data-session-id');
+                const sessionName = templateBtn.getAttribute('data-session-name');
+
+                templateSessionId.value = sessionId;
+                templateSessionName.textContent = sessionName;
+                templateForm.action = `/sliver/sessions/${sessionId}/template/`;
+                templateModal.show();
+                return;
+            }
+
+            if (copyBtn) {
+                const value = copyBtn.getAttribute('data-copy') || '';
+                navigator.clipboard.writeText(value).then(() => {
+                    copyBtn.textContent = 'Copied';
+                    setTimeout(() => {
+                        copyBtn.textContent = copyBtn.getAttribute('data-copy-label') || 'Copy';
+                        copyBtn.innerHTML = '<i class="bi bi-clipboard"></i> ' + (copyBtn.getAttribute('data-copy-label') || 'Copy');
+                    }, 1200);
+                }).catch(() => {
+                    alert('Copy failed');
+                });
+            }
         });
-    });
+    }
+    const templateModal = new bootstrap.Modal(document.getElementById('templateModal'));
+    const templateForm = document.getElementById('templateForm');
+    const templateSessionId = document.getElementById('templateSessionId');
+    const templateSessionName = document.getElementById('templateSessionName');
 
     // Search functionality
     const searchInput = document.getElementById('sessionSearch');
     const searchBtn = document.getElementById('sessionSearchBtn');
-    const table = document.getElementById('sessionsTable');
-    const rows = table.querySelectorAll('tbody tr');
 
     function performSearch() {
         const query = searchInput.value.toLowerCase();
-        rows.forEach(row => {
+        if (!table) return;
+        table.querySelectorAll('tbody tr').forEach(row => {
             const text = row.textContent.toLowerCase();
             row.style.display = text.includes(query) ? '' : 'none';
         });
     }
 
-    searchBtn.addEventListener('click', performSearch);
-    searchInput.addEventListener('input', performSearch);
+    if (searchBtn && searchInput && table) {
+        searchBtn.addEventListener('click', performSearch);
+        searchInput.addEventListener('input', performSearch);
+    }
+
+    if (templateForm) {
+        templateForm.addEventListener('submit', function(event) {
+            const templateSelect = document.getElementById('templateSelect');
+            const templateLabel = templateSelect && templateSelect.selectedOptions.length
+                ? templateSelect.selectedOptions[0].textContent
+                : 'this template';
+            if (!confirm(`Run ${templateLabel} on ${templateSessionName.textContent || 'this session'}?`)) {
+                event.preventDefault();
+            }
+        });
+    }
+
+    window.sliverApplySessionFilter = performSearch;
 });
-
-// Global functions for template execution
-function runTemplateFromSession(sessionId, category) {
-    // This would open a template selection modal for the given category
-    alert(`Run ${category} template for session ${sessionId} - Feature not implemented yet`);
-}
-
-function collectLoot(sessionId) {
-    // This would trigger loot collection
-    alert(`Collect loot from session ${sessionId} - Feature not implemented yet`);
-}
 </script>
+
+<script>
+  window.SLIVER_LIVE = {
+    type: 'sessions',
+    endpoint: "{% url 'sliver:api_sessions' %}{% if engagement_id %}?engagement_id={{ engagement_id }}{% endif %}",
+    interval: 10000,
+  };
+</script>
+<script src="{% static 'sliver/js/live-updates.js' %}"></script>
 
 {% endblock %}

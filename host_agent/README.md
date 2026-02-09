@@ -65,6 +65,11 @@ python agent.py sbom --format cyclonedx --output sbom.json
 
 - Formats: `raw` (default) or `cyclonedx`
 - Automatically POSTs SBOM to `/sbom` on the sniffer server
+- Optional: attach vulnerability output (e.g., Grype/Trivy JSON):
+
+```bash
+python agent.py sbom --format cyclonedx --output sbom.json --vuln-file grype.json
+```
 
 Analyzing `cyclonedx` formatted SBOM with `trivvy`
 

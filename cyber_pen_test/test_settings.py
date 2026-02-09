@@ -143,3 +143,6 @@ STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / "dashboard/static"]
 # Where collectstatic will put the static files for production
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# ICS Risk Assessment API
+RISK_ASSESSMENT_API_URL = os.environ.get('RISK_ASSESSMENT_API_URL', 'http://127.0.0.1:7890')

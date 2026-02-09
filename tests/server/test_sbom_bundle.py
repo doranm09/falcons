@@ -1,10 +1,14 @@
 import io
 import json
 import zipfile
+import pytest
 
 from django.urls import reverse
 
 from dashboard.models import Node, SbomReport
+
+
+pytestmark = pytest.mark.django_db
 
 
 def test_sbom_bundle_contains_files(client):

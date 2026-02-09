@@ -146,3 +146,18 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # ICS Risk Assessment API
 RISK_ASSESSMENT_API_URL = os.environ.get('RISK_ASSESSMENT_API_URL', 'http://127.0.0.1:7890')
+
+# SIEM ingest settings
+SIEM_INGEST_TOKEN = os.environ.get("SIEM_INGEST_TOKEN", "")
+SIEM_MAX_INGEST_BATCH = int(os.environ.get("SIEM_MAX_INGEST_BATCH", "500"))
+
+# OpenSearch (disabled in tests by default)
+OPENSEARCH_ENABLED = os.environ.get("OPENSEARCH_ENABLED", "0") == "1"
+OPENSEARCH_URL = os.environ.get("OPENSEARCH_URL", "http://opensearch:9200")
+OPENSEARCH_INDEX_PREFIX = os.environ.get("OPENSEARCH_INDEX_PREFIX", "siem-events")
+OPENSEARCH_USER = os.environ.get("OPENSEARCH_USER", "")
+OPENSEARCH_PASS = os.environ.get("OPENSEARCH_PASS", "")
+OPENSEARCH_VERIFY_TLS = os.environ.get("OPENSEARCH_VERIFY_TLS", "1") == "1"
+
+# Threat intel
+THREAT_INTEL_ENABLED = os.environ.get("THREAT_INTEL_ENABLED", "1") == "1"

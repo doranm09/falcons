@@ -1,0 +1,224 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4" id="siem-explorer" data-search-url="{% url 'dashboard:siem_event_search' %}" data-pivot-url="{% url 'dashboard:siem_pivot_lookup' %}" data-default-start="{{ default_start }}" data-default-end="{{ default_end }}">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h2 class="mb-1">SIEM Event Explorer</h2>
+      <p class="text-muted mb-0">Search, filter, and pivot across Security Onion-style events.</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <span class="badge bg-primary-subtle text-primary border" data-testid="siem-results-count">{{ summary.total_24h }} events (24h)</span>
+      <span class="badge bg-secondary-subtle text-secondary border">{{ summary.sources_24h }} sources</span>
+      <span class="badge bg-secondary-subtle text-secondary border">{{ summary.types_24h }} types</span>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-xl-8">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <form id="siem-search-form" class="row g-3">
+            <div class="col-md-3">
+              <label class="form-label" for="siem-start">Start</label>
+              <input type="datetime-local" class="form-control" id="siem-start" value="{{ default_start }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label" for="siem-end">End</label>
+              <input type="datetime-local" class="form-control" id="siem-end" value="{{ default_end }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label" for="siem-event-type">Event Type</label>
+              <input type="text" class="form-control" id="siem-event-type" placeholder="suricata.alert">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label" for="siem-source">Source</label>
+              <input type="text" class="form-control" id="siem-source" placeholder="zeek">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label" for="siem-asset-ip">Asset IP</label>
+              <input type="text" class="form-control" id="siem-asset-ip" placeholder="10.0.0.10">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label" for="siem-asset-id">Asset ID</label>
+              <input type="text" class="form-control" id="siem-asset-id" placeholder="agent-123">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label" for="siem-severity">Severity</label>
+              <input type="number" class="form-control" id="siem-severity" min="0" max="10" placeholder="4">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label" for="siem-query">Summary Contains</label>
+              <input type="text" class="form-control" id="siem-query" placeholder="malware">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label" for="siem-limit">Limit</label>
+              <input type="number" class="form-control" id="siem-limit" min="1" max="500" value="100">
+            </div>
+            <div class="col-md-10 d-flex flex-wrap gap-2 align-items-end">
+              <button type="submit" class="btn btn-primary" data-testid="siem-search-button">
+                <i class="bi bi-search"></i> Search
+              </button>
+              <button type="button" class="btn btn-outline-secondary" id="siem-reset">Reset</button>
+              <div class="btn-group ms-auto" role="group" aria-label="Quick ranges">
+                <button type="button" class="btn btn-outline-primary" data-range="15">Last 15m</button>
+                <button type="button" class="btn btn-outline-primary" data-range="60">Last 1h</button>
+                <button type="button" class="btn btn-outline-primary" data-range="1440">Last 24h</button>
+              </div>
+            </div>
+          </form>
+          <div class="mt-3 text-muted" id="siem-status" data-testid="siem-status">Showing most recent events.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h5 class="card-title">Top Sources (24h)</h5>
+          <ul class="list-unstyled mb-4" data-testid="siem-top-sources">
+            {% for src in top_sources %}
+              <li class="d-flex justify-content-between">
+                <span class="text-muted">{{ src.source }}</span>
+                <span class="badge bg-secondary">{{ src.count }}</span>
+              </li>
+            {% empty %}
+              <li class="text-muted">No data yet.</li>
+            {% endfor %}
+          </ul>
+          <h5 class="card-title">Top Event Types (24h)</h5>
+          <ul class="list-unstyled" data-testid="siem-top-types">
+            {% for et in top_types %}
+              <li class="d-flex justify-content-between">
+                <span class="text-muted">{{ et.event_type }}</span>
+                <span class="badge bg-secondary">{{ et.count }}</span>
+              </li>
+            {% empty %}
+              <li class="text-muted">No data yet.</li>
+            {% endfor %}
+          </ul>
+          <h5 class="card-title mt-4">Service Status</h5>
+          <ul class="list-unstyled" data-testid="siem-service-status">
+            {% for name, check in health.checks.items %}
+              <li class="d-flex justify-content-between">
+                <span class="text-muted">{{ name|title }}</span>
+                {% if check.status == 'ok' %}
+                  <span class="badge bg-success">ok</span>
+                {% elif check.status == 'disabled' %}
+                  <span class="badge bg-secondary">disabled</span>
+                {% else %}
+                  <span class="badge bg-danger">error</span>
+                {% endif %}
+              </li>
+            {% empty %}
+              <li class="text-muted">No status available.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <h5 class="card-title mb-0">Event Timeline</h5>
+        <small class="text-muted" id="siem-timeline-label">Last query</small>
+      </div>
+      <div class="siem-timeline" id="siem-timeline-bars"></div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle" data-testid="siem-events-table">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Source</th>
+              <th>Event Type</th>
+              <th>Severity</th>
+              <th>Asset IP</th>
+              <th>Asset ID</th>
+              <th>Summary</th>
+              <th>Pivot</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody data-testid="siem-events-body">
+            {% for event in events %}
+              <tr data-event-id="{{ event.id }}" data-asset-ip="{{ event.asset_ip|default:'' }}" data-asset-id="{{ event.asset_id|default:'' }}">
+                <td>{{ event.timestamp|date:"Y-m-d H:i:s" }}</td>
+                <td><span class="badge bg-light text-dark border">{{ event.source }}</span></td>
+                <td>{{ event.event_type }}</td>
+                <td>
+                  {% if event.severity is not None %}
+                    {% if event.severity >= 7 %}
+                      <span class="badge bg-danger">{{ event.severity }}</span>
+                    {% elif event.severity >= 4 %}
+                      <span class="badge bg-warning text-dark">{{ event.severity }}</span>
+                    {% else %}
+                      <span class="badge bg-success">{{ event.severity }}</span>
+                    {% endif %}
+                  {% else %}
+                    <span class="text-muted">-</span>
+                  {% endif %}
+                </td>
+                <td>{{ event.asset_ip|default:"-" }}</td>
+                <td>{{ event.asset_id|default:"-" }}</td>
+                <td>{{ event.summary|default:"-" }}</td>
+                <td>
+                  <button class="btn btn-sm btn-outline-secondary" data-action="pivot">Pivot</button>
+                </td>
+                <td>
+                  <button class="btn btn-sm btn-outline-primary" data-raw='{{ event.raw|escapejs }}' data-action="view-raw">
+                    View
+                  </button>
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="9" class="text-muted text-center">No events ingested yet.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="siem-raw-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Raw Event Payload</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <pre class="bg-dark text-light p-3 rounded" id="siem-raw-content"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="siem-pivot-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Asset Pivot</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="siem-pivot-content">
+        <div class="text-muted">Loading pivot details…</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static 'js/siem-events.js' %}"></script>
+{% endblock %}

@@ -96,8 +96,8 @@ class TestAuthAndRedirects:
             assert response.status_code in [200, 301], f"URL {url} returned {response.status_code}"
 
     @pytest.mark.django_db
-    def test_agent_api_endpoints_accessible_without_auth(self, client):
-        """Test that agent API endpoints are accessible without authentication."""
+    def test_agent_api_endpoints_accessible_with_token(self, agent_client):
+        """Test that agent API endpoints are accessible with token auth."""
         api_requests = [
             ("POST", reverse('dashboard:agent_report'), {
                 "agent_id": "test-agent",
@@ -119,9 +119,9 @@ class TestAuthAndRedirects:
 
         for method, url, payload in api_requests:
             if method == "POST":
-                response = client.post(url, data=json.dumps(payload or {}), content_type='application/json')
+                response = agent_client.post(url, data=json.dumps(payload or {}), content_type='application/json')
             else:
-                response = client.get(url)
+                response = agent_client.get(url)
 
             # Should not return 403 Forbidden or redirect to login
             assert response.status_code != 403, f"URL {url} returned 403 Forbidden"

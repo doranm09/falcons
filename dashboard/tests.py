@@ -552,6 +552,30 @@ class GraphViewTests(TestCase):
         link_data = [item for item in data if item.get('data', {}).get('source') is not None]
         self.assertEqual(len(link_data), 1)
 
+    def test_graph_data_with_scan_filter(self):
+        """Test graph data filter by scan_run_id."""
+        scan_two = ScanRun.objects.create(cidr="10.0.0.0/24")
+        node1 = Node.objects.create(scan_run=self.scan, ip_address="192.168.1.10", name="node1")
+        node2 = Node.objects.create(scan_run=self.scan, ip_address="192.168.1.11", name="node2")
+        Link.objects.create(scan_run=self.scan, source=node1, destination=node2, weight=1.0)
+
+        other_node = Node.objects.create(scan_run=scan_two, ip_address="10.0.0.10", name="node3")
+        other_node2 = Node.objects.create(scan_run=scan_two, ip_address="10.0.0.11", name="node4")
+        Link.objects.create(scan_run=scan_two, source=other_node, destination=other_node2, weight=2.0)
+
+        response = self.client.get(reverse('dashboard:graph-data'), {'scan_run_id': self.scan.id})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+
+        node_data = [item for item in data if item.get('data', {}).get('source') is None]
+        node_labels = {item["data"]["label"] for item in node_data}
+        self.assertIn("node1", node_labels)
+        self.assertIn("node2", node_labels)
+        self.assertNotIn("node3", node_labels)
+
+        link_data = [item for item in data if item.get('data', {}).get('source') is not None]
+        self.assertEqual(len(link_data), 1)
+
 
 class AgentViewTests(TestCase):
     def setUp(self):

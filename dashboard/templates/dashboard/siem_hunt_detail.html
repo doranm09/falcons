@@ -1,0 +1,155 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h2 class="mb-1">{{ hunt.name }}</h2>
+      <p class="text-muted mb-0">Hunt #{{ hunt.id }}</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" href="{% url 'dashboard:siem_hunts_page' %}">Back to Hunts</a>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h5 class="card-title">Details</h5>
+          <p class="mb-2"><strong>Status:</strong> {{ hunt.status }}</p>
+          <p class="mb-2"><strong>Description:</strong> {{ hunt.description|default:"-" }}</p>
+          <div class="mb-2">
+            <strong>Tags:</strong>
+            {% for tag in hunt.tags.all %}
+              <span class="badge bg-light text-dark border me-1">{{ tag.name }}</span>
+            {% empty %}
+              <span class="text-muted">-</span>
+            {% endfor %}
+          </div>
+          <form method="post" action="{% url 'dashboard:siem_hunt_update_status' hunt.id %}" class="d-flex gap-2 align-items-end">
+            {% csrf_token %}
+            <select name="status" class="form-select w-auto">
+              <option value="open" {% if hunt.status == 'open' %}selected{% endif %}>Open</option>
+              <option value="closed" {% if hunt.status == 'closed' %}selected{% endif %}>Closed</option>
+            </select>
+            <button type="submit" class="btn btn-primary">Update Status</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h5 class="card-title">Add Tags</h5>
+          <form method="post" action="{% url 'dashboard:siem_hunt_add_tag' hunt.id %}" class="row g-2">
+            {% csrf_token %}
+            <div class="col-12">
+              <input type="text" name="tags" class="form-control" placeholder="comma-separated tags">
+            </div>
+            <div class="col-12">
+              <button type="submit" class="btn btn-outline-primary">Add Tags</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Notebook</h5>
+          <form method="post" action="{% url 'dashboard:siem_hunt_add_note' hunt.id %}" class="mb-3">
+            {% csrf_token %}
+            <input type="text" name="title" class="form-control mb-2" placeholder="Note title (optional)">
+            <textarea name="note" class="form-control" rows="3" placeholder="Add a notebook entry"></textarea>
+            <button type="submit" class="btn btn-primary mt-2">Add Note</button>
+          </form>
+          <ul class="list-unstyled mb-0">
+            {% for note in hunt.notes.all %}
+              <li class="mb-3">
+                <div class="text-muted small">{{ note.created_at|date:"Y-m-d H:i:s" }}</div>
+                {% if note.title %}
+                  <div><strong>{{ note.title }}</strong></div>
+                {% endif %}
+                <div>{{ note.note }}</div>
+              </li>
+            {% empty %}
+              <li class="text-muted">No notes yet.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Saved Searches</h5>
+          <form method="post" action="{% url 'dashboard:siem_hunt_add_search' hunt.id %}" class="mb-3">
+            {% csrf_token %}
+            <div class="row g-2">
+              <div class="col-md-6">
+                <input type="text" name="search_name" class="form-control" placeholder="Search name">
+              </div>
+              <div class="col-md-6">
+                <input type="text" name="event_type" class="form-control" placeholder="event_type">
+              </div>
+              <div class="col-md-6">
+                <input type="text" name="source" class="form-control" placeholder="source">
+              </div>
+              <div class="col-md-6">
+                <input type="text" name="asset_ip" class="form-control" placeholder="asset_ip">
+              </div>
+              <div class="col-md-6">
+                <input type="text" name="asset_id" class="form-control" placeholder="asset_id">
+              </div>
+              <div class="col-md-6">
+                <input type="text" name="q" class="form-control" placeholder="query text">
+              </div>
+              <div class="col-md-6">
+                <input type="text" name="severity" class="form-control" placeholder="severity">
+              </div>
+              <div class="col-md-6">
+                <input type="text" name="start" class="form-control" placeholder="start (ISO8601)">
+              </div>
+              <div class="col-md-6">
+                <input type="text" name="end" class="form-control" placeholder="end (ISO8601)">
+              </div>
+              <div class="col-md-6">
+                <input type="text" name="event_type_in" class="form-control" placeholder="event_type_in (a,b)">
+              </div>
+              <div class="col-md-6">
+                <input type="text" name="source_in" class="form-control" placeholder="source_in (a,b)">
+              </div>
+              <div class="col-md-6">
+                <input type="text" name="agg" class="form-control" placeholder="agg (source,event_type)">
+              </div>
+              <div class="col-md-6">
+                <input type="text" name="agg_size" class="form-control" placeholder="agg_size">
+              </div>
+              <div class="col-12">
+                <button type="submit" class="btn btn-outline-primary">Save Search</button>
+              </div>
+            </div>
+          </form>
+          <ul class="list-unstyled mb-0">
+            {% for search in hunt.searches.all %}
+              <li class="mb-3">
+                <div><strong>{{ search.name }}</strong></div>
+                <div class="text-muted small">{{ search.created_at|date:"Y-m-d H:i:s" }}</div>
+                <div class="text-muted small">{{ search.query_params }}</div>
+                <a class="btn btn-sm btn-outline-secondary mt-1" href="{% url 'dashboard:siem_hunt_replay_search' hunt.id search.id %}" target="_blank">Replay</a>
+              </li>
+            {% empty %}
+              <li class="text-muted">No searches saved.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

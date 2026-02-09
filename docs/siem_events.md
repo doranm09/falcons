@@ -1,0 +1,118 @@
+# SIEM Event Ingest and Search
+
+This feature provides a minimal SIEM event store with ingestion and search APIs. It is the foundation for Security Onion and SIEM integrations (Zeek, Suricata, host agent, and scan outputs).
+
+**Endpoints**
+- `POST /dashboard/siem/ingest/` Ingest one event or a list of events.
+- `POST /dashboard/siem/pipeline/ingest/` Ingest raw pipeline events (auto-mapped to ECS subset).
+- `GET /dashboard/siem/events/` Search events by time range and filters.
+- `GET /dashboard/siem/events/explorer/` UI for searching and pivoting on events.
+- `GET /dashboard/siem/adapters/agent/<agent_id>/` Adapter preview for agent heartbeat events.
+- `GET /dashboard/siem/adapters/scan/<scan_id>/` Adapter preview for scan events.
+- `GET /dashboard/siem/adapters/vuln/<vuln_id>/` Adapter preview for vulnerability events.
+- `GET /dashboard/siem/adapters/sbom/<sbom_id>/` Adapter preview for SBOM events.
+- `GET /dashboard/siem/pivot/?asset_ip=<ip>&asset_id=<id>` Resolve events to nodes and scans.
+- `GET /dashboard/siem/alerts/` Alert queue UI.
+- `POST /dashboard/siem/rules/<rule_id>/toggle/` Toggle an alert rule.
+- `GET /dashboard/siem/cases/` Case management UI.
+- `POST /dashboard/siem/alerts/<alert_id>/case/` Promote an alert to a case.
+- `GET /dashboard/siem/hunts/` Hunt workflow UI (saved searches and notes).
+- `GET /dashboard/siem/audit/` Audit log UI (admin-only).
+- `GET /dashboard/healthz/` Health check JSON.
+- `GET /dashboard/metrics/` Prometheus metrics.
+- `GET /dashboard/siem/export/` Research export (admin/analyst).
+- `GET /dashboard/siem/research/` Research mode profiles (admin/analyst).
+- `POST /dashboard/siem/threat-intel/ingest/` Ingest threat intel indicators (MISP-like JSON).
+- `GET /dashboard/siem/threat-intel/` List ingested indicators.
+- `POST /dashboard/siem/syslog/` Ingest syslog lines (RFC3164/5424).
+- `POST /dashboard/siem/windows/` Ingest Windows Event Log JSON payloads.
+
+**Authentication**
+- SIEM ingest endpoints require `X-SIEM-Token: <token>` or `Authorization: Bearer <token>`.
+- Set `SIEM_INGEST_TOKEN` (or `SIEM_INGEST_TOKEN_FILE`) and keep `SIEM_INGEST_TOKEN_REQUIRED=1` (default). For dev, set `SIEM_INGEST_TOKEN_REQUIRED=0`.
+- `SIEM_MAX_INGEST_BATCH` controls the maximum number of events per request (default 500).
+
+**Ingest Example**
+```bash
+curl -X POST http://localhost:8000/dashboard/siem/ingest/ \
+  -H "Content-Type: application/json" \
+  -H "X-SIEM-Token: your-token" \
+  -d '{
+    "event_type": "zeek.conn",
+    "source": "zeek",
+    "timestamp": "2026-02-06T12:00:00Z",
+    "message": "connection",
+    "severity": 2,
+    "asset_ip": "10.0.0.5"
+  }'
+```
+
+**Batch Ingest**
+```bash
+curl -X POST http://localhost:8000/dashboard/siem/ingest/ \
+  -H "Content-Type: application/json" \
+  -d '[
+    {"event_type": "suricata.alert", "source": "suricata", "timestamp": "2026-02-06T12:01:00Z"},
+    {"event_type": "agent.heartbeat", "source": "agent", "timestamp": "2026-02-06T12:02:00Z"}
+  ]'
+```
+
+**Pipeline Ingest Example (Suricata-like)**
+```bash
+curl -X POST http://localhost:8000/dashboard/siem/pipeline/ingest/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "alert": {"signature": "ET MALWARE Example", "severity": 2},
+    "src_ip": "10.10.0.20",
+    "timestamp": "2026-02-06T12:05:00Z"
+  }'
+```
+
+**Pipeline Mapping**
+- Suricata-like payloads with `alert` map to `suricata.alert`.
+- Zeek-like payloads with `id_orig_h` or `uid` map to `zeek.conn` or `zeek.event`.
+- Agent-like payloads with `agent_id` map to `agent.telemetry`.
+- Scan-like payloads with `scan_type` or `cidr` map to `scan.run`.
+
+**OpenSearch Forwarding**
+When `OPENSEARCH_ENABLED=1`, ingested events are also indexed into OpenSearch using the `_bulk` API.
+See `docs/opensearch.md` for setup and dashboards instructions.
+
+**Threat Intel Enrichment**
+When `THREAT_INTEL_ENABLED=1`, ingested events are checked against active indicators. Matches are stored and appended to alert summaries.
+See `docs/threat_intel.md` for payload formats.
+
+**Host Telemetry**
+The host agent can send `osquery.result` and `fim.change` events to the SIEM pipeline ingest endpoint.
+
+**Syslog + Windows Events**
+See `docs/siem_syslog_windows.md` for payload examples.
+
+**Search Example**
+```bash
+curl "http://localhost:8000/dashboard/siem/events/?event_type=suricata.alert&start=2026-02-06T12:00:00Z&end=2026-02-06T13:00:00Z"
+```
+
+**Aggregation Example**
+```bash
+curl "http://localhost:8000/dashboard/siem/events/?agg=source,event_type&agg_size=10"
+```
+
+**Multi-Value Filters**
+- `event_type_in=suricata.alert,zeek.conn`
+- `source_in=suricata,zeek`
+
+**UI Usage**
+- Navigate to `SIEM > Event Explorer` in the sidebar.
+- Use filters and quick ranges to search events.
+- Click `View` to inspect the raw payload.
+- Click `Pivot` to jump to the related node and scan details (if found).
+- Navigate to `SIEM > Alert Queue` to review detections and toggle rules.
+
+**Adapter Preview Example**
+```bash
+curl \"http://localhost:8000/dashboard/siem/adapters/agent/agent-01/\"\n```
+
+**Response Format**
+- `count`: Total matching events.
+- `results`: List of event records with normalized fields and `raw` payload.

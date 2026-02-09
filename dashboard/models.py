@@ -90,6 +90,328 @@ class MinimegaExecutionLog(models.Model):
         return f"{self.action} @ {self.created_at:%Y-%m-%d %H:%M:%S}"
 
 
+class SiemEvent(models.Model):
+    timestamp = models.DateTimeField(db_index=True)
+    ingested_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    source = models.CharField(max_length=100, db_index=True)
+    event_type = models.CharField(max_length=120, db_index=True)
+    severity = models.IntegerField(null=True, blank=True, db_index=True)
+    asset_id = models.CharField(max_length=128, null=True, blank=True, db_index=True)
+    asset_ip = models.GenericIPAddressField(null=True, blank=True, db_index=True)
+    summary = models.CharField(max_length=512, blank=True)
+    raw = models.JSONField()
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["timestamp", "event_type"]),
+            models.Index(fields=["source", "timestamp"]),
+        ]
+        ordering = ["-timestamp"]
+
+    def __str__(self):
+        return f"{self.event_type} @ {self.timestamp:%Y-%m-%d %H:%M:%S}"
+
+
+class AlertRule(models.Model):
+    class RuleType(models.TextChoices):
+        SIGMA = "sigma", "Sigma"
+        SURICATA = "suricata", "Suricata"
+
+    name = models.CharField(max_length=255, unique=True)
+    description = models.TextField(blank=True)
+    rule_type = models.CharField(max_length=32, choices=RuleType.choices, default=RuleType.SIGMA)
+    enabled = models.BooleanField(default=True)
+    severity = models.IntegerField(null=True, blank=True)
+    match_event_type = models.CharField(max_length=120, blank=True)
+    match_source = models.CharField(max_length=120, blank=True)
+    match_contains = models.CharField(max_length=255, blank=True)
+    suppression_minutes = models.PositiveIntegerField(default=10)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["rule_type", "enabled"]),
+            models.Index(fields=["match_event_type"]),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.rule_type})"
+
+
+class Alert(models.Model):
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        CLOSED = "closed", "Closed"
+
+    rule = models.ForeignKey(AlertRule, null=True, blank=True, on_delete=models.SET_NULL)
+    rule_name = models.CharField(max_length=255)
+    rule_type = models.CharField(max_length=32, blank=True)
+    event_type = models.CharField(max_length=120, blank=True)
+    source = models.CharField(max_length=120, blank=True)
+    severity = models.IntegerField(null=True, blank=True)
+    asset_ip = models.GenericIPAddressField(null=True, blank=True)
+    asset_id = models.CharField(max_length=128, null=True, blank=True)
+    summary = models.CharField(max_length=512, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.OPEN)
+    first_seen = models.DateTimeField(auto_now_add=True)
+    last_seen = models.DateTimeField(auto_now=True)
+    count = models.PositiveIntegerField(default=1)
+    dedup_key = models.CharField(max_length=255, db_index=True)
+    raw_sample = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "last_seen"]),
+            models.Index(fields=["rule_type", "event_type"]),
+        ]
+        ordering = ["-last_seen"]
+
+    def __str__(self):
+        return f"{self.rule_name} ({self.status})"
+
+
+class Case(models.Model):
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        CLOSED = "closed", "Closed"
+
+    class Priority(models.TextChoices):
+        LOW = "low", "Low"
+        MEDIUM = "medium", "Medium"
+        HIGH = "high", "High"
+
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.OPEN)
+    priority = models.CharField(max_length=16, choices=Priority.choices, default=Priority.MEDIUM)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    alerts = models.ManyToManyField(Alert, related_name="cases", blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "updated_at"]),
+            models.Index(fields=["priority"]),
+        ]
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"{self.title} ({self.status})"
+
+
+class CaseNote(models.Model):
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="notes")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    note = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Note {self.id} for Case {self.case_id}"
+
+
+class CaseEvidence(models.Model):
+    class EvidenceType(models.TextChoices):
+        TEXT = "text", "Text"
+        URL = "url", "URL"
+        JSON = "json", "JSON"
+
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="evidence")
+    label = models.CharField(max_length=255)
+    evidence_type = models.CharField(max_length=16, choices=EvidenceType.choices, default=EvidenceType.TEXT)
+    details = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Evidence {self.id} for Case {self.case_id}"
+
+
+class Hunt(models.Model):
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        CLOSED = "closed", "Closed"
+
+    name = models.CharField(max_length=255, unique=True)
+    description = models.TextField(blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.OPEN)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "updated_at"]),
+        ]
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.status})"
+
+
+class HuntTag(models.Model):
+    hunt = models.ForeignKey(Hunt, on_delete=models.CASCADE, related_name="tags")
+    name = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("hunt", "name")
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} (hunt {self.hunt_id})"
+
+
+class HuntSearch(models.Model):
+    hunt = models.ForeignKey(Hunt, on_delete=models.CASCADE, related_name="searches")
+    name = models.CharField(max_length=255)
+    query_params = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Search {self.name} (hunt {self.hunt_id})"
+
+
+class HuntNote(models.Model):
+    hunt = models.ForeignKey(Hunt, on_delete=models.CASCADE, related_name="notes")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    title = models.CharField(max_length=255, blank=True)
+    note = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Note {self.id} for Hunt {self.hunt_id}"
+
+
+class SiemUserRole(models.Model):
+    class Role(models.TextChoices):
+        ADMIN = "admin", "Admin"
+        ANALYST = "analyst", "Analyst"
+        VIEWER = "viewer", "Viewer"
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="siem_role")
+    role = models.CharField(max_length=16, choices=Role.choices, default=Role.VIEWER)
+    assigned_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["role"]),
+        ]
+
+    def __str__(self):
+        return f"{self.user} ({self.role})"
+
+
+class SiemAuditLog(models.Model):
+    class Status(models.TextChoices):
+        SUCCESS = "success", "Success"
+        DENIED = "denied", "Denied"
+        ERROR = "error", "Error"
+
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    role = models.CharField(max_length=16, blank=True)
+    action = models.CharField(max_length=128)
+    resource_type = models.CharField(max_length=64, blank=True)
+    resource_id = models.CharField(max_length=64, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.SUCCESS)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=255, blank=True)
+    metadata = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["action", "status"]),
+            models.Index(fields=["created_at"]),
+        ]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.action} ({self.status})"
+
+
+class ResearchProfile(models.Model):
+    name = models.CharField(max_length=255, unique=True)
+    version = models.CharField(max_length=64)
+    pipeline_version = models.CharField(max_length=64, blank=True)
+    ruleset_version = models.CharField(max_length=64, blank=True)
+    retention_days = models.PositiveIntegerField(default=30)
+    max_batch = models.PositiveIntegerField(default=500)
+    active = models.BooleanField(default=False)
+    config = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["active"]),
+        ]
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        status = "active" if self.active else "inactive"
+        return f"{self.name} ({self.version}) [{status}]"
+
+
+class ThreatIntelIndicator(models.Model):
+    class IndicatorType(models.TextChoices):
+        IP = "ip", "IP"
+        DOMAIN = "domain", "Domain"
+        URL = "url", "URL"
+        HASH = "hash", "Hash"
+
+    value = models.CharField(max_length=512, db_index=True)
+    indicator_type = models.CharField(max_length=16, choices=IndicatorType.choices)
+    source = models.CharField(max_length=128, blank=True)
+    description = models.TextField(blank=True)
+    confidence = models.IntegerField(null=True, blank=True)
+    tlp = models.CharField(max_length=16, blank=True)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("indicator_type", "value")
+        indexes = [
+            models.Index(fields=["indicator_type", "active"]),
+            models.Index(fields=["source"]),
+        ]
+
+    def __str__(self):
+        return f"{self.indicator_type}:{self.value}"
+
+
+class ThreatIntelMatch(models.Model):
+    indicator = models.ForeignKey(ThreatIntelIndicator, on_delete=models.CASCADE)
+    event = models.ForeignKey(SiemEvent, on_delete=models.CASCADE, related_name="ioc_matches")
+    matched_field = models.CharField(max_length=64)
+    matched_value = models.CharField(max_length=512)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["matched_field"]),
+            models.Index(fields=["created_at"]),
+        ]
+        unique_together = ("indicator", "event", "matched_field")
+
+    def __str__(self):
+        return f"{self.indicator} -> {self.event_id}"
+
+
 class Node(models.Model):
     # Networked endpoint discovered by scans (global inventory or per-run via scan_run FK)
     scan_run = models.ForeignKey(

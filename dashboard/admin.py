@@ -19,6 +19,14 @@ from .models import (
     SbomReport,
     MinimegaExecutionLog,
     RiskNodeMapping,
+    SiemEvent,
+    AlertRule,
+    Alert,
+    Case,
+    CaseNote,
+    CaseEvidence,
+    ThreatIntelIndicator,
+    ThreatIntelMatch,
 )
 
 @admin.register(Node)
@@ -163,3 +171,59 @@ class MinimegaExecutionLogAdmin(admin.ModelAdmin):
     list_display = ("id", "action", "scan", "status", "returncode", "created_at")
     search_fields = ("action", "scan__cidr", "disk_image", "script_path")
     list_filter = ("action", "status")
+
+
+@admin.register(SiemEvent)
+class SiemEventAdmin(admin.ModelAdmin):
+    list_display = ("id", "event_type", "source", "timestamp", "severity", "asset_ip")
+    search_fields = ("event_type", "source", "summary", "asset_id", "asset_ip")
+    list_filter = ("event_type", "source", "severity")
+    readonly_fields = ("ingested_at",)
+
+
+@admin.register(AlertRule)
+class AlertRuleAdmin(admin.ModelAdmin):
+    list_display = ("name", "rule_type", "enabled", "severity", "suppression_minutes")
+    list_filter = ("rule_type", "enabled")
+    search_fields = ("name", "description", "match_event_type", "match_source")
+
+
+@admin.register(Alert)
+class AlertAdmin(admin.ModelAdmin):
+    list_display = ("id", "rule_name", "status", "severity", "asset_ip", "last_seen", "count")
+    list_filter = ("status", "rule_type")
+    search_fields = ("rule_name", "summary", "asset_ip", "asset_id")
+    readonly_fields = ("first_seen", "last_seen")
+
+
+@admin.register(Case)
+class CaseAdmin(admin.ModelAdmin):
+    list_display = ("id", "title", "status", "priority", "updated_at")
+    list_filter = ("status", "priority")
+    search_fields = ("title", "description")
+    filter_horizontal = ("alerts",)
+
+
+@admin.register(CaseNote)
+class CaseNoteAdmin(admin.ModelAdmin):
+    list_display = ("id", "case", "author", "created_at")
+    search_fields = ("note",)
+
+
+@admin.register(CaseEvidence)
+class CaseEvidenceAdmin(admin.ModelAdmin):
+    list_display = ("id", "case", "label", "evidence_type", "created_at")
+    search_fields = ("label", "details")
+
+
+@admin.register(ThreatIntelIndicator)
+class ThreatIntelIndicatorAdmin(admin.ModelAdmin):
+    list_display = ("id", "indicator_type", "value", "source", "active", "updated_at")
+    list_filter = ("indicator_type", "active")
+    search_fields = ("value", "description", "source")
+
+
+@admin.register(ThreatIntelMatch)
+class ThreatIntelMatchAdmin(admin.ModelAdmin):
+    list_display = ("id", "indicator", "event", "matched_field", "created_at")
+    list_filter = ("matched_field",)

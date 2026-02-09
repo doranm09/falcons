@@ -1,0 +1,119 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h2 class="mb-1">{{ case.title }}</h2>
+      <p class="text-muted mb-0">Case #{{ case.id }}</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" href="{% url 'dashboard:siem_cases_page' %}">Back to Cases</a>
+      <a class="btn btn-outline-primary" href="{% url 'dashboard:siem_case_export' case.id %}">Export JSON</a>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h5 class="card-title">Details</h5>
+          <p class="mb-2"><strong>Status:</strong> {{ case.status }}</p>
+          <p class="mb-2"><strong>Priority:</strong> {{ case.priority }}</p>
+          <p class="mb-2"><strong>Description:</strong> {{ case.description|default:"-" }}</p>
+          <form method="post" action="{% url 'dashboard:siem_case_update_status' case.id %}" class="d-flex gap-2 align-items-end">
+            {% csrf_token %}
+            <select name="status" class="form-select w-auto">
+              <option value="open" {% if case.status == 'open' %}selected{% endif %}>Open</option>
+              <option value="closed" {% if case.status == 'closed' %}selected{% endif %}>Closed</option>
+            </select>
+            <button type="submit" class="btn btn-primary">Update Status</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h5 class="card-title">Linked Alerts</h5>
+          <ul class="list-unstyled mb-0">
+            {% for alert in case.alerts.all %}
+              <li class="mb-2">
+                <div><strong>{{ alert.rule_name }}</strong> ({{ alert.event_type }})</div>
+                <div class="text-muted">{{ alert.summary|default:"-" }} | {{ alert.asset_ip|default:"-" }}</div>
+              </li>
+            {% empty %}
+              <li class="text-muted">No alerts linked.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Notes</h5>
+          <form method="post" action="{% url 'dashboard:siem_case_add_note' case.id %}" class="mb-3">
+            {% csrf_token %}
+            <textarea name="note" class="form-control" rows="3" placeholder="Add a note"></textarea>
+            <button type="submit" class="btn btn-primary mt-2">Add Note</button>
+          </form>
+          <ul class="list-unstyled mb-0">
+            {% for note in case.notes.all %}
+              <li class="mb-3">
+                <div class="text-muted small">{{ note.created_at|date:"Y-m-d H:i:s" }}</div>
+                <div>{{ note.note }}</div>
+              </li>
+            {% empty %}
+              <li class="text-muted">No notes yet.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Evidence</h5>
+          <form method="post" action="{% url 'dashboard:siem_case_add_evidence' case.id %}" class="mb-3">
+            {% csrf_token %}
+            <div class="row g-2">
+              <div class="col-md-4">
+                <input type="text" name="label" class="form-control" placeholder="Label">
+              </div>
+              <div class="col-md-4">
+                <select name="evidence_type" class="form-select">
+                  <option value="text">Text</option>
+                  <option value="url">URL</option>
+                  <option value="json">JSON</option>
+                </select>
+              </div>
+              <div class="col-md-4">
+                <button type="submit" class="btn btn-primary w-100">Add</button>
+              </div>
+              <div class="col-12">
+                <textarea name="details" class="form-control" rows="2" placeholder="Evidence details"></textarea>
+              </div>
+            </div>
+          </form>
+          <ul class="list-unstyled mb-0">
+            {% for item in case.evidence.all %}
+              <li class="mb-3">
+                <div><strong>{{ item.label }}</strong> ({{ item.evidence_type }})</div>
+                <div class="text-muted small">{{ item.created_at|date:"Y-m-d H:i:s" }}</div>
+                <div>{{ item.details|linebreaksbr }}</div>
+              </li>
+            {% empty %}
+              <li class="text-muted">No evidence recorded.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

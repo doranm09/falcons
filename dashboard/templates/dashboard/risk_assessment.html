@@ -22,6 +22,9 @@
       <button class="nav-link" id="risk-mappings-tab" data-bs-toggle="tab" data-bs-target="#risk-mappings" type="button" role="tab">Mappings</button>
     </li>
     <li class="nav-item" role="presentation">
+      <button class="nav-link" id="risk-testbed-tab" data-bs-toggle="tab" data-bs-target="#risk-testbed" type="button" role="tab">Testbed</button>
+    </li>
+    <li class="nav-item" role="presentation">
       <button class="nav-link" id="risk-probability-tab" data-bs-toggle="tab" data-bs-target="#risk-probability" type="button" role="tab">Probability</button>
     </li>
     <li class="nav-item" role="presentation">
@@ -123,6 +126,40 @@
       </div>
     </div>
 
+    <div class="tab-pane fade" id="risk-testbed" role="tabpanel">
+      <div class="card shadow-sm">
+        <div class="card-header">
+          <h5 class="mb-0">Risk Schema Testbed</h5>
+        </div>
+        <div class="card-body">
+          <p class="text-muted">Generate a synthetic network that matches the risk model nodes and feed it into the risk assessment service.</p>
+          <form id="risk-testbed-form" class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label" for="risk-testbed-cidr">CIDR</label>
+              <input class="form-control" id="risk-testbed-cidr" value="192.168.236.0/24">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="risk-testbed-max-cves">Max CVEs per node</label>
+              <input type="number" min="0" max="50" class="form-control" id="risk-testbed-max-cves" value="10">
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="risk-testbed-cves">CVE List (comma or newline separated)</label>
+              <textarea class="form-control" id="risk-testbed-cves" rows="4" placeholder="CVE-2023-1234, CVE-2024-0001"></textarea>
+            </div>
+            <div class="col-12 d-flex gap-2">
+              <button type="submit" class="btn btn-primary">
+                <i class="bi bi-hdd-network"></i> Generate Testbed
+              </button>
+              <button type="button" class="btn btn-outline-secondary" id="risk-testbed-refresh">
+                <i class="bi bi-arrow-clockwise"></i> Refresh Mappings
+              </button>
+            </div>
+          </form>
+          <div id="risk-testbed-status" class="text-muted mt-3">Ready to generate.</div>
+        </div>
+      </div>
+    </div>
+
     <div class="tab-pane fade" id="risk-probability" role="tabpanel">
       <div class="row g-4">
         <div class="col-lg-5">
@@ -191,7 +228,7 @@
           <div id="risk-graph-status" class="text-muted mb-3">Loading graph…</div>
           <div class="row g-3">
             <div class="col-lg-7">
-              <div id="risk-network-graph" style="height: 420px; background-color: var(--graph-bg); border: 1px solid var(--border-color); border-radius: 8px;"></div>
+              <div id="risk-network-graph" class="risk-network-graph"></div>
               <div class="d-flex flex-wrap gap-3 small text-muted mt-2">
                 <span><span class="badge bg-danger">High</span> ≥ 70%</span>
                 <span><span class="badge bg-warning text-dark">Medium</span> 40–69%</span>
@@ -228,6 +265,22 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<style>
+  .risk-network-graph {
+    height: 80vh;
+    min-height: 640px;
+    max-height: 90vh;
+    background-color: var(--graph-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+  }
+  @media (max-width: 992px) {
+    .risk-network-graph {
+      height: 60vh;
+      min-height: 420px;
+    }
+  }
+</style>
 <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
 <script>
   const statusEl = document.getElementById('risk-status');
@@ -242,6 +295,9 @@
   const mappingFileInput = document.getElementById('risk-mapping-file');
   const mappingImportButton = document.getElementById('risk-mappings-import');
   const mappingSaveAllButton = document.getElementById('risk-mappings-save-all');
+  const testbedForm = document.getElementById('risk-testbed-form');
+  const testbedStatus = document.getElementById('risk-testbed-status');
+  const testbedRefresh = document.getElementById('risk-testbed-refresh');
   let riskCy = null;
   let riskGraphElements = [];
   let riskMappingRows = new Map();
@@ -249,6 +305,8 @@
   let mappingNodeByName = new Map();
   let mappingNodeByIp = new Map();
   let mappingSummaryData = null;
+  let riskActiveScanId = null;
+  let riskGraphScanId = null;
 
   async function fetchStatus() {
     statusEl.textContent = 'Loading status…';
@@ -804,6 +862,47 @@
     }
   });
 
+  if (testbedForm) {
+    testbedForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const cidr = document.getElementById('risk-testbed-cidr').value.trim();
+      const maxCves = parseInt(document.getElementById('risk-testbed-max-cves').value || '10', 10);
+      const cves = document.getElementById('risk-testbed-cves').value.trim();
+
+      if (testbedStatus) testbedStatus.textContent = 'Generating testbed…';
+      try {
+        const response = await fetch("{% url 'dashboard:risk_assessment_testbed_generate' %}", {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCSRFToken(),
+          },
+          body: JSON.stringify({
+            cidr,
+            max_cves_per_node: Number.isNaN(maxCves) ? 10 : maxCves,
+            cves,
+          })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Testbed generation failed');
+        }
+        if (testbedStatus) {
+          testbedStatus.textContent = `Generated ${data.nodes_created} nodes and ${data.links_created} links (Scan #${data.scan_run_id}). Mappings updated: ${data.mappings_updated}.`;
+        }
+        riskActiveScanId = data.scan_run_id;
+        fetchMappings();
+        loadRiskGraph();
+      } catch (err) {
+        if (testbedStatus) testbedStatus.textContent = `Error: ${err.message}`;
+      }
+    });
+  }
+
+  if (testbedRefresh) {
+    testbedRefresh.addEventListener('click', fetchMappings);
+  }
+
   fetchStatus();
   fetchNodes();
   fetchMappings();
@@ -812,6 +911,13 @@
     if (riskGraphStatus) {
       riskGraphStatus.textContent = message;
     }
+  }
+
+  function withScanRun(url) {
+    if (riskActiveScanId) {
+      return `${url}?scan_run_id=${encodeURIComponent(riskActiveScanId)}`;
+    }
+    return url;
   }
 
   function riskLabelFor(nodeData, match) {
@@ -913,7 +1019,14 @@
           'width': 2,
           'line-color': 'mapData(raw_weight,0,6,green,red)',
           'target-arrow-shape': 'triangle',
-          'target-arrow-color': 'mapData(raw_weight,0,6,green,red)'
+          'target-arrow-color': 'mapData(raw_weight,0,6,green,red)',
+          'line-opacity': 0.85
+        }}
+        ,
+        { selector: 'edge[kind = "scan"]', style: {
+          'line-color': '#3b82f6',
+          'target-arrow-color': '#3b82f6',
+          'width': 2.5
         }}
       ],
       layout: { name: 'cose', animate: true, fit: true }
@@ -941,7 +1054,7 @@
     if (!riskGraphContainer) return;
     setRiskGraphStatus('Loading graph…');
     try {
-      const response = await fetch("{% url 'dashboard:graph-data' %}");
+      const response = await fetch(withScanRun("{% url 'dashboard:graph-data' %}"));
       const data = await response.json();
       if (!response.ok) {
         setRiskGraphStatus(data.error || 'Graph unavailable.');
@@ -949,6 +1062,7 @@
       }
       riskGraphElements = data;
       renderRiskGraph(riskGraphElements);
+      riskGraphScanId = riskActiveScanId;
       setRiskGraphStatus('Graph loaded.');
     } catch (err) {
       setRiskGraphStatus('Graph unavailable.');
@@ -959,11 +1073,14 @@
     const tableBody = document.querySelector('#risk-network-table tbody');
     tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Computing risk…</td></tr>';
     try {
-      const response = await fetch("{% url 'dashboard:risk_assessment_network_compute' %}");
+      const response = await fetch(withScanRun("{% url 'dashboard:risk_assessment_network_compute' %}"));
       const data = await response.json();
       if (!response.ok) {
         tableBody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">${data.error || 'Error computing risk'}</td></tr>`;
         return;
+      }
+      if (data.scan_run_id) {
+        riskActiveScanId = data.scan_run_id;
       }
       const mapped = data.mapped_nodes || [];
       if (mapped.length === 0) {
@@ -984,7 +1101,7 @@
           </tr>
         `;
       }).join('');
-      if (!riskCy) {
+      if (!riskCy || (riskActiveScanId && riskGraphScanId !== riskActiveScanId)) {
         await loadRiskGraph();
       }
       applyRiskOverlay(mapped);

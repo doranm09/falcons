@@ -9,7 +9,7 @@ from dashboard.models import Node, SbomReport, Vulnerability
 pytestmark = pytest.mark.django_db
 
 
-def test_sbom_ingest_creates_report_and_updates_node(client):
+def test_sbom_ingest_creates_report_and_updates_node(agent_client):
     agent_id = "agent-123"
     Node.objects.create(agent_id=agent_id, name="host1", ip_address="192.168.1.10")
 
@@ -29,7 +29,7 @@ def test_sbom_ingest_creates_report_and_updates_node(client):
         ],
     }
 
-    response = client.post(
+    response = agent_client.post(
         reverse("dashboard:sbom_ingest"),
         data=json.dumps(payload),
         content_type="application/json",
@@ -57,9 +57,9 @@ def test_sbom_ingest_creates_report_and_updates_node(client):
     assert node.vulnerability_set.filter(cve_id="CVE-2024-0001").exists()
 
 
-def test_sbom_ingest_requires_agent_id(client):
+def test_sbom_ingest_requires_agent_id(agent_client):
     payload = {"components": []}
-    response = client.post(
+    response = agent_client.post(
         reverse("dashboard:sbom_ingest"),
         data=json.dumps(payload),
         content_type="application/json",
@@ -69,12 +69,12 @@ def test_sbom_ingest_requires_agent_id(client):
     assert response.json()["error"] == "agent_id is required"
 
 
-def test_sbom_ingest_accepts_raw_packages(client):
+def test_sbom_ingest_accepts_raw_packages(agent_client):
     agent_id = "agent-raw"
     Node.objects.create(agent_id=agent_id, name="host2", ip_address="192.168.1.11")
 
     payload = {"agent_id": agent_id, "packages": ["nginx@1.24.0", "python@3.11"]}
-    response = client.post(
+    response = agent_client.post(
         reverse("dashboard:sbom_ingest"),
         data=json.dumps(payload),
         content_type="application/json",

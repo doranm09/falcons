@@ -1,0 +1,82 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h2 class="mb-1">SIEM Hunts</h2>
+      <p class="text-muted mb-0">Saved searches, tags, and hunt notebooks.</p>
+    </div>
+    <div class="btn-group" role="group">
+      <a class="btn btn-outline-primary {% if status == 'open' %}active{% endif %}" href="{% url 'dashboard:siem_hunts_page' %}?status=open">Open</a>
+      <a class="btn btn-outline-primary {% if status == 'closed' %}active{% endif %}" href="{% url 'dashboard:siem_hunts_page' %}?status=closed">Closed</a>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <h5 class="card-title">Create Hunt</h5>
+      <form method="post" action="{% url 'dashboard:siem_hunt_create' %}" class="row g-3">
+        {% csrf_token %}
+        <div class="col-md-4">
+          <label class="form-label">Name</label>
+          <input type="text" name="name" class="form-control" placeholder="Suspicious DNS sweep" required>
+        </div>
+        <div class="col-md-5">
+          <label class="form-label">Description</label>
+          <input type="text" name="description" class="form-control" placeholder="Hypothesis or objective">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Tags</label>
+          <input type="text" name="tags" class="form-control" placeholder="dns, beaconing">
+        </div>
+        <div class="col-12">
+          <button type="submit" class="btn btn-primary">Create Hunt</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Status</th>
+              <th>Tags</th>
+              <th>Searches</th>
+              <th>Notes</th>
+              <th>Updated</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for hunt in hunts %}
+              <tr>
+                <td>{{ hunt.name }}</td>
+                <td>{{ hunt.status }}</td>
+                <td>
+                  {% for tag in hunt.tags.all %}
+                    <span class="badge bg-light text-dark border me-1">{{ tag.name }}</span>
+                  {% empty %}
+                    <span class="text-muted">-</span>
+                  {% endfor %}
+                </td>
+                <td>{{ hunt.searches.count }}</td>
+                <td>{{ hunt.notes.count }}</td>
+                <td>{{ hunt.updated_at|date:"Y-m-d H:i:s" }}</td>
+                <td><a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:siem_hunt_detail' hunt.id %}">View</a></td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="7" class="text-muted text-center">No hunts available.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

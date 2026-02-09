@@ -40,18 +40,34 @@ This project is a full-stack Django platform that simulates and secures networke
 - Node color/size/styling mapped to attributes
 - Interactive shortest path UI
 
-### 5. Digital Twin Generation (MiniMega)
+### 5. SIEM Event Ingestion (Phase 1)
+- ECS-inspired event schema and normalization
+- `/dashboard/siem/ingest/` endpoint for batch or single-event ingest
+- `/dashboard/siem/events/` search with time range and filters
+- Token-based ingest protection via `SIEM_INGEST_TOKEN`
+- Event Explorer UI with filters and raw payload inspection
+- Event Explorer pivot to related node and scan details
+- Adapter preview endpoints for agent, scan, vulnerability, and SBOM events
+- Pipeline ingest endpoint that maps raw sensor payloads to ECS subset
+- OpenSearch log store + Dashboards for indexed SIEM events
+- Alert queue with deduplication and rule toggles (Sigma + Suricata)
+- Case management with notes, evidence, and exports
+- Threat intel ingestion (MISP-like) and IOC enrichment in alerts
+- Host agent telemetry with osquery + file integrity monitoring (FIM)
+- Syslog and Windows Event Log ingestion endpoints
+
+### 6. Digital Twin Generation (MiniMega)
 - Generate MiniMega launch scripts and manifests from scans
 - Optional server-side execution with safety gates
 - Download script + manifest bundles
 
-### 6. Sliver C2 Operations
+### 7. Sliver C2 Operations
 - Sliver teamserver management with UI-based create/edit/delete
 - Engagement tracking, sessions, and job queue with live updates
 - Job retry + CSV export, and downloadable loot artifacts
 - Implant generation + deployment workflows
 
-### 7. ICS Risk Assessment
+### 8. ICS Risk Assessment
 - Integrated Risk Assessment UI (Overview, Nodes, Probability)
 - Network risk overlay computed from cyber scan data
 - Proxy endpoints to the ICS risk assessment API
@@ -92,6 +108,18 @@ The Mappings tab supports:
 - **Import CSV** to pre-fill rows using a file with `risk_node_id`, plus optional `node_id`,
   `node_name`, `ip_address`, `label`, `notes`, and `active` columns.
 - **Node Metadata** to help match assets (OS, platform, ports, MACs, last heartbeat).
+
+#### Risk Schema Testbed
+To create a synthetic network that matches the risk model schema (and feed it into the
+risk assessment service):
+1. Go to `Risk Analysis -> Risk Assessment` and open the **Testbed** tab.
+2. Provide a CIDR (default `192.168.236.0/24`) and a CVE list (comma or newline separated).
+3. Click **Generate Testbed** to create nodes, mappings, and vulnerabilities.
+4. Go to **Network View** and click **Compute Risk** to see the overlay.
+
+The testbed generator also creates a Purdue-style connected topology (tiered rings with
+north-south links), and the Risk Assessment graph filters to the generated scan run so
+older nodes are hidden.
 
 Mappings are used to attach vulnerability data to the correct risk model nodes so
 the risk engine can compute non‑`unknown` scores.
@@ -185,6 +213,25 @@ Compare the last two SBOMs for an agent:
 ```
 /agent/<agent_id>/sbom/diff/
 ```
+
+---
+
+## SIEM Event Ingestion (Phase 1)
+Documentation:
+- `docs/event_schema.md`
+- `docs/siem_events.md`
+- `docs/opensearch.md`
+- `docs/siem_alerts.md`
+- `docs/siem_cases.md`
+- `docs/siem_hunts.md`
+- `docs/siem_rbac_audit.md`
+- `docs/siem_production_security.md`
+- `docs/siem_health_metrics.md`
+- `docs/siem_export.md`
+- `docs/siem_research_profile.md`
+- `docs/threat_intel.md`
+- `docs/siem_feature_overview.md`
+- `docs/siem_syslog_windows.md`
 
 ---
 

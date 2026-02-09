@@ -19,13 +19,19 @@ def epss_from_cvss(score: float | None, fallback_severity: str | None = None) ->
     return 0.1
 
 
-def build_cyber_data_for_risk_nodes(risk_nodes: List[str]) -> Tuple[Dict, List[Dict]]:
+def build_cyber_data_for_risk_nodes(
+    risk_nodes: List[str],
+    scan_run_id: int | None = None,
+) -> Tuple[Dict, List[Dict]]:
     """Build cyber.json payload and return a node mapping list."""
     scanned_nodes = []
     mapped_nodes = []
 
     risk_set = set(risk_nodes)
-    nodes = Node.objects.all().order_by("-id")
+    nodes = Node.objects.all()
+    if scan_run_id is not None:
+        nodes = nodes.filter(scan_run_id=scan_run_id)
+    nodes = nodes.order_by("-id")
 
     mappings = list(
         RiskNodeMapping.objects.filter(risk_node_id__in=risk_nodes, active=True).select_related("node")

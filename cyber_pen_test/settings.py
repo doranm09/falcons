@@ -18,11 +18,24 @@ from celery.schedules import crontab
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def read_secret(name: str, default: str = "") -> str:
+    file_path = os.environ.get(f"{name}_FILE")
+    if file_path:
+        try:
+            return Path(file_path).read_text().strip()
+        except Exception:
+            return default
+    return os.environ.get(name, default)
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/3.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-e+(qsiwl=z+jizb8=ujy!+ay%r8xcpv2pz@=(c9r#bs-9%c!ov'
+SECRET_KEY = read_secret(
+    "DJANGO_SECRET_KEY",
+    default="django-insecure-e+(qsiwl=z+jizb8=ujy!+ay%r8xcpv2pz@=(c9r#bs-9%c!ov",
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -176,6 +189,36 @@ SLIVER_ARTIFACT_DIR = os.environ.get('SLIVER_ARTIFACT_DIR', str(BASE_DIR / 'sliv
 
 # ICS Risk Assessment API
 RISK_ASSESSMENT_API_URL = os.environ.get('RISK_ASSESSMENT_API_URL', 'http://127.0.0.1:7890')
+
+# SIEM ingest settings
+SIEM_INGEST_TOKEN = read_secret("SIEM_INGEST_TOKEN", "")
+SIEM_INGEST_TOKEN_REQUIRED = os.environ.get("SIEM_INGEST_TOKEN_REQUIRED", "1") == "1"
+SIEM_MAX_INGEST_BATCH = int(os.environ.get("SIEM_MAX_INGEST_BATCH", "500"))
+
+# Agent API settings
+AGENT_API_TOKEN = read_secret("AGENT_API_TOKEN", "")
+AGENT_API_TOKEN_REQUIRED = os.environ.get("AGENT_API_TOKEN_REQUIRED", "1") == "1"
+
+# OpenSearch (SIEM log store)
+OPENSEARCH_ENABLED = os.environ.get("OPENSEARCH_ENABLED", "0") == "1"
+OPENSEARCH_URL = os.environ.get("OPENSEARCH_URL", "http://opensearch:9200")
+OPENSEARCH_INDEX_PREFIX = os.environ.get("OPENSEARCH_INDEX_PREFIX", "siem-events")
+OPENSEARCH_USER = os.environ.get("OPENSEARCH_USER", "")
+OPENSEARCH_PASS = read_secret("OPENSEARCH_PASS", "")
+OPENSEARCH_VERIFY_TLS = os.environ.get("OPENSEARCH_VERIFY_TLS", "1") == "1"
+
+# Threat intel
+THREAT_INTEL_ENABLED = os.environ.get("THREAT_INTEL_ENABLED", "1") == "1"
+
+# TLS / secure cookie settings (enable in production)
+SECURE_SSL_REDIRECT = os.environ.get("DJANGO_SECURE_SSL_REDIRECT", "0") == "1"
+SESSION_COOKIE_SECURE = os.environ.get("DJANGO_SESSION_COOKIE_SECURE", "0") == "1"
+CSRF_COOKIE_SECURE = os.environ.get("DJANGO_CSRF_COOKIE_SECURE", "0") == "1"
+SECURE_PROXY_SSL_HEADER = (
+    ("HTTP_X_FORWARDED_PROTO", "https")
+    if os.environ.get("DJANGO_SECURE_PROXY_SSL", "0") == "1"
+    else None
+)
 
 
 CELERY_BEAT_SCHEDULE = {

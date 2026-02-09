@@ -1,4 +1,5 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
 from django.contrib import messages
 from .models import (
     AgentCommand,
@@ -12,12 +13,27 @@ from .models import (
     RiskNodeMapping,
     SbomReport,
     ScanRun,
+    SiemEvent,
     Vulnerability,
+    AlertRule,
+    Alert,
+    Case,
+    CaseNote,
+    CaseEvidence,
+    Hunt,
+    HuntNote,
+    HuntSearch,
+    HuntTag,
+    SiemUserRole,
+    SiemAuditLog,
+    ResearchProfile,
+    ThreatIntelIndicator,
+    ThreatIntelMatch,
 )
 import ipaddress
 import subprocess
 import requests
-from django.http import JsonResponse, FileResponse, Http404, HttpResponse
+from django.http import JsonResponse, FileResponse, Http404, HttpResponse, StreamingHttpResponse
 from .tasks import (
     scan_network_task,
     launch_openvas_scan_task,
@@ -41,6 +57,8 @@ from django.views.decorators.http import require_GET
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils.timezone import now
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 import json
@@ -48,14 +66,66 @@ import os
 from collections import defaultdict
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Count
 from ipaddress import ip_network
 from pathlib import Path
 import time
 from datetime import timedelta
 from functools import wraps
+from .siem import normalize_siem_event, parse_siem_search_params, SiemNormalizeError, SiemQueryError
+from .siem_adapters import (
+    adapt_agent_status,
+    adapt_scan_run,
+    adapt_sbom_report,
+    adapt_vulnerability,
+)
+from .siem_pipeline import transform_pipeline_events, SiemPipelineError
+from .opensearch_client import bulk_index_events, OpensearchError
+from .siem_query import parse_search_request, search_siem_events
+from .siem_pivot import resolve_siem_pivot
+from .siem_alerting import process_alerts_for_events
+from .siem_cases import build_case_from_alert, export_case_payload
+from .siem_hunts import (
+    build_query_payload_from_form,
+    clean_query_params,
+    parse_hunt_tags,
+    replay_hunt_search,
+    validate_hunt_query,
+)
+from .siem_export import (
+    EXPORT_SCHEMA_VERSION,
+    build_event_queryset,
+    export_parquet_bytes,
+    ndjson_stream,
+)
+from .siem_research import apply_profile_max_batch, activate_profile, get_active_profile
+from .siem_rbac import get_siem_role, require_siem_role
+from .siem_audit import record_siem_audit
+from .siem_threat_intel import ingest_indicators, match_indicators, persist_ioc_matches
+from .siem_syslog import syslog_to_event
+from .siem_windows import windows_event_to_event
+from .health import health_snapshot, metrics_payload
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
-RISK_ASSESSMENT_TIMEOUT = 5
+RISK_ASSESSMENT_TIMEOUT = 15
+SIEM_WRITE_ROLES = (SiemUserRole.Role.ADMIN, SiemUserRole.Role.ANALYST)
+SIEM_ADMIN_ROLES = (SiemUserRole.Role.ADMIN,)
+
+
+def _risk_call(func, path, **kwargs):
+    last_exc = None
+    for attempt in range(2):
+        try:
+            response = func(_risk_api_url(path), timeout=RISK_ASSESSMENT_TIMEOUT, **kwargs)
+            response.raise_for_status()
+            return response
+        except Exception as exc:
+            last_exc = exc
+            if attempt == 0:
+                time.sleep(0.5)
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("Risk service request failed.")
 
 def home(request):
     nodes = Node.objects.all().values('ip_address', 'name')
@@ -214,6 +284,8 @@ def start_agent_scan(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def agent_scan_results(request):
+    if not _check_agent_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
@@ -352,23 +424,38 @@ def history(request):
     return render(request, 'dashboard/history.html', {'runs': run_data})
 
 def graph_data(request):
-    scan_window = now() - timedelta(hours=24)
-    recent_scan_ids = list(
-        ScanRun.objects.filter(nodes__isnull=False, timestamp__gte=scan_window)
-        .order_by('-timestamp')
-        .values_list('id', flat=True)
-        .distinct()
-    )
+    scan_run_id = request.GET.get("scan_run_id")
+    if scan_run_id:
+        try:
+            scan_run_id = int(scan_run_id)
+        except ValueError:
+            return JsonResponse({"error": "Invalid scan_run_id"}, status=400)
 
-    nodes = Node.objects.none()
-    if recent_scan_ids:
         nodes = (
-            Node.objects.filter(scan_run_id__in=recent_scan_ids)
+            Node.objects.filter(scan_run_id=scan_run_id)
             .select_related('scan_run')
             .order_by('-scan_run__timestamp', '-id')
         )
+        latest_ping_scan = ScanRun.objects.filter(id=scan_run_id).first()
+    else:
+        scan_window = now() - timedelta(hours=24)
+        recent_scan_ids = list(
+            ScanRun.objects.filter(nodes__isnull=False, timestamp__gte=scan_window)
+            .order_by('-timestamp')
+            .values_list('id', flat=True)
+            .distinct()
+        )
 
-    latest_ping_scan = ScanRun.objects.filter(scan_type="ping", nodes__isnull=False).order_by('-timestamp').first()
+        nodes = Node.objects.none()
+        if recent_scan_ids:
+            nodes = (
+                Node.objects.filter(scan_run_id__in=recent_scan_ids)
+                .select_related('scan_run')
+                .order_by('-scan_run__timestamp', '-id')
+            )
+
+        latest_ping_scan = ScanRun.objects.filter(scan_type="ping", nodes__isnull=False).order_by('-timestamp').first()
+
     ping_node_by_ip = {}
     if latest_ping_scan:
         for ping_node in Node.objects.filter(scan_run=latest_ping_scan):
@@ -671,6 +758,8 @@ def get_scan_history(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def agent_report(request):
+    if not _check_agent_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
@@ -750,6 +839,8 @@ def agent_report(request):
 @require_http_methods(["POST"])
 def agent_cyber_report(request):
     """Handle cyber template data from agents."""
+    if not _check_agent_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
@@ -772,6 +863,8 @@ def agent_cyber_report(request):
 @require_http_methods(["POST"])
 def sbom_ingest(request):
     """Receive and store SBOM payloads from agents."""
+    if not _check_agent_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
@@ -871,6 +964,727 @@ def sbom_ingest(request):
         "package_count": report.package_count,
         "agent_id": agent_id,
     })
+
+
+def _check_siem_token(request) -> bool:
+    token = getattr(settings, "SIEM_INGEST_TOKEN", "")
+    required = getattr(settings, "SIEM_INGEST_TOKEN_REQUIRED", True)
+    if not required:
+        return True
+    if not token:
+        return False
+    header = request.headers.get("X-SIEM-Token") or request.headers.get("Authorization", "")
+    if header.startswith("Bearer "):
+        header = header.split(" ", 1)[1].strip()
+    return header == token
+
+
+def _check_agent_token(request) -> bool:
+    token = getattr(settings, "AGENT_API_TOKEN", "")
+    required = getattr(settings, "AGENT_API_TOKEN_REQUIRED", True)
+    if not required:
+        return True
+    if not token:
+        return False
+    header = request.headers.get("X-Agent-Token") or request.headers.get("Authorization", "")
+    if header.startswith("Bearer "):
+        header = header.split(" ", 1)[1].strip()
+    return header == token
+
+
+def _persist_normalized_events(normalized):
+    normalized = match_indicators(normalized)
+    event_records = [
+        {
+            "timestamp": item.get("timestamp"),
+            "source": item.get("source"),
+            "event_type": item.get("event_type"),
+            "severity": item.get("severity"),
+            "asset_id": item.get("asset_id"),
+            "asset_ip": item.get("asset_ip"),
+            "summary": item.get("summary"),
+            "raw": item.get("raw"),
+        }
+        for item in normalized
+    ]
+    created_events = SiemEvent.objects.bulk_create(
+        [SiemEvent(**item) for item in event_records], batch_size=200
+    )
+    persist_ioc_matches(normalized, created_events)
+    alerts = process_alerts_for_events(normalized)
+
+    payload = {"ingested": len(normalized), "alerts": len(alerts)}
+    try:
+        payload["opensearch"] = bulk_index_events(normalized)
+    except OpensearchError as exc:
+        payload["opensearch_error"] = str(exc)
+    return payload
+
+
+@require_http_methods(["GET"])
+def healthz(request):
+    snapshot = health_snapshot()
+    status_code = 200 if snapshot.get("status") == "ok" else 503
+    return JsonResponse(snapshot, status=status_code)
+
+
+@require_http_methods(["GET"])
+def metrics(request):
+    payload = metrics_payload()
+    return HttpResponse(payload, content_type="text/plain; version=0.0.4")
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def siem_event_ingest(request):
+    """Ingest SIEM events into the local event store."""
+    if not _check_siem_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    events = payload if isinstance(payload, list) else [payload]
+    max_batch = getattr(settings, "SIEM_MAX_INGEST_BATCH", 500)
+    max_batch = apply_profile_max_batch(max_batch)
+    if len(events) > max_batch:
+        return JsonResponse({"error": f"Batch too large (max {max_batch})"}, status=413)
+
+    normalized = []
+    errors = []
+    for idx, event in enumerate(events):
+        try:
+            normalized.append(normalize_siem_event(event))
+        except SiemNormalizeError as exc:
+            errors.append({"index": idx, "error": str(exc)})
+
+    if errors:
+        return JsonResponse({"error": "Invalid event payload", "details": errors}, status=400)
+
+    response_payload = _persist_normalized_events(normalized)
+    return JsonResponse(response_payload, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def siem_pipeline_ingest(request):
+    """Ingest raw pipeline events, normalize, and store in the SIEM log store."""
+    if not _check_siem_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    raw_events = payload if isinstance(payload, list) else [payload]
+    max_batch = getattr(settings, "SIEM_MAX_INGEST_BATCH", 500)
+    max_batch = apply_profile_max_batch(max_batch)
+    if len(raw_events) > max_batch:
+        return JsonResponse({"error": f"Batch too large (max {max_batch})"}, status=413)
+
+    try:
+        transformed = transform_pipeline_events(raw_events)
+    except SiemPipelineError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    normalized = []
+    errors = []
+    for idx, event in enumerate(transformed):
+        try:
+            normalized.append(normalize_siem_event(event))
+        except SiemNormalizeError as exc:
+            errors.append({"index": idx, "error": str(exc)})
+
+    if errors:
+        return JsonResponse({"error": "Invalid event payload", "details": errors}, status=400)
+
+    response_payload = _persist_normalized_events(normalized)
+    return JsonResponse(response_payload, status=201)
+
+
+@require_http_methods(["GET"])
+def siem_event_search(request):
+    """Search SIEM events by time range, filters, and aggregations."""
+    try:
+        params = parse_search_request(request.GET)
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+    payload = search_siem_events(params)
+    return JsonResponse(payload)
+
+
+@require_http_methods(["GET"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_export", resource_type="siem_event")
+def siem_export(request):
+    """Export SIEM events for research reproducibility."""
+    fmt = (request.GET.get("format") or "ndjson").lower()
+    start = request.GET.get("start")
+    end = request.GET.get("end")
+    schema_version = request.GET.get("schema_version") or EXPORT_SCHEMA_VERSION
+
+    qs = build_event_queryset(start, end).order_by("timestamp")
+    filename_suffix = "ndjson" if fmt == "ndjson" else fmt
+    filename = f"siem_export_{timezone.now():%Y%m%d_%H%M%S}.{filename_suffix}"
+
+    if fmt == "parquet":
+        try:
+            payload = export_parquet_bytes(qs, schema_version)
+        except RuntimeError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
+        response = HttpResponse(payload, content_type="application/parquet")
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        record_siem_audit(
+            request,
+            action="siem_export",
+            resource_type="siem_event",
+            metadata={"format": fmt, "schema_version": schema_version},
+        )
+        return response
+
+    response = StreamingHttpResponse(
+        ndjson_stream(qs.iterator(), schema_version),
+        content_type="application/x-ndjson",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    record_siem_audit(
+        request,
+        action="siem_export",
+        resource_type="siem_event",
+        metadata={"format": "ndjson", "schema_version": schema_version},
+    )
+    return response
+
+
+@require_http_methods(["GET"])
+def siem_event_explorer(request):
+    """Render the SIEM Event Explorer UI."""
+    now_ts = timezone.now()
+    since = now_ts - timedelta(hours=24)
+
+    recent_qs = SiemEvent.objects.filter(timestamp__gte=since)
+    summary = {
+        "total_24h": recent_qs.count(),
+        "sources_24h": recent_qs.values("source").distinct().count(),
+        "types_24h": recent_qs.values("event_type").distinct().count(),
+    }
+
+    top_sources = list(
+        recent_qs.values("source").annotate(count=Count("id")).order_by("-count")[:5]
+    )
+    top_types = list(
+        recent_qs.values("event_type").annotate(count=Count("id")).order_by("-count")[:5]
+    )
+
+    events = list(SiemEvent.objects.all()[:50])
+    health = health_snapshot()
+    context = {
+        "summary": summary,
+        "top_sources": top_sources,
+        "top_types": top_types,
+        "events": events,
+        "health": health,
+        "default_start": timezone.localtime(since).strftime("%Y-%m-%dT%H:%M"),
+        "default_end": timezone.localtime(now_ts).strftime("%Y-%m-%dT%H:%M"),
+    }
+    return render(request, "dashboard/siem_events.html", context)
+
+
+@require_http_methods(["GET"])
+def siem_adapter_agent(request, agent_id):
+    agent = get_object_or_404(AgentStatus, agent_id=agent_id)
+    payload = adapt_agent_status(agent)
+    return JsonResponse(payload, json_dumps_params={"indent": 2})
+
+
+@require_http_methods(["GET"])
+def siem_adapter_scan(request, scan_id):
+    scan = get_object_or_404(ScanRun, id=scan_id)
+    payload = adapt_scan_run(scan)
+    return JsonResponse(payload, json_dumps_params={"indent": 2})
+
+
+@require_http_methods(["GET"])
+def siem_adapter_vulnerability(request, vuln_id):
+    vuln = get_object_or_404(Vulnerability, id=vuln_id)
+    node_id = request.GET.get("node_id")
+    node = None
+    if node_id:
+        node = Node.objects.filter(id=node_id).first()
+    payload = adapt_vulnerability(vuln, node=node)
+    return JsonResponse(payload, json_dumps_params={"indent": 2})
+
+
+@require_http_methods(["GET"])
+def siem_adapter_sbom(request, sbom_id):
+    report = get_object_or_404(SbomReport, id=sbom_id)
+    payload = adapt_sbom_report(report)
+    return JsonResponse(payload, json_dumps_params={"indent": 2})
+
+
+@require_http_methods(["GET"])
+def siem_pivot_lookup(request):
+    asset_ip = request.GET.get("asset_ip")
+    asset_id = request.GET.get("asset_id")
+    if not asset_ip and not asset_id:
+        return JsonResponse({"error": "asset_ip or asset_id is required"}, status=400)
+
+    result = resolve_siem_pivot(asset_ip, asset_id)
+    if not result:
+        return JsonResponse({"found": False})
+
+    return JsonResponse({"found": True, **result})
+
+
+@require_http_methods(["GET"])
+def siem_alerts_page(request):
+    status = request.GET.get("status", "open")
+    alerts = Alert.objects.filter(status=status).order_by("-last_seen")[:200]
+    rules = AlertRule.objects.all().order_by("name")
+    return render(request, "dashboard/siem_alerts.html", {"alerts": alerts, "rules": rules, "status": status})
+
+
+@require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_rule_toggle", resource_type="alert_rule")
+def siem_toggle_rule(request, rule_id):
+    rule = get_object_or_404(AlertRule, id=rule_id)
+    rule.enabled = not rule.enabled
+    rule.save(update_fields=["enabled"])
+    record_siem_audit(
+        request,
+        action="siem_rule_toggle",
+        resource_type="alert_rule",
+        resource_id=rule.id,
+        metadata={"enabled": rule.enabled},
+    )
+    return redirect(request.META.get("HTTP_REFERER", reverse("dashboard:siem_alerts_page")))
+
+
+@require_http_methods(["GET"])
+def siem_cases_page(request):
+    status = request.GET.get("status", "open")
+    cases = Case.objects.filter(status=status).order_by("-updated_at")[:200]
+    return render(request, "dashboard/siem_cases.html", {"cases": cases, "status": status})
+
+
+@require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_case_create", resource_type="case")
+def siem_case_create(request):
+    title = request.POST.get("title") or "New Case"
+    description = request.POST.get("description", "")
+    priority = request.POST.get("priority") or Case.Priority.MEDIUM
+    case = Case.objects.create(
+        title=title,
+        description=description,
+        priority=priority,
+        status=Case.Status.OPEN,
+        created_by=request.user if request.user.is_authenticated else None,
+    )
+    record_siem_audit(
+        request,
+        action="siem_case_create",
+        resource_type="case",
+        resource_id=case.id,
+        metadata={"priority": priority},
+    )
+    return redirect(reverse("dashboard:siem_case_detail", args=[case.id]))
+
+
+@require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_case_promote_alert", resource_type="case")
+def siem_case_promote_alert(request, alert_id):
+    alert = get_object_or_404(Alert, id=alert_id)
+    case = build_case_from_alert(alert)
+    case.created_by = request.user if request.user.is_authenticated else None
+    case.save()
+    case.alerts.add(alert)
+    record_siem_audit(
+        request,
+        action="siem_case_promote_alert",
+        resource_type="case",
+        resource_id=case.id,
+        metadata={"alert_id": alert.id},
+    )
+    return redirect(reverse("dashboard:siem_case_detail", args=[case.id]))
+
+
+@require_http_methods(["GET"])
+def siem_case_detail(request, case_id):
+    case = get_object_or_404(Case, id=case_id)
+    return render(request, "dashboard/siem_case_detail.html", {"case": case})
+
+
+@require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_case_update_status", resource_type="case")
+def siem_case_update_status(request, case_id):
+    case = get_object_or_404(Case, id=case_id)
+    status = request.POST.get("status") or Case.Status.OPEN
+    case.status = status
+    if status == Case.Status.CLOSED and not case.closed_at:
+        case.closed_at = timezone.now()
+    if status == Case.Status.OPEN:
+        case.closed_at = None
+    case.save(update_fields=["status", "closed_at"])
+    record_siem_audit(
+        request,
+        action="siem_case_update_status",
+        resource_type="case",
+        resource_id=case.id,
+        metadata={"status": status},
+    )
+    return redirect(reverse("dashboard:siem_case_detail", args=[case.id]))
+
+
+@require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_case_add_note", resource_type="case_note")
+def siem_case_add_note(request, case_id):
+    case = get_object_or_404(Case, id=case_id)
+    note_text = request.POST.get("note")
+    if note_text:
+        note = CaseNote.objects.create(
+            case=case,
+            author=request.user if request.user.is_authenticated else None,
+            note=note_text,
+        )
+        record_siem_audit(
+            request,
+            action="siem_case_add_note",
+            resource_type="case_note",
+            resource_id=note.id,
+            metadata={"case_id": case.id},
+        )
+    return redirect(reverse("dashboard:siem_case_detail", args=[case.id]))
+
+
+@require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_case_add_evidence", resource_type="case_evidence")
+def siem_case_add_evidence(request, case_id):
+    case = get_object_or_404(Case, id=case_id)
+    label = request.POST.get("label") or "Evidence"
+    evidence_type = request.POST.get("evidence_type") or CaseEvidence.EvidenceType.TEXT
+    details = request.POST.get("details", "")
+    evidence = CaseEvidence.objects.create(
+        case=case,
+        label=label,
+        evidence_type=evidence_type,
+        details=details,
+    )
+    record_siem_audit(
+        request,
+        action="siem_case_add_evidence",
+        resource_type="case_evidence",
+        resource_id=evidence.id,
+        metadata={"case_id": case.id, "evidence_type": evidence_type},
+    )
+    return redirect(reverse("dashboard:siem_case_detail", args=[case.id]))
+
+
+@require_http_methods(["GET"])
+def siem_case_export(request, case_id):
+    case = get_object_or_404(Case, id=case_id)
+    payload = export_case_payload(case)
+    response = JsonResponse(payload, json_dumps_params={"indent": 2})
+    response["Content-Disposition"] = f'attachment; filename="case_{case.id}.json"'
+    return response
+
+
+@require_http_methods(["GET"])
+def siem_hunts_page(request):
+    status = request.GET.get("status", "open")
+    hunts = Hunt.objects.filter(status=status).order_by("-updated_at")[:200]
+    return render(request, "dashboard/siem_hunts.html", {"hunts": hunts, "status": status})
+
+
+@require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_hunt_create", resource_type="hunt")
+def siem_hunt_create(request):
+    name = request.POST.get("name") or "New Hunt"
+    description = request.POST.get("description", "")
+    tags = parse_hunt_tags(request.POST.get("tags", ""))
+
+    base_name = name
+    counter = 1
+    while Hunt.objects.filter(name=name).exists():
+        counter += 1
+        name = f"{base_name} ({counter})"
+
+    hunt = Hunt.objects.create(
+        name=name,
+        description=description,
+        status=Hunt.Status.OPEN,
+        created_by=request.user if request.user.is_authenticated else None,
+    )
+    for tag in tags:
+        HuntTag.objects.get_or_create(hunt=hunt, name=tag)
+    record_siem_audit(
+        request,
+        action="siem_hunt_create",
+        resource_type="hunt",
+        resource_id=hunt.id,
+        metadata={"tags": tags},
+    )
+    return redirect(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
+
+
+@require_http_methods(["GET"])
+def siem_hunt_detail(request, hunt_id):
+    hunt = get_object_or_404(Hunt, id=hunt_id)
+    return render(request, "dashboard/siem_hunt_detail.html", {"hunt": hunt})
+
+
+@require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_hunt_update_status", resource_type="hunt")
+def siem_hunt_update_status(request, hunt_id):
+    hunt = get_object_or_404(Hunt, id=hunt_id)
+    status = request.POST.get("status") or Hunt.Status.OPEN
+    hunt.status = status
+    hunt.save(update_fields=["status"])
+    record_siem_audit(
+        request,
+        action="siem_hunt_update_status",
+        resource_type="hunt",
+        resource_id=hunt.id,
+        metadata={"status": status},
+    )
+    return redirect(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
+
+
+@require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_hunt_add_note", resource_type="hunt_note")
+def siem_hunt_add_note(request, hunt_id):
+    hunt = get_object_or_404(Hunt, id=hunt_id)
+    note_text = request.POST.get("note")
+    if note_text:
+        note = HuntNote.objects.create(
+            hunt=hunt,
+            author=request.user if request.user.is_authenticated else None,
+            title=request.POST.get("title", ""),
+            note=note_text,
+        )
+        record_siem_audit(
+            request,
+            action="siem_hunt_add_note",
+            resource_type="hunt_note",
+            resource_id=note.id,
+            metadata={"hunt_id": hunt.id},
+        )
+    return redirect(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
+
+
+@require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_hunt_add_tag", resource_type="hunt_tag")
+def siem_hunt_add_tag(request, hunt_id):
+    hunt = get_object_or_404(Hunt, id=hunt_id)
+    tags = parse_hunt_tags(request.POST.get("tags", ""))
+    for tag in tags:
+        HuntTag.objects.get_or_create(hunt=hunt, name=tag)
+    if tags:
+        record_siem_audit(
+            request,
+            action="siem_hunt_add_tag",
+            resource_type="hunt_tag",
+            resource_id=hunt.id,
+            metadata={"tags": tags},
+        )
+    return redirect(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
+
+
+@require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_hunt_add_search", resource_type="hunt_search")
+def siem_hunt_add_search(request, hunt_id):
+    hunt = get_object_or_404(Hunt, id=hunt_id)
+    search_name = request.POST.get("search_name") or "Saved Search"
+    query_params = build_query_payload_from_form(request.POST)
+    try:
+        validate_hunt_query(query_params)
+    except ValueError as exc:
+        messages.error(request, f"Invalid search params: {exc}")
+        return redirect(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
+
+    search = HuntSearch.objects.create(
+        hunt=hunt,
+        name=search_name,
+        query_params=clean_query_params(query_params),
+    )
+    record_siem_audit(
+        request,
+        action="siem_hunt_add_search",
+        resource_type="hunt_search",
+        resource_id=search.id,
+        metadata={"hunt_id": hunt.id},
+    )
+    return redirect(reverse("dashboard:siem_hunt_detail", args=[hunt.id]))
+
+
+@require_http_methods(["GET"])
+def siem_hunt_replay_search(request, hunt_id, search_id):
+    hunt = get_object_or_404(Hunt, id=hunt_id)
+    search = get_object_or_404(HuntSearch, id=search_id, hunt=hunt)
+    payload = replay_hunt_search(search.query_params)
+    return JsonResponse({"hunt_id": hunt.id, "search_id": search.id, **payload})
+
+
+@require_http_methods(["GET"])
+@require_siem_role(SIEM_ADMIN_ROLES, action="siem_audit_view", resource_type="audit_log")
+def siem_audit_log(request):
+    qs = SiemAuditLog.objects.all()
+    action = request.GET.get("action")
+    status = request.GET.get("status")
+    if action:
+        qs = qs.filter(action=action)
+    if status:
+        qs = qs.filter(status=status)
+
+    if request.GET.get("format") == "json":
+        payload = [
+            {
+                "id": entry.id,
+                "timestamp": entry.created_at.isoformat(),
+                "actor_id": entry.actor_id,
+                "role": entry.role,
+                "action": entry.action,
+                "resource_type": entry.resource_type,
+                "resource_id": entry.resource_id,
+                "status": entry.status,
+                "ip_address": entry.ip_address,
+                "metadata": entry.metadata or {},
+            }
+            for entry in qs[:500]
+        ]
+        return JsonResponse({"count": qs.count(), "results": payload})
+
+    return render(request, "dashboard/siem_audit.html", {"entries": qs[:200], "action": action, "status": status})
+
+
+@require_http_methods(["GET"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_research_profiles_view", resource_type="research_profile")
+def siem_research_profiles_page(request):
+    profiles = ResearchProfile.objects.all().order_by("-updated_at")
+    active = profiles.filter(active=True).first()
+    return render(
+        request,
+        "dashboard/siem_research_profiles.html",
+        {"profiles": profiles, "active": active},
+    )
+
+
+@require_http_methods(["POST"])
+@require_siem_role(SIEM_WRITE_ROLES, action="siem_research_profile_activate", resource_type="research_profile")
+def siem_research_profile_activate(request, profile_id):
+    profile = get_object_or_404(ResearchProfile, id=profile_id)
+    activate_profile(profile)
+    record_siem_audit(
+        request,
+        action="siem_research_profile_activate",
+        resource_type="research_profile",
+        resource_id=profile.id,
+        metadata={
+            "name": profile.name,
+            "version": profile.version,
+            "pipeline_version": profile.pipeline_version,
+            "ruleset_version": profile.ruleset_version,
+            "retention_days": profile.retention_days,
+        },
+    )
+    return redirect(reverse("dashboard:siem_research_profiles_page"))
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def siem_threat_intel_ingest(request):
+    """Ingest threat intel indicators from a MISP-like payload or list."""
+    token_ok = _check_siem_token(request)
+    if not token_ok:
+        role = get_siem_role(request.user)
+        if role not in SIEM_WRITE_ROLES:
+            record_siem_audit(
+                request,
+                action="siem_threat_intel_ingest",
+                resource_type="threat_intel",
+                status="denied",
+                metadata={"role": role},
+            )
+            return JsonResponse({"error": "Forbidden"}, status=403)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    stats = ingest_indicators(payload)
+    record_siem_audit(
+        request,
+        action="siem_threat_intel_ingest",
+        resource_type="threat_intel",
+        metadata={"ingested": stats, "token_auth": token_ok},
+    )
+    return JsonResponse({"ingested": stats})
+
+
+@require_http_methods(["GET"])
+def siem_threat_intel_list(request):
+    indicator_type = request.GET.get("type")
+    active = request.GET.get("active")
+    qs = ThreatIntelIndicator.objects.all()
+    if indicator_type:
+        qs = qs.filter(indicator_type=indicator_type)
+    if active in ("0", "1"):
+        qs = qs.filter(active=active == "1")
+    indicators = [
+        {
+            "id": i.id,
+            "type": i.indicator_type,
+            "value": i.value,
+            "source": i.source,
+            "confidence": i.confidence,
+            "tlp": i.tlp,
+            "active": i.active,
+        }
+        for i in qs.order_by("-updated_at")[:500]
+    ]
+    return JsonResponse({"count": len(indicators), "results": indicators})
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def siem_syslog_ingest(request):
+    """Ingest syslog lines and forward to SIEM pipeline."""
+    if not _check_siem_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    body = (request.body or b"").decode("utf-8", errors="ignore")
+    lines = [line for line in body.splitlines() if line.strip()]
+    events = [syslog_to_event(line) for line in lines]
+    if not events:
+        return JsonResponse({"error": "No syslog messages provided"}, status=400)
+
+    normalized = [normalize_siem_event(event) for event in events]
+    response_payload = _persist_normalized_events(normalized)
+    return JsonResponse(response_payload, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def siem_windows_ingest(request):
+    """Ingest Windows Event Log payloads (JSON) and forward to SIEM pipeline."""
+    if not _check_siem_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    items = payload if isinstance(payload, list) else [payload]
+    events = [windows_event_to_event(item) for item in items if isinstance(item, dict)]
+    if not events:
+        return JsonResponse({"error": "No events provided"}, status=400)
+
+    normalized = [normalize_siem_event(event) for event in events]
+    response_payload = _persist_normalized_events(normalized)
+    return JsonResponse(response_payload, status=201)
 
 
 @require_GET
@@ -985,6 +1799,8 @@ def agent_sbom_bundle(request, agent_id):
 
 @require_http_methods(["GET"])
 def agent_commands(request):
+    if not _check_agent_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
     agent_id = request.GET.get("agent_id")
     commands = AgentCommand.objects.filter(agent_id=agent_id, acknowledged=False)
     serialized = [
@@ -999,6 +1815,8 @@ def agent_commands(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def agent_command_result(request):
+    if not _check_agent_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
     data = json.loads(request.body)
     agent_id = data.get("agent_id")
     command_id = data.get("command_id")
@@ -1667,6 +2485,8 @@ def agent_version_api(request):
 @require_http_methods(["POST"])
 def agent_network_metadata(request):
     """Receive detailed network metadata from agents."""
+    if not _check_agent_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
@@ -2311,8 +3131,7 @@ def risk_assessment_page(request):
 @require_GET
 def risk_assessment_status_api(request):
     try:
-        response = requests.get(_risk_api_url('/status'), timeout=RISK_ASSESSMENT_TIMEOUT)
-        response.raise_for_status()
+        response = _risk_call(requests.get, '/status')
         return JsonResponse(response.json())
     except Exception as exc:
         return JsonResponse({'error': str(exc)}, status=502)
@@ -2321,8 +3140,7 @@ def risk_assessment_status_api(request):
 @require_GET
 def risk_assessment_nodes_api(request):
     try:
-        response = requests.get(_risk_api_url('/nodes'), timeout=RISK_ASSESSMENT_TIMEOUT)
-        response.raise_for_status()
+        response = _risk_call(requests.get, '/nodes')
         return JsonResponse(response.json())
     except Exception as exc:
         return JsonResponse({'error': str(exc)}, status=502)
@@ -2336,12 +3154,11 @@ def risk_assessment_probability_api(request):
         return JsonResponse({'error': 'Invalid JSON payload.'}, status=400)
 
     try:
-        response = requests.post(
-            _risk_api_url('/probability'),
+        response = _risk_call(
+            requests.post,
+            '/probability',
             json=payload,
-            timeout=RISK_ASSESSMENT_TIMEOUT
         )
-        response.raise_for_status()
         return JsonResponse(response.json())
     except Exception as exc:
         return JsonResponse({'error': str(exc)}, status=502)
@@ -2350,20 +3167,27 @@ def risk_assessment_probability_api(request):
 @require_GET
 def risk_assessment_network_compute_api(request):
     try:
-        nodes_response = requests.get(_risk_api_url('/nodes'), timeout=RISK_ASSESSMENT_TIMEOUT)
-        nodes_response.raise_for_status()
+        scan_run_id = request.GET.get("scan_run_id")
+        if scan_run_id:
+            try:
+                scan_run_id = int(scan_run_id)
+            except ValueError:
+                return JsonResponse({'error': 'Invalid scan_run_id.'}, status=400)
+        else:
+            scan_run_id = None
+
+        nodes_response = _risk_call(requests.get, '/nodes')
         payload = nodes_response.json()
         variables = payload.get("variables", {})
         risk_nodes = list(variables.keys())
 
-        cyber_data, mapped_nodes = build_cyber_data_for_risk_nodes(risk_nodes)
+        cyber_data, mapped_nodes = build_cyber_data_for_risk_nodes(risk_nodes, scan_run_id=scan_run_id)
 
-        probability_response = requests.post(
-            _risk_api_url('/probability'),
+        probability_response = _risk_call(
+            requests.post,
+            '/probability',
             json=cyber_data,
-            timeout=RISK_ASSESSMENT_TIMEOUT
         )
-        probability_response.raise_for_status()
         result_payload = probability_response.json()
         results = result_payload.get("results", {})
 
@@ -2371,6 +3195,7 @@ def risk_assessment_network_compute_api(request):
 
         return JsonResponse({
             "risk_nodes_count": len(risk_nodes),
+            "scan_run_id": scan_run_id,
             "mapped_nodes": summary,
             "results": results,
         })
@@ -2571,6 +3396,195 @@ def risk_assessment_mappings_api(request):
             "active": mapping.active,
             "updated_at": mapping.updated_at.isoformat(),
         }
+    })
+
+
+@require_http_methods(["POST"])
+def risk_assessment_testbed_generate(request):
+    try:
+        payload = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON payload.'}, status=400)
+
+    cidr = str(payload.get("cidr") or "192.168.236.0/24").strip()
+    cve_input = payload.get("cves") or []
+    max_cves = payload.get("max_cves_per_node", 10)
+
+    try:
+        max_cves = int(max_cves)
+    except (TypeError, ValueError):
+        max_cves = 10
+    max_cves = max(0, min(max_cves, 50))
+
+    try:
+        network = ip_network(cidr, strict=False)
+    except ValueError:
+        return JsonResponse({'error': 'Invalid CIDR.'}, status=400)
+
+    if isinstance(cve_input, str):
+        raw = cve_input.replace("\r", "\n").replace(",", "\n")
+        cve_list = [entry.strip().upper() for entry in raw.split("\n") if entry.strip()]
+    elif isinstance(cve_input, list):
+        cve_list = [str(entry).strip().upper() for entry in cve_input if str(entry).strip()]
+    else:
+        cve_list = []
+
+    cve_list = list(dict.fromkeys(cve_list))
+
+    try:
+        response = _risk_call(requests.get, '/nodes')
+        payload = response.json()
+    except Exception as exc:
+        return JsonResponse({'error': f'Risk service unavailable: {exc}'}, status=502)
+
+    variables = payload.get("variables", {})
+    risk_nodes = list(variables.keys()) if isinstance(variables, dict) else []
+    if not risk_nodes:
+        nodes_payload = payload.get("nodes")
+        if isinstance(nodes_payload, list):
+            for node in nodes_payload:
+                if isinstance(node, str):
+                    risk_nodes.append(node)
+                elif isinstance(node, dict):
+                    name = node.get("name") or node.get("node") or node.get("id")
+                    if name:
+                        risk_nodes.append(str(name))
+
+    if not risk_nodes:
+        return JsonResponse({'error': 'No risk nodes returned from risk service.'}, status=400)
+
+    host_iter = network.hosts()
+    assigned_hosts = []
+    for _ in range(len(risk_nodes)):
+        try:
+            assigned_hosts.append(str(next(host_iter)))
+        except StopIteration:
+            break
+
+    if len(assigned_hosts) < len(risk_nodes):
+        return JsonResponse({
+            'error': 'CIDR does not have enough usable addresses for the risk nodes.',
+            'risk_nodes': len(risk_nodes),
+            'available_hosts': len(assigned_hosts),
+        }, status=400)
+
+    scan_run = ScanRun.objects.create(
+        cidr=str(network),
+        status="COMPLETE",
+        scan_type="agent",
+        result_summary=f"Risk testbed generated ({len(risk_nodes)} nodes).",
+    )
+
+    now_ts = timezone.now()
+    vuln_objects = {}
+    if cve_list:
+        for cve in cve_list[:max_cves]:
+            vuln, _ = Vulnerability.objects.update_or_create(
+                cve_id=cve,
+                defaults={
+                    "description": "Synthetic risk testbed vulnerability.",
+                    "severity": "High",
+                    "score": 7.5,
+                    "published": now_ts,
+                    "last_modified": now_ts,
+                },
+            )
+            vuln_objects[cve] = vuln
+
+    created_nodes = 0
+    mappings_updated = 0
+    created_links = 0
+
+    def purdue_tier(risk_node_id: str) -> str:
+        name = risk_node_id.upper()
+        if any(token in name for token in ["ERP", "MES", "CORP", "ENTERPRISE", "BUSINESS", "IT", "OFFICE"]):
+            return "L4-L5"
+        if any(token in name for token in ["DMZ", "FIREWALL", "PROXY", "JUMP", "GATEWAY", "HISTORIAN", "OPC"]):
+            return "L3.5"
+        if any(token in name for token in ["SCADA", "HMI", "SERVER", "OPS", "ENGINEER", "SUPERVISOR"]):
+            return "L3"
+        if any(token in name for token in ["PLC", "RTU", "IED", "DCS", "CONTROLLER", "CTRL"]):
+            return "L2"
+        if any(token in name for token in ["SENSOR", "VALVE", "PUMP", "MOTOR", "HEATER", "PRESSURIZER", "SPRAY", "HV", "PV", "CV", "PT", "LT", "TT", "FT", "PORV"]):
+            return "L0-L1"
+        return "L2"
+
+    with transaction.atomic():
+        created_node_objects = []
+        tiered = []
+        for risk_node_id, ip_addr in zip(risk_nodes, assigned_hosts):
+            tier = purdue_tier(risk_node_id)
+            tiered.append((risk_node_id, ip_addr, tier))
+
+        for risk_node_id, ip_addr, tier in tiered:
+            node = Node.objects.create(
+                scan_run=scan_run,
+                name=risk_node_id,
+                ip_address=ip_addr,
+                status="online",
+                description=f"Generated from risk assessment schema. Purdue tier: {tier}.",
+            )
+            created_nodes += 1
+            created_node_objects.append(node)
+
+            RiskNodeMapping.objects.update_or_create(
+                risk_node_id=risk_node_id,
+                defaults={
+                    "node": node,
+                    "ip_address": ip_addr,
+                    "label": risk_node_id,
+                    "active": True,
+                },
+            )
+            mappings_updated += 1
+
+            if vuln_objects:
+                node.vulnerability_set.add(*vuln_objects.values())
+
+        if created_node_objects:
+            tiers = {"L0-L1": [], "L2": [], "L3": [], "L3.5": [], "L4-L5": []}
+            for (risk_node_id, _ip_addr, tier), node in zip(tiered, created_node_objects):
+                tiers.setdefault(tier, []).append(node)
+
+            tier_order = ["L0-L1", "L2", "L3", "L3.5", "L4-L5"]
+            # Intra-tier ring to show local segmentation
+            for tier_key in tier_order:
+                tier_nodes = tiers.get(tier_key, [])
+                if len(tier_nodes) > 1:
+                    for idx, node in enumerate(tier_nodes):
+                        next_node = tier_nodes[(idx + 1) % len(tier_nodes)]
+                        Link.objects.create(
+                            scan_run=scan_run,
+                            source=node,
+                            destination=next_node,
+                            weight=1.0,
+                        )
+                        created_links += 1
+
+            # Inter-tier north-south links
+            for lower_key, upper_key in zip(tier_order, tier_order[1:]):
+                lower_nodes = tiers.get(lower_key, [])
+                upper_nodes = tiers.get(upper_key, [])
+                if not lower_nodes or not upper_nodes:
+                    continue
+                for idx, node in enumerate(lower_nodes):
+                    target = upper_nodes[idx % len(upper_nodes)]
+                    Link.objects.create(
+                        scan_run=scan_run,
+                        source=node,
+                        destination=target,
+                        weight=1.0,
+                    )
+                    created_links += 1
+
+    return JsonResponse({
+        "scan_run_id": scan_run.id,
+        "cidr": str(network),
+        "risk_nodes": len(risk_nodes),
+        "nodes_created": created_nodes,
+        "mappings_updated": mappings_updated,
+        "links_created": created_links,
+        "cves_applied": list(vuln_objects.keys()),
     })
 
 

@@ -693,6 +693,40 @@ input:checked + .slider .moon-icon {
     font-size: 1.1rem;
 }
 
+/* SIEM Timeline */
+.siem-timeline {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(10px, 1fr);
+  gap: 4px;
+  align-items: end;
+  height: 90px;
+}
+
+.siem-timeline__bar {
+  width: 100%;
+  background: linear-gradient(180deg, #0ea5e9 0%, #0369a1 100%);
+  border-radius: 4px 4px 0 0;
+  min-height: 6px;
+}
+
+.siem-timeline__bar--low {
+  background: linear-gradient(180deg, #22c55e 0%, #15803d 100%);
+}
+
+.siem-timeline__bar--mid {
+  background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%);
+}
+
+.siem-timeline__bar--high {
+  background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);
+}
+
+.siem-timeline__empty {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
 /* Main content area enhancement */
 main {
     margin-left: 250px;

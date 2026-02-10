@@ -16,6 +16,9 @@
       <button class="nav-link active" id="risk-overview-tab" data-bs-toggle="tab" data-bs-target="#risk-overview" type="button" role="tab">Overview</button>
     </li>
     <li class="nav-item" role="presentation">
+      <button class="nav-link" id="risk-system-tab" data-bs-toggle="tab" data-bs-target="#risk-system" type="button" role="tab">System</button>
+    </li>
+    <li class="nav-item" role="presentation">
       <button class="nav-link" id="risk-nodes-tab" data-bs-toggle="tab" data-bs-target="#risk-nodes" type="button" role="tab">Nodes</button>
     </li>
     <li class="nav-item" role="presentation">
@@ -43,6 +46,60 @@
         </div>
         <div class="card-body">
           <div id="risk-status" class="text-muted">Loading status…</div>
+        </div>
+      </div>
+      <div class="card shadow-sm mt-3">
+        <div class="card-header">
+          <h5 class="mb-0">P&amp;ID Draw.io Import</h5>
+        </div>
+        <div class="card-body">
+          <p class="text-muted mb-3">Convert draw.io XML to <code>sim_system.json</code> and optionally upload it to the risk assessment workspace.</p>
+          <div class="row g-3 align-items-end">
+            <div class="col-lg-6">
+              <label class="form-label" for="risk-pid-file">Draw.io XML</label>
+              <input type="file" class="form-control" id="risk-pid-file" accept=".xml,.drawio">
+            </div>
+            <div class="col-lg-4">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="risk-pid-upload-target">
+                <label class="form-check-label" for="risk-pid-upload-target">Upload to risk assessment workspace</label>
+              </div>
+              <div class="text-muted small" id="risk-pid-target-hint"></div>
+            </div>
+            <div class="col-lg-2 d-grid">
+              <button type="button" class="btn btn-primary" id="risk-pid-upload">
+                <i class="bi bi-upload"></i> Convert &amp; Upload
+              </button>
+            </div>
+          </div>
+          <div id="risk-pid-status" class="text-muted mt-3">Ready to convert.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="risk-system" role="tabpanel">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <h5 class="mb-0">System View</h5>
+          <div class="d-flex gap-2 align-items-center">
+            <select class="form-select form-select-sm" id="risk-system-source">
+              <option value="auto">Auto (target or latest)</option>
+              <option value="target">Risk Assessment Target</option>
+              <option value="latest">Latest Conversion</option>
+            </select>
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="risk-system-network" checked>
+              <label class="form-check-label" for="risk-system-network">Network overlay</label>
+            </div>
+            <button class="btn btn-sm btn-outline-primary" id="risk-system-refresh">
+              <i class="bi bi-diagram-3"></i> Load System
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="risk-system-status" class="text-muted mb-3">No system loaded.</div>
+          <div id="risk-system-graph" class="risk-network-graph"></div>
+          <div id="risk-system-unconnected" class="small text-muted mt-2"></div>
         </div>
       </div>
     </div>
@@ -298,7 +355,20 @@
   const testbedForm = document.getElementById('risk-testbed-form');
   const testbedStatus = document.getElementById('risk-testbed-status');
   const testbedRefresh = document.getElementById('risk-testbed-refresh');
+  const pidFileInput = document.getElementById('risk-pid-file');
+  const pidUploadButton = document.getElementById('risk-pid-upload');
+  const pidUploadTarget = document.getElementById('risk-pid-upload-target');
+  const pidStatus = document.getElementById('risk-pid-status');
+  const pidTargetHint = document.getElementById('risk-pid-target-hint');
+  const pidTargetPath = "{{ risk_pid_target_path|default:''|escapejs }}";
+  const systemGraphContainer = document.getElementById('risk-system-graph');
+  const systemStatus = document.getElementById('risk-system-status');
+  const systemUnconnected = document.getElementById('risk-system-unconnected');
+  const systemSource = document.getElementById('risk-system-source');
+  const systemNetworkToggle = document.getElementById('risk-system-network');
+  const systemRefresh = document.getElementById('risk-system-refresh');
   let riskCy = null;
+  let systemCy = null;
   let riskGraphElements = [];
   let riskMappingRows = new Map();
   let mappingNodeById = new Map();
@@ -373,6 +443,145 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function setPidStatus(message, isError=false) {
+    if (!pidStatus) return;
+    pidStatus.textContent = message;
+    pidStatus.classList.toggle('text-danger', isError);
+    pidStatus.classList.toggle('text-muted', !isError);
+  }
+
+  function initPidUploader() {
+    if (pidTargetHint) {
+      pidTargetHint.textContent = pidTargetPath
+        ? `Target: ${pidTargetPath}`
+        : 'Upload path not configured (set RISK_ASSESSMENT_SIM_SYSTEM_PATH).';
+    }
+    if (pidUploadTarget) {
+      pidUploadTarget.checked = Boolean(pidTargetPath);
+      pidUploadTarget.disabled = !pidTargetPath;
+    }
+  }
+
+  function setSystemStatus(message, isError=false) {
+    if (!systemStatus) return;
+    systemStatus.textContent = message;
+    systemStatus.classList.toggle('text-danger', isError);
+    systemStatus.classList.toggle('text-muted', !isError);
+  }
+
+  function renderSystemUnconnected(list) {
+    if (!systemUnconnected) return;
+    if (!Array.isArray(list) || list.length === 0) {
+      systemUnconnected.textContent = '';
+      return;
+    }
+    const preview = list.slice(0, 8).join(', ');
+    const suffix = list.length > 8 ? ` (+${list.length - 8} more)` : '';
+    systemUnconnected.textContent = `Unconnected cyber nodes: ${preview}${suffix}`;
+  }
+
+  function renderSystemGraph(elements) {
+    if (!systemGraphContainer) return;
+    if (!Array.isArray(elements) || elements.length === 0) {
+      systemGraphContainer.innerHTML = '<div class="text-muted text-center py-5">No system graph data available.</div>';
+      if (systemCy) {
+        systemCy.destroy();
+        systemCy = null;
+      }
+      return;
+    }
+
+    systemGraphContainer.innerHTML = '';
+    if (systemCy) {
+      systemCy.destroy();
+      systemCy = null;
+    }
+
+    systemCy = cytoscape({
+      container: systemGraphContainer,
+      elements,
+      style: [
+        { selector: 'node', style: {
+          'label': 'data(label)',
+          'font-size': 11,
+          'text-valign': 'bottom',
+          'text-halign': 'center',
+          'text-margin-y': 6,
+          'text-background-color': '#ffffff',
+          'text-background-opacity': 0.9,
+          'text-background-shape': 'roundrectangle',
+          'text-border-color': '#334155',
+          'text-border-width': 0.5,
+          'border-width': 1,
+          'border-color': '#1f2937'
+        }},
+        { selector: 'node[domain = \"physical\"]', style: {
+          'background-color': '#cbd5f5',
+          'shape': 'roundrectangle'
+        }},
+        { selector: 'node[domain = \"cyber\"]', style: {
+          'background-color': '#7dd3fc',
+          'shape': 'ellipse'
+        }},
+        { selector: 'node[cyber_connected = false]', style: {
+          'border-color': '#dc2626',
+          'border-width': 3
+        }},
+        { selector: 'edge', style: {
+          'label': 'data(label)',
+          'font-size': 9,
+          'color': '#111827',
+          'text-background-color': '#ffffff',
+          'text-background-opacity': 0.8,
+          'text-background-shape': 'roundrectangle',
+          'curve-style': 'bezier',
+          'width': 2,
+          'line-color': '#94a3b8',
+          'target-arrow-shape': 'triangle',
+          'target-arrow-color': '#94a3b8'
+        }},
+        { selector: 'edge[kind = \"process\"]', style: {
+          'line-color': '#94a3b8',
+          'target-arrow-color': '#94a3b8'
+        }},
+        { selector: 'edge[kind = \"network\"]', style: {
+          'line-color': '#22c55e',
+          'target-arrow-color': '#22c55e',
+          'line-style': 'dashed'
+        }}
+      ],
+      layout: { name: 'cose', animate: true, fit: true }
+    });
+  }
+
+  async function loadSystemGraph() {
+    if (!systemGraphContainer) return;
+    const params = new URLSearchParams();
+    if (systemSource && systemSource.value) params.set('source', systemSource.value);
+    params.set('include_network', systemNetworkToggle && systemNetworkToggle.checked ? '1' : '0');
+
+    setSystemStatus('Loading system graph…');
+    try {
+      const response = await fetch("{% url 'dashboard:risk_assessment_pid_system_api' %}?" + params.toString());
+      const data = await response.json();
+      if (!response.ok) {
+        setSystemStatus(data.error || 'System graph unavailable.', true);
+        renderSystemGraph([]);
+        return;
+      }
+      renderSystemGraph(data.elements || []);
+      const meta = data.meta || {};
+      setSystemStatus(
+        `Loaded ${meta.variables || 0} nodes (${meta.cyber_nodes || 0} cyber, ${meta.physical_nodes || 0} physical), ` +
+        `${meta.connections || 0} process edges, ${meta.network_edges || 0} network edges.`
+      );
+      renderSystemUnconnected(meta.unconnected_cyber);
+    } catch (err) {
+      setSystemStatus('System graph unavailable.', true);
+      renderSystemGraph([]);
+    }
   }
 
   function applyMappingFilter() {
@@ -1108,6 +1317,63 @@
     } catch (err) {
       tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Risk service unavailable.</td></tr>';
     }
+  }
+
+  initPidUploader();
+  if (pidUploadButton) {
+    pidUploadButton.addEventListener('click', async () => {
+      if (!pidFileInput || !pidFileInput.files.length) {
+        setPidStatus('Select a draw.io XML file to upload.', true);
+        return;
+      }
+      const file = pidFileInput.files[0];
+      const formData = new FormData();
+      formData.append('drawio_file', file);
+      if (pidUploadTarget && pidUploadTarget.checked) {
+        formData.append('upload_target', '1');
+      }
+
+      setPidStatus('Converting draw.io XML…');
+      try {
+        const response = await fetch("{% url 'dashboard:risk_assessment_pid_upload' %}", {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': getCSRFToken()
+          },
+          body: formData
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          setPidStatus(data.error || 'Conversion failed.', true);
+          return;
+        }
+        let message = `Converted ${data.variables_count} nodes, ${data.connections_count} edges. Saved ${data.sim_system_path}.`;
+        if (data.upload && data.upload.attempted) {
+          if (data.upload.success) {
+            message += ` Uploaded to ${data.upload.path}.`;
+          } else if (data.upload.error) {
+            message += ` Upload failed: ${data.upload.error}`;
+          }
+        }
+        setPidStatus(message);
+      } catch (err) {
+        setPidStatus('Conversion failed. Please try again.', true);
+      }
+    });
+  }
+
+  if (systemRefresh) {
+    systemRefresh.addEventListener('click', loadSystemGraph);
+  }
+  if (systemSource) {
+    systemSource.addEventListener('change', loadSystemGraph);
+  }
+  if (systemNetworkToggle) {
+    systemNetworkToggle.addEventListener('change', loadSystemGraph);
+  }
+  const systemTab = document.getElementById('risk-system-tab');
+  if (systemTab) {
+    systemTab.addEventListener('shown.bs.tab', loadSystemGraph);
   }
 
   document.getElementById('risk-network-refresh').addEventListener('click', fetchNetworkRisk);

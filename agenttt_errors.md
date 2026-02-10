@@ -296,3 +296,24 @@ PermissionError: [Errno 1] Operation not permitted (Docker daemon socket) while 
 ### Context for Next Agent (2026-02-08)
 - Attempts to run `docker-compose` commands now fail due to sandbox restrictions (`PermissionError` on `/var/run/docker.sock`).
 - Tests could not be executed for the latest SIEM ingest refactor; please rerun once Docker access is available.
+
+## 2026-02-10
+### find /home/michaeldoran/git/cyber_pen_test -maxdepth 4 -type d -name commands
+**Error**
+```
+find: ‘/home/michaeldoran/git/cyber_pen_test/data/db’: Permission denied
+```
+
+## 2026-02-10
+### python - <<'PY' ...
+**Error**
+```
+/bin/bash: line 1: python: command not found
+```
+
+## 2026-02-10
+### cp /home/michaeldoran/git/cyber_pen_test/out/pid_drawio/risk_pid_drawio.xml ...
+**Error**
+```
+cp: cannot stat '/home/michaeldoran/git/cyber_pen_test/out/pid_drawio/risk_pid_drawio.xml': No such file or directory
+```

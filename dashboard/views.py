@@ -105,6 +105,18 @@ from .siem_threat_intel import ingest_indicators, match_indicators, persist_ioc_
 from .siem_syslog import syslog_to_event
 from .siem_windows import windows_event_to_event
 from .health import health_snapshot, metrics_payload
+from .pid_drawio import (
+    build_timestamp_prefix,
+    convert_drawio_to_sim_system,
+    store_drawio_upload,
+    upload_sim_system,
+)
+from knowledge_extraction.drawio import DrawioParseError
+from .pid_system import (
+    build_system_elements,
+    load_sim_system_file,
+    resolve_sim_system_path,
+)
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 RISK_ASSESSMENT_TIMEOUT = 15
@@ -3125,7 +3137,96 @@ def network_topology_api(request):
 
 
 def risk_assessment_page(request):
-    return render(request, 'dashboard/risk_assessment.html')
+    return render(
+        request,
+        'dashboard/risk_assessment.html',
+        {
+            "risk_pid_target_path": getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", ""),
+        },
+    )
+
+
+@require_http_methods(["POST"])
+def risk_assessment_pid_upload(request):
+    upload = request.FILES.get("drawio_file")
+    if upload is None:
+        return JsonResponse({"error": "drawio_file is required."}, status=400)
+
+    output_dir_value = getattr(settings, "PID_DRAWIO_OUTPUT_DIR", None)
+    output_dir = Path(output_dir_value) if output_dir_value else Path(settings.BASE_DIR) / "out" / "pid_drawio"
+    prefix = build_timestamp_prefix()
+
+    try:
+        xml_path = store_drawio_upload(upload, output_dir, prefix)
+        sim_system, sim_path = convert_drawio_to_sim_system(xml_path, output_dir, prefix)
+    except DrawioParseError as exc:
+        return JsonResponse({"error": f"Invalid draw.io XML: {exc}"}, status=400)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+    upload_requested = str(request.POST.get("upload_target", "")).lower() in ("1", "true", "yes", "on")
+    upload_path_value = getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", "")
+    upload_result = {
+        "attempted": upload_requested,
+        "success": False,
+        "path": None,
+        "error": None,
+    }
+
+    if upload_requested:
+        if upload_path_value:
+            try:
+                uploaded_path = upload_sim_system(sim_path, Path(upload_path_value))
+                upload_result["success"] = True
+                upload_result["path"] = _relative_to_base(uploaded_path)
+            except Exception as exc:
+                upload_result["error"] = str(exc)
+        else:
+            upload_result["error"] = "RISK_ASSESSMENT_SIM_SYSTEM_PATH not configured."
+
+    variables = sim_system.get("variables", {}) if isinstance(sim_system, dict) else {}
+    connections = sim_system.get("connections", []) if isinstance(sim_system, dict) else []
+
+    return JsonResponse(
+        {
+            "variables_count": len(variables),
+            "connections_count": len(connections),
+            "drawio_path": _relative_to_base(xml_path),
+            "sim_system_path": _relative_to_base(sim_path),
+            "upload": upload_result,
+        }
+    )
+
+
+@require_GET
+def risk_assessment_pid_system_api(request):
+    source = request.GET.get("source", "auto")
+    include_network = request.GET.get("include_network", "1").lower() not in ("0", "false", "no")
+
+    output_dir_value = getattr(settings, "PID_DRAWIO_OUTPUT_DIR", None)
+    output_dir = Path(output_dir_value) if output_dir_value else Path(settings.BASE_DIR) / "out" / "pid_drawio"
+    target_path_value = getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", "")
+    target_path = Path(target_path_value) if target_path_value else None
+
+    sim_path, resolved_source = resolve_sim_system_path(source, output_dir, target_path)
+    if not sim_path:
+        return JsonResponse({"error": "No sim_system.json found."}, status=404)
+
+    try:
+        sim_system = load_sim_system_file(sim_path)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+    elements, meta = build_system_elements(sim_system, include_network=include_network)
+    meta.update(
+        {
+            "source": resolved_source,
+            "file": _relative_to_base(sim_path),
+            "include_network": include_network,
+        }
+    )
+
+    return JsonResponse({"elements": elements, "meta": meta})
 
 
 @require_GET
@@ -3591,3 +3692,10 @@ def risk_assessment_testbed_generate(request):
 def _risk_api_url(path: str) -> str:
     base = getattr(settings, 'RISK_ASSESSMENT_API_URL', 'http://127.0.0.1:7890')
     return f"{base.rstrip('/')}/{path.lstrip('/')}"
+
+
+def _relative_to_base(path: Path) -> str:
+    try:
+        return str(path.relative_to(settings.BASE_DIR))
+    except Exception:
+        return str(path)

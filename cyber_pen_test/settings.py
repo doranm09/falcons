@@ -189,6 +189,8 @@ SLIVER_ARTIFACT_DIR = os.environ.get('SLIVER_ARTIFACT_DIR', str(BASE_DIR / 'sliv
 
 # ICS Risk Assessment API
 RISK_ASSESSMENT_API_URL = os.environ.get('RISK_ASSESSMENT_API_URL', 'http://127.0.0.1:7890')
+RISK_ASSESSMENT_SIM_SYSTEM_PATH = os.environ.get('RISK_ASSESSMENT_SIM_SYSTEM_PATH', '')
+PID_DRAWIO_OUTPUT_DIR = os.environ.get('PID_DRAWIO_OUTPUT_DIR', str(BASE_DIR / 'out' / 'pid_drawio'))
 
 # SIEM ingest settings
 SIEM_INGEST_TOKEN = read_secret("SIEM_INGEST_TOKEN", "")

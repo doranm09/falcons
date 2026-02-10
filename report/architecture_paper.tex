@@ -117,6 +117,16 @@ codebase. The test posts \texttt{sim\_system.json}, queries \texttt{/status} and
 optionally exercises the \texttt{/probability} endpoint. This provides a reproducible
 sanity check for the end-to-end data path before running full-scale experiments.
 
+\subsection{PID-Driven Operations}
+The dashboard exposes a PID-driven workflow that operationalizes the research pipeline:
+(1) knowledge extraction (draw.io XML to \texttt{sim\_system.json}), (2) system definition
+and visualization, (3) network validation against expected IP/VLAN metadata, (4)
+vulnerability discovery via OpenVAS scans per VLAN CIDR, (5) penetration testing
+preparation by generating a PID-aligned scan run, and (6) emulation using the digital
+twin environment. The workflow returns a validation report summarizing missing nodes,
+unexpected IPs, VLAN coverage, and redundancy group coverage to help analysts confirm
+that the network composition matches the intended Purdue segmentation.
+
 \section{Dashboard Orchestration and Visualization}
 The dashboard coordinates ingestion and analysis. It provides:
 (1) a P\&ID import UI for conversion and upload, (2) a system view with cyber/physical

@@ -131,6 +131,7 @@
             </div>
           </div>
           <div id="risk-workflow-status" class="text-muted mt-3">Workflow idle.</div>
+          <div id="risk-workflow-report" class="risk-workflow-report mt-3"></div>
         </div>
       </div>
     </div>
@@ -417,6 +418,12 @@
     padding: 12px 14px;
     background: #f8fafc;
   }
+  .risk-workflow-report {
+    border: 1px dashed var(--border-color);
+    border-radius: 8px;
+    padding: 12px 14px;
+    background: #f8fafc;
+  }
   @media (max-width: 992px) {
     .risk-network-graph {
       height: 60vh;
@@ -459,6 +466,7 @@
   const workflowSync = document.getElementById('risk-workflow-sync');
   const workflowScanrun = document.getElementById('risk-workflow-scanrun');
   const workflowStatus = document.getElementById('risk-workflow-status');
+  const workflowReport = document.getElementById('risk-workflow-report');
   const systemGraphContainer = document.getElementById('risk-system-graph');
   const systemStatus = document.getElementById('risk-system-status');
   const systemUnconnected = document.getElementById('risk-system-unconnected');
@@ -606,6 +614,52 @@
     workflowStatus.classList.toggle('text-muted', !isError);
   }
 
+  function renderWorkflowReport(data) {
+    if (!workflowReport) return;
+    if (!data || typeof data !== 'object') {
+      workflowReport.innerHTML = '';
+      return;
+    }
+    const summary = data.summary || {};
+    const validation = data.validation || {};
+    const missing = Array.isArray(validation.missing) ? validation.missing : [];
+    const found = Array.isArray(validation.found) ? validation.found : [];
+    const unknown = Array.isArray(validation.unknown_ips) ? validation.unknown_ips : [];
+    const vlans = summary.vlans || {};
+    const purdue = summary.purdue_levels || {};
+    const redundancy = summary.redundancy_groups || {};
+
+    const vlanText = Object.keys(vlans).length
+      ? Object.entries(vlans).map(([key, count]) => `${escapeHtml(key)}: ${count}`).join(', ')
+      : '—';
+    const purdueText = Object.keys(purdue).length
+      ? Object.entries(purdue).map(([key, count]) => `${escapeHtml(key)}: ${count}`).join(', ')
+      : '—';
+    const redundancyText = Object.keys(redundancy).length
+      ? Object.entries(redundancy).map(([key, count]) => `${escapeHtml(key)}: ${count}`).join(', ')
+      : '—';
+
+    const missingList = missing.slice(0, 8).map(item => {
+      const label = escapeHtml(item.label || item.id || 'unknown');
+      const ip = item.ip ? ` (${escapeHtml(item.ip)})` : '';
+      const reason = item.reason ? ` - ${escapeHtml(item.reason)}` : '';
+      return `<li>${label}${ip}${reason}</li>`;
+    }).join('');
+    const unknownList = unknown.slice(0, 8).map(ip => `<li>${escapeHtml(ip)}</li>`).join('');
+
+    workflowReport.innerHTML = `
+      <div class="fw-semibold mb-2">Validation Report</div>
+      <div class="small text-muted mb-2">Expected: ${validation.expected_count ?? summary.count ?? 0} | Found: ${found.length} | Missing: ${missing.length}</div>
+      <div class="small text-muted mb-2">VLANs: ${vlanText}</div>
+      <div class="small text-muted mb-2">Purdue levels: ${purdueText}</div>
+      <div class="small text-muted mb-2">Redundancy groups: ${redundancyText}</div>
+      <div class="small fw-semibold mt-2">Missing nodes (sample)</div>
+      <ul class="small text-muted">${missingList || '<li>None</li>'}</ul>
+      <div class="small fw-semibold mt-2">Unknown IPs (sample)</div>
+      <ul class="small text-muted">${unknownList || '<li>None</li>'}</ul>
+    `;
+  }
+
   function initPidUploader() {
     if (pidTargetHint) {
       pidTargetHint.textContent = pidTargetPath
@@ -620,6 +674,7 @@
 
   async function runPidValidation(options) {
     setWorkflowStatus('Running validation…');
+    if (workflowReport) workflowReport.innerHTML = '';
     try {
       const response = await fetch("{% url 'dashboard:risk_assessment_pid_validate' %}", {
         method: 'POST',
@@ -637,6 +692,7 @@
       const missing = Array.isArray(validation.missing) ? validation.missing.length : 0;
       const expected = validation.expected_count ?? summary.count ?? 0;
       setWorkflowStatus(`Validation complete: ${found} found, ${missing} missing (expected ${expected}).`);
+      renderWorkflowReport(data);
       return data;
     } catch (err) {
       setWorkflowStatus('Validation unavailable.', true);

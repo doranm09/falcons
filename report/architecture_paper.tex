@@ -1,0 +1,156 @@
+\documentclass[journal]{IEEEtran}
+
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{amsmath}
+
+\title{A Modular Cyber-Physical Risk Assessment Architecture Integrating SIEM Telemetry and P\&ID-Derived System Graphs}
+
+\author{Author Name\\
+Affiliation\\
+Email}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This paper presents a modular architecture for cyber-physical risk assessment that unifies
+SIEM telemetry, host-based evidence, and process-level system graphs derived from P\&ID
+artifacts. The system integrates a data-collection agent, a SIEM pipeline, a risk assessment
+service, and a diagram-to-graph knowledge extraction workflow. We detail each component,
+its interfaces, data schemas, and end-to-end orchestration, enabling reproducible analysis
+across cyber and physical domains.
+\end{abstract}
+
+\begin{IEEEkeywords}
+SIEM, cyber-physical systems, risk assessment, P\&ID, system graph, telemetry, OpenSearch
+\end{IEEEkeywords}
+
+\section{Introduction}
+Cyber-physical systems (CPS) blend networked digital control with physical processes.
+Assessing risk in such environments requires synchronized views of cyber telemetry and
+process dependencies. This work describes an architecture that operationalizes this view by
+integrating a SIEM pipeline with a process graph derived from P\&ID diagrams and system
+models. The result is a modular framework that supports experimentation, telemetry ingestion,
+system modeling, and risk analysis.
+
+\section{System Overview}
+Figure~\ref{fig:overview} summarizes the architecture. The system is composed of:
+(1) a host agent for telemetry and evidence collection, (2) a SIEM pipeline for normalization
+and search, (3) a P\&ID knowledge extraction pipeline that generates a process graph, and
+(4) an ICS risk assessment service that consumes the graph and evidence to compute risk.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.95\columnwidth]{figures/overview.pdf}
+  \caption{High-level architecture. Telemetry flows from host agents into the SIEM pipeline and
+  OpenSearch. P\&ID artifacts are converted to a system graph used by the risk assessment service.
+  The dashboard orchestrates ingestion, visualization, and analysis.}
+  \label{fig:overview}
+\end{figure}
+
+\section{Data Model and Schemas}
+\subsection{System Graph (sim\_system.json)}
+The process graph is represented as a JSON document with two top-level keys:
+\texttt{variables} and \texttt{connections}. Variables are keyed by ID and include metadata
+(e.g., type, module, domain). Connections are edges describing flow between variables.
+
+\subsection{SIEM Event Schema}
+Events are normalized to a consistent schema for indexing and querying. This includes
+source metadata, timestamps, event type, and optional enrichment fields. The schema
+supports extension for research instrumentation and correlation.
+
+\section{P\&ID Knowledge Extraction}
+P\&ID artifacts authored in draw.io are exported as XML and parsed into the system graph.
+The parser supports both compressed and uncompressed draw.io XML. Nodes are derived
+from shapes with metadata stored in draw.io ``Edit Data'' fields. Edges are derived from
+connectors and converted into flow connections. Cyber vs. physical domain classification
+is supported via explicit \texttt{domain} fields or keyword inference.
+
+\subsection{Workflow}
+\begin{enumerate}
+  \item Author or import a draw.io P\&ID diagram.
+  \item Export uncompressed XML.
+  \item Convert XML to \texttt{sim\_system.json}.
+  \item Optionally copy the generated file into the risk assessment workspace.
+\end{enumerate}
+
+\section{Host Agent and Telemetry Collection}
+The host agent collects system telemetry, SBOMs, file integrity monitoring data, and
+osquery results. It supports a command channel for ad-hoc data collection and posts
+structured artifacts to server endpoints. These artifacts are normalized and ingested into
+the SIEM pipeline for indexing.
+
+\section{SIEM Pipeline}
+The SIEM pipeline ingests events from host agents and external feeds, normalizes records
+into a unified schema, and supports search and correlation. Events are stored in OpenSearch
+for scalable query performance and dashboards.
+
+\subsection{OpenSearch Integration}
+OpenSearch is deployed as a single-node cluster for local development. Events are indexed
+with a time-partitioned index naming scheme and managed by an index lifecycle policy.
+
+\section{Risk Assessment Service}
+The risk assessment service consumes the system graph and evidence to produce
+probabilistic risk outputs. It exposes endpoints for status, node enumeration, and
+probability computation. This service can be deployed alongside the SIEM pipeline and
+accessed through the dashboard.
+
+\subsection{Risk Service Workflow}
+The risk service operates over a Dynamic Bayesian Network (DBN), which models time-indexed
+dependencies between cyber and physical variables. The DBN is generated offline from the
+system graph and stored as a BIFXML artifact. The runtime API exposes a thin layer over
+this model for probability queries and vulnerability-driven updates.
+
+The end-to-end workflow is: (1) upload a consolidated system graph
+(\texttt{sim\_system.json}) to the service; (2) verify DBN availability via the status
+endpoint; (3) issue evidence queries for probability distributions; and (4) submit cyber
+vulnerability data to update the DBN and recompute probabilities.
+
+\subsection{Integration Smoke Test}
+To validate the integration, a lightweight smoke test is executed from the dashboard
+codebase. The test posts \texttt{sim\_system.json}, queries \texttt{/status} and
+\texttt{/nodes}, runs a minimal \texttt{/evidence} query on a small node sample, and
+optionally exercises the \texttt{/probability} endpoint. This provides a reproducible
+sanity check for the end-to-end data path before running full-scale experiments.
+
+\section{Dashboard Orchestration and Visualization}
+The dashboard coordinates ingestion and analysis. It provides:
+(1) a P\&ID import UI for conversion and upload, (2) a system view with cyber/physical
+visual differentiation and network overlays, and (3) risk assessment workflows to map
+nodes, compute probabilities, and visualize results.
+
+\section{Security Considerations}
+The architecture includes token-based ingestion controls, optional TLS verification,
+and role-based SIEM access. Default deployments disable OpenSearch security for local
+experimentation but can be hardened for production environments.
+
+\section{Evaluation Plan}
+We plan to evaluate the architecture on (1) ingestion throughput, (2) graph generation
+fidelity, (3) end-to-end latency from telemetry to risk outputs, and (4) analyst usability.
+
+\section{Limitations and Future Work}
+Current limitations include coarse mapping between cyber telemetry and physical variables,
+and the absence of automated DBN regeneration on graph updates. Future work includes
+model calibration, automated validation against ground truth, and multi-sensor fusion.
+
+\section{Reproducibility}
+All pipelines are deployed via Docker Compose, and configuration is controlled by
+environment variables. The knowledge extraction pipeline is deterministic given a
+P\&ID XML input.
+
+\section{Conclusion}
+This architecture provides a practical foundation for CPS risk analysis by unifying
+SIEM telemetry with process-level system graphs. It supports reproducible research and
+can be extended for broader instrumentation and analytical tasks.
+
+\section*{Acknowledgments}
+Optional.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

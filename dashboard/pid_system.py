@@ -82,6 +82,12 @@ def build_system_elements(
     cyber_nodes = set()
     physical_nodes = set()
 
+    def _shorten_label(value: str, max_len: int = 28) -> str:
+        value = value.strip()
+        if len(value) <= max_len:
+            return value
+        return f"{value[: max_len - 1]}…"
+
     def add_node(node_id: str, payload: Dict[str, Any]) -> None:
         if node_id in nodes:
             return
@@ -89,16 +95,26 @@ def build_system_elements(
 
     for var_id, info in variables.items():
         info = info if isinstance(info, dict) else {}
+        raw_label = (
+            info.get("name")
+            or info.get("label")
+            or info.get("title")
+            or str(var_id)
+        )
+        raw_label = str(raw_label)
+        node_type = info.get("type") or "unknown"
         domain = classify_domain(var_id, info)
         node_payload = {
             "id": str(var_id),
-            "label": str(var_id),
+            "label": raw_label,
+            "label_short": _shorten_label(raw_label),
+            "label_full": raw_label,
             "domain": domain,
-            "type": info.get("type") or "unknown",
+            "type": node_type,
             "module": info.get("module") or "",
         }
 
-        for key in ("system", "unit", "description"):
+        for key in ("system", "unit", "description", "vlan", "vlan_cidr", "purdue_level", "redundancy_group"):
             if info.get(key):
                 node_payload[key] = info.get(key)
 
@@ -209,6 +225,11 @@ def classify_domain(var_id: str, info: Dict[str, Any]) -> str:
 def extract_ip(info: Dict[str, Any]) -> Optional[str]:
     for key in ("ip", "ip_address", "address", "host_ip", "network_ip"):
         value = info.get(key)
+        if isinstance(value, str) and IPV4_RE.match(value.strip()):
+            return value.strip()
+    ip_list = info.get("ip_addresses")
+    if isinstance(ip_list, list) and ip_list:
+        value = ip_list[0]
         if isinstance(value, str) and IPV4_RE.match(value.strip()):
             return value.strip()
     return None

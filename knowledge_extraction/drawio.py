@@ -19,7 +19,7 @@ class DrawioParseError(RuntimeError):
 VARIABLES_KEY = "variables"
 CONNECTIONS_KEY = "connections"
 
-RESERVED_VAR_KEYS = {"pid", "id", "label", "type", "module"}
+RESERVED_VAR_KEYS = {"pid", "id", "label", "type", "module", "domain"}
 RESERVED_EDGE_KEYS = {"s_attr", "t_attr", "label"}
 
 
@@ -65,6 +65,19 @@ def generate_drawio_from_sim_system(
 ) -> str:
     variables = sim_system.get(VARIABLES_KEY, {})
     connections = sim_system.get(CONNECTIONS_KEY, [])
+
+    # Ensure endpoints referenced by connections exist as nodes.
+    for conn in connections:
+        if not isinstance(conn, dict):
+            continue
+        for key in ("source", "target"):
+            node_id = conn.get(key)
+            if node_id and node_id not in variables:
+                variables[node_id] = {
+                    "type": "unknown",
+                    "module": "synthetic",
+                    "domain": "physical",
+                }
 
     mxfile = ET.Element(
         "mxfile",
@@ -112,10 +125,12 @@ def generate_drawio_from_sim_system(
         cell_id_by_var[var_id] = cell_id
         index += 1
 
+        domain = _infer_domain(str(var_id), info if isinstance(info, dict) else {})
         obj_attrs = {
             "id": f"obj_{cell_id}",
             "pid": str(var_id),
             "label": str(var_id),
+            "domain": domain,
         }
         if isinstance(info, dict):
             var_type = info.get("type")
@@ -129,6 +144,7 @@ def generate_drawio_from_sim_system(
                     continue
                 obj_attrs[str(k)] = str(v)
 
+        node_style = _style_for_domain(domain)
         obj = ET.SubElement(root, "object", obj_attrs)
         cell = ET.SubElement(
             obj,
@@ -136,7 +152,7 @@ def generate_drawio_from_sim_system(
             {
                 "id": cell_id,
                 "value": html.escape(str(var_id)),
-                "style": "rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;",
+                "style": node_style,
                 "vertex": "1",
                 "parent": "1",
             },
@@ -191,7 +207,7 @@ def generate_drawio_from_sim_system(
             {
                 "id": f"e{edge_index}",
                 "value": html.escape(label),
-                "style": "endArrow=block;html=1;strokeColor=#6c8ebf;",
+                "style": "endArrow=block;html=1;strokeColor=#64748b;edgeStyle=orthogonalEdgeStyle;rounded=0;",
                 "edge": "1",
                 "parent": "1",
                 "source": cell_id_by_var[source],
@@ -447,3 +463,29 @@ def _format_edge_label(s_attr: str, t_attr: str) -> str:
     if t_attr:
         return t_attr
     return ""
+
+
+def _infer_domain(var_id: str, info: Dict[str, Any]) -> str:
+    raw = info.get("domain") or info.get("layer") or info.get("category")
+    if isinstance(raw, str):
+        normalized = raw.strip().lower()
+        if normalized in ("cyber", "network", "it", "ot"):
+            return "cyber"
+        if normalized in ("physical", "process", "plant"):
+            return "physical"
+
+    haystack = " ".join(
+        str(value).lower()
+        for value in (var_id, info.get("type"), info.get("module"), info.get("role"), info.get("name"))
+        if value
+    )
+    for hint in ("plc", "hmi", "scada", "rtu", "server", "switch", "router", "firewall", "historian", "workstation"):
+        if hint in haystack:
+            return "cyber"
+    return "physical"
+
+
+def _style_for_domain(domain: str) -> str:
+    if domain == "cyber":
+        return "ellipse;whiteSpace=wrap;html=1;fillColor=#7dd3fc;strokeColor=#0284c7;"
+    return "rounded=1;whiteSpace=wrap;html=1;fillColor=#cbd5f5;strokeColor=#6366f1;"

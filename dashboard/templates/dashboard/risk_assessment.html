@@ -46,6 +46,7 @@
         </div>
         <div class="card-body">
           <div id="risk-status" class="text-muted">Loading status…</div>
+          <div id="risk-status-summary" class="mt-3"></div>
         </div>
       </div>
       <div class="card shadow-sm mt-3">
@@ -75,6 +76,63 @@
           <div id="risk-pid-status" class="text-muted mt-3">Ready to convert.</div>
         </div>
       </div>
+      <div class="card shadow-sm mt-3">
+        <div class="card-header">
+          <h5 class="mb-0">PID-Driven Workflow</h5>
+        </div>
+        <div class="card-body">
+          <p class="text-muted mb-3">Run the end-to-end pipeline from PID metadata to a digital twin.</p>
+          <div class="row g-3">
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Step 1: Knowledge Extraction</div>
+              <div class="text-muted small mb-2">Convert draw.io XML into <code>sim_system.json</code>.</div>
+              <button type="button" class="btn btn-outline-primary w-100" id="risk-workflow-extract">Use P&amp;ID Import</button>
+            </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Step 2: System Definition</div>
+              <div class="text-muted small mb-2">Load the system graph from the PID outputs.</div>
+              <button type="button" class="btn btn-outline-primary w-100" id="risk-workflow-system">Open System View</button>
+            </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Step 3: Network Validation</div>
+              <div class="text-muted small mb-2">Validate expected PID cyber nodes against discovered assets.</div>
+              <button type="button" class="btn btn-primary w-100" id="risk-workflow-validate">Validate Network</button>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Step 4: Vulnerability Discovery</div>
+              <div class="text-muted small mb-2">Launch OpenVAS scans per VLAN CIDR.</div>
+              <button type="button" class="btn btn-outline-danger w-100" id="risk-workflow-vuln">Run OpenVAS</button>
+            </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Step 5: Penetration Testing</div>
+              <div class="text-muted small mb-2">Generate a PID-based scan run for the digital twin.</div>
+              <button type="button" class="btn btn-outline-secondary w-100" id="risk-workflow-twin">Create Digital Twin</button>
+            </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Step 6: Emulation</div>
+              <div class="text-muted small mb-2">Open the Digital Twin workspace for emulation.</div>
+              <button type="button" class="btn btn-outline-secondary w-100" id="risk-workflow-open-twin">Open Digital Twin</button>
+            </div>
+          </div>
+          <div class="mt-3">
+            <div class="small text-muted mb-1">Validation options</div>
+            <div class="d-flex flex-wrap gap-3 align-items-center">
+              <select class="form-select form-select-sm" id="risk-workflow-scan">
+                <option value="">No discovery scan</option>
+                <option value="ping">Ping sweep</option>
+                <option value="nmap">Nmap discovery</option>
+              </select>
+              <label class="form-check-label small">
+                <input type="checkbox" class="form-check-input me-1" id="risk-workflow-sync"> Run scans synchronously
+              </label>
+              <input type="number" class="form-control form-control-sm" id="risk-workflow-scanrun" placeholder="Scan Run ID">
+            </div>
+          </div>
+          <div id="risk-workflow-status" class="text-muted mt-3">Workflow idle.</div>
+        </div>
+      </div>
     </div>
 
     <div class="tab-pane fade" id="risk-system" role="tabpanel">
@@ -87,10 +145,23 @@
               <option value="target">Risk Assessment Target</option>
               <option value="latest">Latest Conversion</option>
             </select>
+            <select class="form-select form-select-sm" id="risk-system-layout">
+              <option value="breadthfirst">Breadthfirst</option>
+              <option value="cose">COSE</option>
+              <option value="circle">Circle</option>
+            </select>
+            <div class="d-flex align-items-center gap-1 small text-muted">
+              <label for="risk-system-spacing" class="mb-0">Spacing</label>
+              <input type="range" id="risk-system-spacing" min="1" max="3" step="0.1" value="1.8">
+              <span id="risk-system-spacing-value">1.8</span>
+            </div>
             <div class="form-check form-switch">
               <input class="form-check-input" type="checkbox" id="risk-system-network" checked>
               <label class="form-check-label" for="risk-system-network">Network overlay</label>
             </div>
+            <button class="btn btn-sm btn-outline-secondary" id="risk-system-relayout">
+              <i class="bi bi-arrow-repeat"></i> Relayout
+            </button>
             <button class="btn btn-sm btn-outline-primary" id="risk-system-refresh">
               <i class="bi bi-diagram-3"></i> Load System
             </button>
@@ -99,6 +170,10 @@
         <div class="card-body">
           <div id="risk-system-status" class="text-muted mb-3">No system loaded.</div>
           <div id="risk-system-graph" class="risk-network-graph"></div>
+          <div id="risk-system-detail" class="risk-system-detail mt-3">
+            <div class="fw-semibold">Selected node</div>
+            <div id="risk-system-detail-body" class="small text-muted">Click a node to see details.</div>
+          </div>
           <div id="risk-system-unconnected" class="small text-muted mt-2"></div>
         </div>
       </div>
@@ -109,6 +184,10 @@
         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
           <h5 class="mb-0">Available Nodes</h5>
           <div class="d-flex gap-2">
+            <select class="form-select form-select-sm" id="risk-node-source">
+              <option value="pid">PID (sim_system)</option>
+              <option value="risk">Risk service</option>
+            </select>
             <label class="visually-hidden" for="risk-node-filter">Filter nodes</label>
             <input class="form-control form-control-sm" id="risk-node-filter" placeholder="Filter nodes">
             <button class="btn btn-sm btn-outline-primary" id="risk-nodes-refresh">
@@ -241,6 +320,7 @@
                 <div class="mb-3">
                   <label class="form-label" for="risk-cyber">Cyber Data (JSON, optional)</label>
                   <textarea class="form-control" id="risk-cyber" rows="4" placeholder='{"scanned_nodes": []}'></textarea>
+                  <div class="form-text">If cyber data is provided, the request uses the risk service <code>/probability</code> endpoint and ignores evidence.</div>
                 </div>
                 <div class="d-flex gap-2">
                   <button type="submit" class="btn btn-primary">
@@ -331,6 +411,12 @@
     border: 1px solid var(--border-color);
     border-radius: 8px;
   }
+  .risk-system-detail {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px 14px;
+    background: #f8fafc;
+  }
   @media (max-width: 992px) {
     .risk-network-graph {
       height: 60vh;
@@ -341,6 +427,7 @@
 <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
 <script>
   const statusEl = document.getElementById('risk-status');
+  const statusSummary = document.getElementById('risk-status-summary');
   const nodesTableBody = document.querySelector('#risk-nodes-table tbody');
   const nodeFilter = document.getElementById('risk-node-filter');
   const resultsEl = document.getElementById('risk-results');
@@ -355,18 +442,34 @@
   const testbedForm = document.getElementById('risk-testbed-form');
   const testbedStatus = document.getElementById('risk-testbed-status');
   const testbedRefresh = document.getElementById('risk-testbed-refresh');
+  const riskNodeSource = document.getElementById('risk-node-source');
   const pidFileInput = document.getElementById('risk-pid-file');
   const pidUploadButton = document.getElementById('risk-pid-upload');
   const pidUploadTarget = document.getElementById('risk-pid-upload-target');
   const pidStatus = document.getElementById('risk-pid-status');
   const pidTargetHint = document.getElementById('risk-pid-target-hint');
   const pidTargetPath = "{{ risk_pid_target_path|default:''|escapejs }}";
+  const workflowExtract = document.getElementById('risk-workflow-extract');
+  const workflowSystem = document.getElementById('risk-workflow-system');
+  const workflowValidate = document.getElementById('risk-workflow-validate');
+  const workflowVuln = document.getElementById('risk-workflow-vuln');
+  const workflowTwin = document.getElementById('risk-workflow-twin');
+  const workflowOpenTwin = document.getElementById('risk-workflow-open-twin');
+  const workflowScan = document.getElementById('risk-workflow-scan');
+  const workflowSync = document.getElementById('risk-workflow-sync');
+  const workflowScanrun = document.getElementById('risk-workflow-scanrun');
+  const workflowStatus = document.getElementById('risk-workflow-status');
   const systemGraphContainer = document.getElementById('risk-system-graph');
   const systemStatus = document.getElementById('risk-system-status');
   const systemUnconnected = document.getElementById('risk-system-unconnected');
+  const systemDetailBody = document.getElementById('risk-system-detail-body');
   const systemSource = document.getElementById('risk-system-source');
+  const systemLayoutSelect = document.getElementById('risk-system-layout');
+  const systemSpacingInput = document.getElementById('risk-system-spacing');
+  const systemSpacingValue = document.getElementById('risk-system-spacing-value');
   const systemNetworkToggle = document.getElementById('risk-system-network');
   const systemRefresh = document.getElementById('risk-system-refresh');
+  const systemRelayout = document.getElementById('risk-system-relayout');
   let riskCy = null;
   let systemCy = null;
   let riskGraphElements = [];
@@ -378,21 +481,63 @@
   let riskActiveScanId = null;
   let riskGraphScanId = null;
 
+  function renderStatusSummary(data) {
+    if (!statusSummary) return;
+    if (!data || typeof data !== 'object') {
+      statusSummary.innerHTML = '';
+      return;
+    }
+    if (data.status === 'error') {
+      statusSummary.innerHTML = `<div class="text-danger">Risk service not initialized.</div>`;
+      return;
+    }
+
+    const dbnLoaded = Boolean(data.dbn_loaded);
+    const badge = dbnLoaded
+      ? '<span class="badge bg-success">DBN Loaded</span>'
+      : '<span class="badge bg-warning text-dark">DBN Not Loaded</span>';
+    const nodes = data.nodes_count ?? '—';
+    const arcs = data.arcs_count ?? '—';
+    const outputDir = data.output_dir ? escapeHtml(String(data.output_dir)) : '—';
+    const message = data.message ? escapeHtml(String(data.message)) : '';
+
+    statusSummary.innerHTML = `
+      <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+        ${badge}
+        <span class="text-muted small">Nodes: ${nodes}</span>
+        <span class="text-muted small">Arcs: ${arcs}</span>
+      </div>
+      <div class="small text-muted">Output dir: ${outputDir}</div>
+      ${message ? `<div class="small text-muted">${message}</div>` : ''}
+    `;
+  }
+
   async function fetchStatus() {
     statusEl.textContent = 'Loading status…';
+    if (statusSummary) statusSummary.innerHTML = '';
     try {
       const response = await fetch("{% url 'dashboard:risk_assessment_status' %}");
       const data = await response.json();
       statusEl.textContent = response.ok ? JSON.stringify(data, null, 2) : data.error || 'Status error';
+      if (response.ok) {
+        renderStatusSummary(data);
+      } else {
+        renderStatusSummary({ status: 'error' });
+      }
     } catch (err) {
       statusEl.textContent = 'Status unavailable';
+      renderStatusSummary({ status: 'error' });
     }
   }
 
   async function fetchNodes() {
     nodesTableBody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Loading nodes…</td></tr>';
     try {
-      const response = await fetch("{% url 'dashboard:risk_assessment_nodes' %}");
+      const source = riskNodeSource && riskNodeSource.value === 'risk' ? 'risk' : 'pid';
+      const url = source === 'risk'
+        ? "{% url 'dashboard:risk_assessment_nodes' %}"
+        : "{% url 'dashboard:risk_assessment_pid_nodes_api' %}";
+      const response = await fetch(url);
       const data = await response.json();
       if (!response.ok) {
         nodesTableBody.innerHTML = `<tr><td colspan="2" class="text-center text-muted">${data.error || 'Error loading nodes'}</td></tr>`;
@@ -405,7 +550,9 @@
       }
       nodesTableBody.innerHTML = nodes.map(node => {
         const name = node.name || node.node || node.id || 'Unknown';
-        const states = node.states ? node.states.join(', ') : (node.state || '—');
+        const states = node.states
+          ? node.states.join(', ')
+          : (node.type ? `${node.type}${node.domain ? ` (${node.domain})` : ''}` : (node.state || '—'));
         return `<tr><td>${name}</td><td>${states}</td></tr>`;
       }).join('');
       applyNodeFilter();
@@ -452,6 +599,13 @@
     pidStatus.classList.toggle('text-muted', !isError);
   }
 
+  function setWorkflowStatus(message, isError=false) {
+    if (!workflowStatus) return;
+    workflowStatus.textContent = message;
+    workflowStatus.classList.toggle('text-danger', isError);
+    workflowStatus.classList.toggle('text-muted', !isError);
+  }
+
   function initPidUploader() {
     if (pidTargetHint) {
       pidTargetHint.textContent = pidTargetPath
@@ -461,6 +615,32 @@
     if (pidUploadTarget) {
       pidUploadTarget.checked = Boolean(pidTargetPath);
       pidUploadTarget.disabled = !pidTargetPath;
+    }
+  }
+
+  async function runPidValidation(options) {
+    setWorkflowStatus('Running validation…');
+    try {
+      const response = await fetch("{% url 'dashboard:risk_assessment_pid_validate' %}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(options || {})
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setWorkflowStatus(data.error || 'Validation failed.', true);
+        return null;
+      }
+      const summary = data.summary || {};
+      const validation = data.validation || {};
+      const found = Array.isArray(validation.found) ? validation.found.length : 0;
+      const missing = Array.isArray(validation.missing) ? validation.missing.length : 0;
+      const expected = validation.expected_count ?? summary.count ?? 0;
+      setWorkflowStatus(`Validation complete: ${found} found, ${missing} missing (expected ${expected}).`);
+      return data;
+    } catch (err) {
+      setWorkflowStatus('Validation unavailable.', true);
+      return null;
     }
   }
 
@@ -504,18 +684,23 @@
       elements,
       style: [
         { selector: 'node', style: {
-          'label': 'data(label)',
-          'font-size': 11,
-          'text-valign': 'bottom',
+          'label': 'data(label_short)',
+          'font-size': 12,
+          'min-zoomed-font-size': 9,
+          'text-wrap': 'wrap',
+          'text-max-width': 120,
+          'text-valign': 'center',
           'text-halign': 'center',
-          'text-margin-y': 6,
           'text-background-color': '#ffffff',
-          'text-background-opacity': 0.9,
+          'text-background-opacity': 0.85,
           'text-background-shape': 'roundrectangle',
           'text-border-color': '#334155',
           'text-border-width': 0.5,
           'border-width': 1,
-          'border-color': '#1f2937'
+          'border-color': '#1f2937',
+          'width': 'label',
+          'height': 'label',
+          'padding': 8
         }},
         { selector: 'node[domain = \"physical\"]', style: {
           'background-color': '#cbd5f5',
@@ -525,12 +710,16 @@
           'background-color': '#7dd3fc',
           'shape': 'ellipse'
         }},
+        { selector: 'node:selected', style: {
+          'border-color': '#1d4ed8',
+          'border-width': 3
+        }},
         { selector: 'node[cyber_connected = false]', style: {
           'border-color': '#dc2626',
           'border-width': 3
         }},
         { selector: 'edge', style: {
-          'label': 'data(label)',
+          'label': '',
           'font-size': 9,
           'color': '#111827',
           'text-background-color': '#ffffff',
@@ -542,6 +731,9 @@
           'target-arrow-shape': 'triangle',
           'target-arrow-color': '#94a3b8'
         }},
+        { selector: 'edge:selected', style: {
+          'label': 'data(label)'
+        }},
         { selector: 'edge[kind = \"process\"]', style: {
           'line-color': '#94a3b8',
           'target-arrow-color': '#94a3b8'
@@ -552,8 +744,102 @@
           'line-style': 'dashed'
         }}
       ],
-      layout: { name: 'cose', animate: true, fit: true }
+      layout: buildSystemLayout()
     });
+
+    if (systemDetailBody) {
+      systemDetailBody.textContent = 'Click a node to see details.';
+    }
+    systemCy.on('select', 'node', event => {
+      if (!systemDetailBody) return;
+      const data = event.target.data() || {};
+      const parts = [];
+      parts.push(`<div class="fw-semibold">${escapeHtml(data.label_full || data.label || data.id)}</div>`);
+      parts.push(`<div>Domain: ${escapeHtml(data.domain || 'unknown')}</div>`);
+      if (data.type) parts.push(`<div>Type: ${escapeHtml(data.type)}</div>`);
+      if (data.module) parts.push(`<div>Module: ${escapeHtml(data.module)}</div>`);
+      if (data.system) parts.push(`<div>System: ${escapeHtml(data.system)}</div>`);
+      if (data.unit) parts.push(`<div>Unit: ${escapeHtml(data.unit)}</div>`);
+      if (data.vlan) parts.push(`<div>VLAN: ${escapeHtml(data.vlan)}</div>`);
+      if (data.vlan_cidr) parts.push(`<div>VLAN CIDR: ${escapeHtml(data.vlan_cidr)}</div>`);
+      if (data.purdue_level) parts.push(`<div>Purdue: ${escapeHtml(data.purdue_level)}</div>`);
+      if (data.redundancy_group) parts.push(`<div>Redundancy: ${escapeHtml(data.redundancy_group)}</div>`);
+      if (data.description) parts.push(`<div>Description: ${escapeHtml(data.description)}</div>`);
+      if (data.ip) parts.push(`<div>IP: ${escapeHtml(data.ip)}</div>`);
+      if (data.agent_id) parts.push(`<div>Agent: ${escapeHtml(data.agent_id)}</div>`);
+      systemDetailBody.innerHTML = parts.join('');
+    });
+    systemCy.on('unselect', 'node', () => {
+      if (!systemDetailBody) return;
+      systemDetailBody.textContent = 'Click a node to see details.';
+    });
+  }
+
+  function currentSpacing() {
+    const raw = parseFloat(systemSpacingInput?.value || '1.8');
+    return Number.isFinite(raw) ? raw : 1.8;
+  }
+
+  function buildSystemLayout() {
+    const name = systemLayoutSelect?.value || 'breadthfirst';
+    const spacing = currentSpacing();
+    const base = {
+      name,
+      fit: true,
+      padding: 60,
+      spacingFactor: spacing
+    };
+
+    if (name === 'cose') {
+      return {
+        ...base,
+        animate: false,
+        randomize: true,
+        nodeRepulsion: 36000 * spacing,
+        idealEdgeLength: 240 * spacing,
+        edgeElasticity: 0.18,
+        gravity: 0.12,
+        numIter: 2200
+      };
+    }
+
+    if (name === 'breadthfirst') {
+      return {
+        ...base,
+        directed: true,
+        circle: false,
+        grid: false
+      };
+    }
+
+    if (name === 'circle') {
+      return {
+        ...base,
+        animate: false,
+        radius: 200 * spacing
+      };
+    }
+
+    return base;
+  }
+
+  function relayoutSystemGraph() {
+    if (!systemCy) return;
+    const layout = systemCy.layout(buildSystemLayout());
+    layout.run();
+  }
+
+  if (systemSpacingInput && systemSpacingValue) {
+    systemSpacingValue.textContent = currentSpacing().toFixed(1);
+    systemSpacingInput.addEventListener('input', () => {
+      systemSpacingValue.textContent = currentSpacing().toFixed(1);
+    });
+  }
+  if (systemRelayout) {
+    systemRelayout.addEventListener('click', () => relayoutSystemGraph());
+  }
+  if (systemLayoutSelect) {
+    systemLayoutSelect.addEventListener('change', () => relayoutSystemGraph());
   }
 
   async function loadSystemGraph() {
@@ -582,6 +868,55 @@
       setSystemStatus('System graph unavailable.', true);
       renderSystemGraph([]);
     }
+  }
+
+  if (workflowExtract && pidUploadButton) {
+    workflowExtract.addEventListener('click', () => pidUploadButton.click());
+  }
+  if (workflowSystem) {
+    workflowSystem.addEventListener('click', () => {
+      const tab = document.getElementById('risk-system-tab');
+      if (tab) tab.click();
+      if (systemRefresh) systemRefresh.click();
+    });
+  }
+  if (workflowValidate) {
+    workflowValidate.addEventListener('click', () => {
+      const payload = {
+        source: systemSource?.value || 'auto',
+        scan: workflowScan?.value || '',
+        scan_sync: Boolean(workflowSync?.checked),
+        scan_run_id: workflowScanrun?.value ? Number(workflowScanrun.value) : null,
+      };
+      runPidValidation(payload);
+    });
+  }
+  if (workflowVuln) {
+    workflowVuln.addEventListener('click', () => {
+      const payload = {
+        source: systemSource?.value || 'auto',
+        openvas: true,
+      };
+      runPidValidation(payload);
+    });
+  }
+  if (workflowTwin) {
+    workflowTwin.addEventListener('click', async () => {
+      const payload = {
+        source: systemSource?.value || 'auto',
+        create_twin: true,
+      };
+      const data = await runPidValidation(payload);
+      if (data && data.digital_twin && data.digital_twin.scan_id) {
+        const scanId = data.digital_twin.scan_id;
+        setWorkflowStatus(`Digital twin scan created (scan_id=${scanId}). Open Digital Twin tab to launch.`, false);
+      }
+    });
+  }
+  if (workflowOpenTwin) {
+    workflowOpenTwin.addEventListener('click', () => {
+      window.location.href = "{% url 'dashboard:digital_twin_page' %}";
+    });
   }
 
   function applyMappingFilter() {
@@ -1029,25 +1364,33 @@
       return;
     }
 
-    const payload = {
-      T: Number.isNaN(tValue) ? 3 : tValue,
-      evidence,
-    };
-
-    if (nodesInput) {
-      payload.nodes = nodesInput.split(',').map(node => node.trim()).filter(Boolean);
-    }
-    if (cyberData) {
-      payload.cyber_data = cyberData;
-    }
-
     resultsEl.textContent = 'Calculating…';
     try {
-      const response = await fetch("{% url 'dashboard:risk_assessment_probability' %}", {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      let response;
+      if (cyberData) {
+        const payload = {
+          T: Number.isNaN(tValue) ? 3 : tValue,
+          cyber_data: cyberData,
+        };
+        response = await fetch("{% url 'dashboard:risk_assessment_probability' %}", {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        const payload = {
+          T: Number.isNaN(tValue) ? 3 : tValue,
+          evidence,
+        };
+        if (nodesInput) {
+          payload.nodes = nodesInput.split(',').map(node => node.trim()).filter(Boolean);
+        }
+        response = await fetch("{% url 'dashboard:risk_assessment_evidence' %}", {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
       const data = await response.json();
       resultsEl.textContent = response.ok ? JSON.stringify(data, null, 2) : (data.error || 'Calculation error');
     } catch (err) {
@@ -1354,12 +1697,21 @@
           } else if (data.upload.error) {
             message += ` Upload failed: ${data.upload.error}`;
           }
+          if (data.upload.posted) {
+            message += ' Posted to risk assessment API.';
+          } else if (data.upload.post_error) {
+            message += ` Post failed: ${data.upload.post_error}`;
+          }
         }
         setPidStatus(message);
       } catch (err) {
         setPidStatus('Conversion failed. Please try again.', true);
       }
     });
+  }
+
+  if (riskNodeSource) {
+    riskNodeSource.addEventListener('change', fetchNodes);
   }
 
   if (systemRefresh) {

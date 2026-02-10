@@ -317,3 +317,11 @@ find: ‘/home/michaeldoran/git/cyber_pen_test/data/db’: Permission denied
 ```
 cp: cannot stat '/home/michaeldoran/git/cyber_pen_test/out/pid_drawio/risk_pid_drawio.xml': No such file or directory
 ```
+## 2026-02-10 - ics-risk-assessment sim-system endpoint test
+- Running `python -m pytest src/api/tests/test_sim_system_upload.py` in `/home/michaeldoran/git/ics-risk-assessment` failed: `/bin/bash: line 1: python: command not found`.
+- Running `python3 -m pytest src/api/tests/test_sim_system_upload.py` failed: `/usr/bin/python3: No module named pytest`.
+## 2026-02-10 - ics-risk-assessment pip install
+- `python3 -m pip install -r src/api/requirements.txt` failed due to externally-managed environment (PEP 668). Created a local venv and installed there instead.
+## 2026-02-10 - risk_smoke_test execution
+- `python manage.py risk_smoke_test --sim-system out/pid_drawio/risk_sim_system.json` failed: `/bin/bash: line 1: python: command not found`.
+- `python3 manage.py risk_smoke_test --sim-system ../out/pid_drawio/risk_sim_system.json` from `/home/michaeldoran/git/cyber_pen_test/cyber_pen_test` failed: `ModuleNotFoundError: No module named 'django'`.

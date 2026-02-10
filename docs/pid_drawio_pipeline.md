@@ -83,6 +83,44 @@ python manage.py pid_drawio \
 4. Cyber nodes without network connectivity are outlined in red.
 5. Network overlay uses recent connection data (last 60 minutes by default).
 
+## PID Metadata (Cyber Nodes)
+Include these fields on cyber nodes in the draw.io P\&ID to drive validation and digital twin setup:
+- `ip_address` (or `ip`): expected IP for the device.
+- `vlan`: VLAN identifier (e.g., `20` or `VLAN20`).
+- `vlan_cidr` (or `subnet`): CIDR for the VLAN (e.g., `10.0.20.0/24`).
+- `purdue_level` (or `tier`): Purdue model tier (e.g., `L2`, `L3.5`).
+- `redundancy_group`: redundancy grouping label (e.g., `PLC-A/B`).
+
+## Risk Service Workflow
+1. Upload the generated `sim_system.json` to the risk service `POST /sim-system` (set `RISK_ASSESSMENT_UPLOAD_URL`).
+2. Check `GET /status` to confirm the DBN is loaded.
+3. Use `POST /evidence` to query probabilities with evidence and optional node list.
+4. Use `POST /probability` for cyber.json vulnerability data (no evidence payload).
+
+## Integration Smoke Test
+Run a minimal end-to-end check against the risk service:
+```bash
+python manage.py risk_smoke_test --sim-system out/pid_drawio/risk_sim_system.json
+```
+
+Options:
+- `--skip-probability`: skip the `/probability` call (useful for very large DBNs).
+- `--force-probability`: run `/probability` even when the node count is large.
+- `--nodes-limit 8`: number of nodes to use for the `/evidence` check.
+
+## PID Network Validation
+Validate PID cyber nodes against discovered assets and optionally launch scans:
+```bash
+python manage.py pid_network_validate --source auto --scan nmap --openvas --create-twin --output out/pid_drawio/pid_validation.json
+```
+
+Notes:
+- `--scan` launches discovery scans for each `vlan_cidr` found in the PID.
+- `--openvas` launches OpenVAS scans per VLAN CIDR.
+- `--create-twin` creates a new scan run from the PID so the digital twin UI can render it.
+
 Environment variables:
 - `PID_DRAWIO_OUTPUT_DIR`: override where conversion outputs are stored.
 - `RISK_ASSESSMENT_SIM_SYSTEM_PATH`: optional filesystem target for uploading the generated `sim_system.json` into the risk assessment workspace.
+- `RISK_ASSESSMENT_UPLOAD_URL`: optional HTTP endpoint to POST the generated JSON.
+- `RISK_ASSESSMENT_UPLOAD_TOKEN`: optional bearer token for the upload endpoint.

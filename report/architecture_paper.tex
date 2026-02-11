@@ -131,6 +131,14 @@ The implementation includes an end-to-end orchestration action in the dashboard 
 bundles conversion, validation, discovery, and digital-twin generation into a single
 transaction, returning the validation report directly to the operator.
 
+\subsection{PID-Aligned Emulation}
+To make the emulated cyber network representative of the baseline PID design, the system
+generates a docker-compose testbed directly from the PID metadata. Cyber nodes with
+declared IPs, VLANs, and Purdue tiers are emitted into dedicated networks with static
+addresses, alongside per-zone scanner containers that validate reachability against the
+PID inventory. This enables reproducible validation of the emulated network before
+running higher-fidelity digital twin simulations.
+
 \section{Dashboard Orchestration and Visualization}
 The dashboard coordinates ingestion and analysis. It provides:
 (1) a P\&ID import UI for conversion and upload, (2) a system view with cyber/physical

@@ -124,6 +124,7 @@ from .pid_network import (
     summarize_expected_nodes,
     validate_expected_nodes,
 )
+from .pid_testbed import build_testbed_from_sim_system
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 RISK_ASSESSMENT_TIMEOUT = 15
@@ -3998,6 +3999,40 @@ def risk_assessment_pid_validate(request):
         "discovery_scans": scan_results,
         "openvas_scans": openvas_results,
         "digital_twin": twin_result,
+    })
+
+
+@require_http_methods(["POST"])
+def risk_assessment_pid_testbed(request):
+    try:
+        payload = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON payload.'}, status=400)
+
+    source = payload.get("source", "auto")
+    output_dir = payload.get("output_dir")
+    output_dir = Path(output_dir) if output_dir else Path(settings.BASE_DIR) / "out" / "pid_drawio"
+
+    output_dir_value = getattr(settings, "PID_DRAWIO_OUTPUT_DIR", None)
+    default_output_dir = Path(output_dir_value) if output_dir_value else Path(settings.BASE_DIR) / "out" / "pid_drawio"
+    target_path_value = getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", "")
+    target_path = Path(target_path_value) if target_path_value else None
+
+    sim_path, resolved_source = resolve_sim_system_path(source, default_output_dir, target_path)
+    if not sim_path:
+        return JsonResponse({"error": "No sim_system.json found."}, status=404)
+
+    try:
+        sim_system = load_sim_system_file(sim_path)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+    files = build_testbed_from_sim_system(sim_system, output_dir)
+    return JsonResponse({
+        "source": resolved_source,
+        "sim_system_path": _relative_to_base(sim_path),
+        "compose_path": _relative_to_base(files.compose_path),
+        "inventory_path": _relative_to_base(files.inventory_path),
     })
 
 

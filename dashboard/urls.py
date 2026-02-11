@@ -91,6 +91,7 @@ urlpatterns = [
     path('risk-assessment/pid/system/', views.risk_assessment_pid_system_api, name='risk_assessment_pid_system_api'),
     path('risk-assessment/pid/nodes/', views.risk_assessment_pid_nodes_api, name='risk_assessment_pid_nodes_api'),
     path('risk-assessment/pid/validate/', views.risk_assessment_pid_validate, name='risk_assessment_pid_validate'),
+    path('risk-assessment/pid/testbed/', views.risk_assessment_pid_testbed, name='risk_assessment_pid_testbed'),
 
     # Network monitoring and Security Onion-like features
     path('network/monitoring/', views.network_monitoring_dashboard, name='network_monitoring'),

@@ -15,6 +15,7 @@ Set these values in `.env`:
 - `OPENSEARCH_INDEX_PREFIX=siem-events`
 - `OPENSEARCH_USER` / `OPENSEARCH_PASS` if security is enabled
 - `OPENSEARCH_VERIFY_TLS=0` for local dev (self-signed or HTTP)
+- `OPENSEARCH_INITIAL_ADMIN_PASSWORD=ChangeMe!2026` (required by recent images)
 
 ## Index Template and Retention Policy
 The bootstrap container applies:

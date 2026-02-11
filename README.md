@@ -232,6 +232,7 @@ Documentation:
 - `docs/threat_intel.md`
 - `docs/siem_feature_overview.md`
 - `docs/siem_syslog_windows.md`
+- `docs/pid_drawio_pipeline.md`
 
 ---
 

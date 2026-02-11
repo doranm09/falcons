@@ -1,0 +1,30 @@
+{
+  "variables": {
+    "PUMP_1": {
+      "type": "fbPump",
+      "module": "P&ID"
+    },
+    "VALVE_1": {
+      "type": "fbValve",
+      "module": "P&ID"
+    },
+    "SENSOR_1": {
+      "type": "fbSensor",
+      "module": "P&ID"
+    }
+  },
+  "connections": [
+    {
+      "source": "PUMP_1",
+      "s_attr": "Output",
+      "target": "VALVE_1",
+      "t_attr": "Input"
+    },
+    {
+      "source": "SENSOR_1",
+      "s_attr": "Reading",
+      "target": "VALVE_1",
+      "t_attr": "Sensor"
+    }
+  ]
+}

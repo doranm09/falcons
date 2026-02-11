@@ -16,6 +16,9 @@
       <button class="nav-link active" id="risk-overview-tab" data-bs-toggle="tab" data-bs-target="#risk-overview" type="button" role="tab">Overview</button>
     </li>
     <li class="nav-item" role="presentation">
+      <button class="nav-link" id="risk-system-tab" data-bs-toggle="tab" data-bs-target="#risk-system" type="button" role="tab">System</button>
+    </li>
+    <li class="nav-item" role="presentation">
       <button class="nav-link" id="risk-nodes-tab" data-bs-toggle="tab" data-bs-target="#risk-nodes" type="button" role="tab">Nodes</button>
     </li>
     <li class="nav-item" role="presentation">
@@ -43,6 +46,153 @@
         </div>
         <div class="card-body">
           <div id="risk-status" class="text-muted">Loading status…</div>
+          <div id="risk-status-summary" class="mt-3"></div>
+        </div>
+      </div>
+      <div class="card shadow-sm mt-3">
+        <div class="card-header">
+          <h5 class="mb-0">P&amp;ID Draw.io Import</h5>
+        </div>
+        <div class="card-body">
+          <p class="text-muted mb-3">Convert draw.io XML to <code>sim_system.json</code> and optionally upload it to the risk assessment workspace.</p>
+          <div class="row g-3 align-items-end">
+            <div class="col-lg-6">
+              <label class="form-label" for="risk-pid-file">Draw.io XML</label>
+              <input type="file" class="form-control" id="risk-pid-file" accept=".xml,.drawio">
+            </div>
+            <div class="col-lg-4">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="risk-pid-upload-target">
+                <label class="form-check-label" for="risk-pid-upload-target">Upload to risk assessment workspace</label>
+              </div>
+              <div class="text-muted small" id="risk-pid-target-hint"></div>
+            </div>
+            <div class="col-lg-2 d-grid">
+              <button type="button" class="btn btn-primary" id="risk-pid-upload">
+                <i class="bi bi-upload"></i> Convert &amp; Upload
+              </button>
+            </div>
+          </div>
+          <div id="risk-pid-status" class="text-muted mt-3">Ready to convert.</div>
+        </div>
+      </div>
+      <div class="card shadow-sm mt-3">
+        <div class="card-header">
+          <h5 class="mb-0">PID-Driven Workflow</h5>
+        </div>
+        <div class="card-body">
+          <p class="text-muted mb-3">Run the end-to-end pipeline from PID metadata to a digital twin.</p>
+          <div class="row g-3">
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Step 1: Knowledge Extraction</div>
+              <div class="text-muted small mb-2">Convert draw.io XML into <code>sim_system.json</code>.</div>
+              <button type="button" class="btn btn-outline-primary w-100" id="risk-workflow-extract">Use P&amp;ID Import</button>
+            </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Step 2: System Definition</div>
+              <div class="text-muted small mb-2">Load the system graph from the PID outputs.</div>
+              <button type="button" class="btn btn-outline-primary w-100" id="risk-workflow-system">Open System View</button>
+            </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Step 3: Network Validation</div>
+              <div class="text-muted small mb-2">Validate expected PID cyber nodes against discovered assets.</div>
+              <button type="button" class="btn btn-primary w-100" id="risk-workflow-validate">Validate Network</button>
+            </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Run End-to-End</div>
+              <div class="text-muted small mb-2">Convert, validate, scan, and generate a twin in one run.</div>
+              <button type="button" class="btn btn-dark w-100" id="risk-workflow-run">Run Full Workflow</button>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Step 4: Vulnerability Discovery</div>
+              <div class="text-muted small mb-2">Launch OpenVAS scans per VLAN CIDR.</div>
+              <button type="button" class="btn btn-outline-danger w-100" id="risk-workflow-vuln">Run OpenVAS</button>
+            </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Step 5: Penetration Testing</div>
+              <div class="text-muted small mb-2">Generate a PID-based scan run for the digital twin.</div>
+              <button type="button" class="btn btn-outline-secondary w-100" id="risk-workflow-twin">Create Digital Twin</button>
+            </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Step 6: Emulation</div>
+              <div class="text-muted small mb-2">Open the Digital Twin workspace for emulation.</div>
+              <button type="button" class="btn btn-outline-secondary w-100" id="risk-workflow-open-twin">Open Digital Twin</button>
+            </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Validation Flags</div>
+              <div class="text-muted small mb-2">Toggle optional steps for full workflow.</div>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="risk-workflow-include-openvas">
+                <label class="form-check-label small" for="risk-workflow-include-openvas">Include OpenVAS</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="risk-workflow-include-twin">
+                <label class="form-check-label small" for="risk-workflow-include-twin">Create Digital Twin</label>
+              </div>
+            </div>
+          </div>
+          <div class="mt-3">
+            <div class="small text-muted mb-1">Validation options</div>
+            <div class="d-flex flex-wrap gap-3 align-items-center">
+              <select class="form-select form-select-sm" id="risk-workflow-scan">
+                <option value="">No discovery scan</option>
+                <option value="ping">Ping sweep</option>
+                <option value="nmap">Nmap discovery</option>
+              </select>
+              <label class="form-check-label small">
+                <input type="checkbox" class="form-check-input me-1" id="risk-workflow-sync"> Run scans synchronously
+              </label>
+              <input type="number" class="form-control form-control-sm" id="risk-workflow-scanrun" placeholder="Scan Run ID">
+            </div>
+          </div>
+          <div id="risk-workflow-status" class="text-muted mt-3">Workflow idle.</div>
+          <div id="risk-workflow-report" class="risk-workflow-report mt-3"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="risk-system" role="tabpanel">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <h5 class="mb-0">System View</h5>
+          <div class="d-flex gap-2 align-items-center">
+            <select class="form-select form-select-sm" id="risk-system-source">
+              <option value="auto">Auto (target or latest)</option>
+              <option value="target">Risk Assessment Target</option>
+              <option value="latest">Latest Conversion</option>
+            </select>
+            <select class="form-select form-select-sm" id="risk-system-layout">
+              <option value="breadthfirst">Breadthfirst</option>
+              <option value="cose">COSE</option>
+              <option value="circle">Circle</option>
+            </select>
+            <div class="d-flex align-items-center gap-1 small text-muted">
+              <label for="risk-system-spacing" class="mb-0">Spacing</label>
+              <input type="range" id="risk-system-spacing" min="1" max="3" step="0.1" value="1.8">
+              <span id="risk-system-spacing-value">1.8</span>
+            </div>
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="risk-system-network" checked>
+              <label class="form-check-label" for="risk-system-network">Network overlay</label>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" id="risk-system-relayout">
+              <i class="bi bi-arrow-repeat"></i> Relayout
+            </button>
+            <button class="btn btn-sm btn-outline-primary" id="risk-system-refresh">
+              <i class="bi bi-diagram-3"></i> Load System
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="risk-system-status" class="text-muted mb-3">No system loaded.</div>
+          <div id="risk-system-graph" class="risk-network-graph"></div>
+          <div id="risk-system-detail" class="risk-system-detail mt-3">
+            <div class="fw-semibold">Selected node</div>
+            <div id="risk-system-detail-body" class="small text-muted">Click a node to see details.</div>
+          </div>
+          <div id="risk-system-unconnected" class="small text-muted mt-2"></div>
         </div>
       </div>
     </div>
@@ -52,6 +202,10 @@
         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
           <h5 class="mb-0">Available Nodes</h5>
           <div class="d-flex gap-2">
+            <select class="form-select form-select-sm" id="risk-node-source">
+              <option value="pid">PID (sim_system)</option>
+              <option value="risk">Risk service</option>
+            </select>
             <label class="visually-hidden" for="risk-node-filter">Filter nodes</label>
             <input class="form-control form-control-sm" id="risk-node-filter" placeholder="Filter nodes">
             <button class="btn btn-sm btn-outline-primary" id="risk-nodes-refresh">
@@ -184,6 +338,7 @@
                 <div class="mb-3">
                   <label class="form-label" for="risk-cyber">Cyber Data (JSON, optional)</label>
                   <textarea class="form-control" id="risk-cyber" rows="4" placeholder='{"scanned_nodes": []}'></textarea>
+                  <div class="form-text">If cyber data is provided, the request uses the risk service <code>/probability</code> endpoint and ignores evidence.</div>
                 </div>
                 <div class="d-flex gap-2">
                   <button type="submit" class="btn btn-primary">
@@ -274,6 +429,18 @@
     border: 1px solid var(--border-color);
     border-radius: 8px;
   }
+  .risk-system-detail {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px 14px;
+    background: #f8fafc;
+  }
+  .risk-workflow-report {
+    border: 1px dashed var(--border-color);
+    border-radius: 8px;
+    padding: 12px 14px;
+    background: #f8fafc;
+  }
   @media (max-width: 992px) {
     .risk-network-graph {
       height: 60vh;
@@ -284,6 +451,7 @@
 <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
 <script>
   const statusEl = document.getElementById('risk-status');
+  const statusSummary = document.getElementById('risk-status-summary');
   const nodesTableBody = document.querySelector('#risk-nodes-table tbody');
   const nodeFilter = document.getElementById('risk-node-filter');
   const resultsEl = document.getElementById('risk-results');
@@ -298,7 +466,40 @@
   const testbedForm = document.getElementById('risk-testbed-form');
   const testbedStatus = document.getElementById('risk-testbed-status');
   const testbedRefresh = document.getElementById('risk-testbed-refresh');
+  const riskNodeSource = document.getElementById('risk-node-source');
+  const pidFileInput = document.getElementById('risk-pid-file');
+  const pidUploadButton = document.getElementById('risk-pid-upload');
+  const pidUploadTarget = document.getElementById('risk-pid-upload-target');
+  const pidStatus = document.getElementById('risk-pid-status');
+  const pidTargetHint = document.getElementById('risk-pid-target-hint');
+  const pidTargetPath = "{{ risk_pid_target_path|default:''|escapejs }}";
+  const workflowExtract = document.getElementById('risk-workflow-extract');
+  const workflowSystem = document.getElementById('risk-workflow-system');
+  const workflowValidate = document.getElementById('risk-workflow-validate');
+  const workflowVuln = document.getElementById('risk-workflow-vuln');
+  const workflowTwin = document.getElementById('risk-workflow-twin');
+  const workflowOpenTwin = document.getElementById('risk-workflow-open-twin');
+  const workflowRun = document.getElementById('risk-workflow-run');
+  const workflowIncludeOpenvas = document.getElementById('risk-workflow-include-openvas');
+  const workflowIncludeTwin = document.getElementById('risk-workflow-include-twin');
+  const workflowScan = document.getElementById('risk-workflow-scan');
+  const workflowSync = document.getElementById('risk-workflow-sync');
+  const workflowScanrun = document.getElementById('risk-workflow-scanrun');
+  const workflowStatus = document.getElementById('risk-workflow-status');
+  const workflowReport = document.getElementById('risk-workflow-report');
+  const systemGraphContainer = document.getElementById('risk-system-graph');
+  const systemStatus = document.getElementById('risk-system-status');
+  const systemUnconnected = document.getElementById('risk-system-unconnected');
+  const systemDetailBody = document.getElementById('risk-system-detail-body');
+  const systemSource = document.getElementById('risk-system-source');
+  const systemLayoutSelect = document.getElementById('risk-system-layout');
+  const systemSpacingInput = document.getElementById('risk-system-spacing');
+  const systemSpacingValue = document.getElementById('risk-system-spacing-value');
+  const systemNetworkToggle = document.getElementById('risk-system-network');
+  const systemRefresh = document.getElementById('risk-system-refresh');
+  const systemRelayout = document.getElementById('risk-system-relayout');
   let riskCy = null;
+  let systemCy = null;
   let riskGraphElements = [];
   let riskMappingRows = new Map();
   let mappingNodeById = new Map();
@@ -308,21 +509,63 @@
   let riskActiveScanId = null;
   let riskGraphScanId = null;
 
+  function renderStatusSummary(data) {
+    if (!statusSummary) return;
+    if (!data || typeof data !== 'object') {
+      statusSummary.innerHTML = '';
+      return;
+    }
+    if (data.status === 'error') {
+      statusSummary.innerHTML = `<div class="text-danger">Risk service not initialized.</div>`;
+      return;
+    }
+
+    const dbnLoaded = Boolean(data.dbn_loaded);
+    const badge = dbnLoaded
+      ? '<span class="badge bg-success">DBN Loaded</span>'
+      : '<span class="badge bg-warning text-dark">DBN Not Loaded</span>';
+    const nodes = data.nodes_count ?? '—';
+    const arcs = data.arcs_count ?? '—';
+    const outputDir = data.output_dir ? escapeHtml(String(data.output_dir)) : '—';
+    const message = data.message ? escapeHtml(String(data.message)) : '';
+
+    statusSummary.innerHTML = `
+      <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+        ${badge}
+        <span class="text-muted small">Nodes: ${nodes}</span>
+        <span class="text-muted small">Arcs: ${arcs}</span>
+      </div>
+      <div class="small text-muted">Output dir: ${outputDir}</div>
+      ${message ? `<div class="small text-muted">${message}</div>` : ''}
+    `;
+  }
+
   async function fetchStatus() {
     statusEl.textContent = 'Loading status…';
+    if (statusSummary) statusSummary.innerHTML = '';
     try {
       const response = await fetch("{% url 'dashboard:risk_assessment_status' %}");
       const data = await response.json();
       statusEl.textContent = response.ok ? JSON.stringify(data, null, 2) : data.error || 'Status error';
+      if (response.ok) {
+        renderStatusSummary(data);
+      } else {
+        renderStatusSummary({ status: 'error' });
+      }
     } catch (err) {
       statusEl.textContent = 'Status unavailable';
+      renderStatusSummary({ status: 'error' });
     }
   }
 
   async function fetchNodes() {
     nodesTableBody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Loading nodes…</td></tr>';
     try {
-      const response = await fetch("{% url 'dashboard:risk_assessment_nodes' %}");
+      const source = riskNodeSource && riskNodeSource.value === 'risk' ? 'risk' : 'pid';
+      const url = source === 'risk'
+        ? "{% url 'dashboard:risk_assessment_nodes' %}"
+        : "{% url 'dashboard:risk_assessment_pid_nodes_api' %}";
+      const response = await fetch(url);
       const data = await response.json();
       if (!response.ok) {
         nodesTableBody.innerHTML = `<tr><td colspan="2" class="text-center text-muted">${data.error || 'Error loading nodes'}</td></tr>`;
@@ -335,7 +578,9 @@
       }
       nodesTableBody.innerHTML = nodes.map(node => {
         const name = node.name || node.node || node.id || 'Unknown';
-        const states = node.states ? node.states.join(', ') : (node.state || '—');
+        const states = node.states
+          ? node.states.join(', ')
+          : (node.type ? `${node.type}${node.domain ? ` (${node.domain})` : ''}` : (node.state || '—'));
         return `<tr><td>${name}</td><td>${states}</td></tr>`;
       }).join('');
       applyNodeFilter();
@@ -373,6 +618,428 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function setPidStatus(message, isError=false) {
+    if (!pidStatus) return;
+    pidStatus.textContent = message;
+    pidStatus.classList.toggle('text-danger', isError);
+    pidStatus.classList.toggle('text-muted', !isError);
+  }
+
+  function setWorkflowStatus(message, isError=false) {
+    if (!workflowStatus) return;
+    workflowStatus.textContent = message;
+    workflowStatus.classList.toggle('text-danger', isError);
+    workflowStatus.classList.toggle('text-muted', !isError);
+  }
+
+  function renderWorkflowReport(data) {
+    if (!workflowReport) return;
+    if (!data || typeof data !== 'object') {
+      workflowReport.innerHTML = '';
+      return;
+    }
+    const summary = data.summary || {};
+    const validation = data.validation || {};
+    const missing = Array.isArray(validation.missing) ? validation.missing : [];
+    const found = Array.isArray(validation.found) ? validation.found : [];
+    const unknown = Array.isArray(validation.unknown_ips) ? validation.unknown_ips : [];
+    const vlans = summary.vlans || {};
+    const purdue = summary.purdue_levels || {};
+    const redundancy = summary.redundancy_groups || {};
+
+    const vlanText = Object.keys(vlans).length
+      ? Object.entries(vlans).map(([key, count]) => `${escapeHtml(key)}: ${count}`).join(', ')
+      : '—';
+    const purdueText = Object.keys(purdue).length
+      ? Object.entries(purdue).map(([key, count]) => `${escapeHtml(key)}: ${count}`).join(', ')
+      : '—';
+    const redundancyText = Object.keys(redundancy).length
+      ? Object.entries(redundancy).map(([key, count]) => `${escapeHtml(key)}: ${count}`).join(', ')
+      : '—';
+
+    const missingList = missing.slice(0, 8).map(item => {
+      const label = escapeHtml(item.label || item.id || 'unknown');
+      const ip = item.ip ? ` (${escapeHtml(item.ip)})` : '';
+      const reason = item.reason ? ` - ${escapeHtml(item.reason)}` : '';
+      return `<li>${label}${ip}${reason}</li>`;
+    }).join('');
+    const unknownList = unknown.slice(0, 8).map(ip => `<li>${escapeHtml(ip)}</li>`).join('');
+
+    workflowReport.innerHTML = `
+      <div class="fw-semibold mb-2">Validation Report</div>
+      <div class="small text-muted mb-2">Expected: ${validation.expected_count ?? summary.count ?? 0} | Found: ${found.length} | Missing: ${missing.length}</div>
+      <div class="small text-muted mb-2">VLANs: ${vlanText}</div>
+      <div class="small text-muted mb-2">Purdue levels: ${purdueText}</div>
+      <div class="small text-muted mb-2">Redundancy groups: ${redundancyText}</div>
+      <div class="small fw-semibold mt-2">Missing nodes (sample)</div>
+      <ul class="small text-muted">${missingList || '<li>None</li>'}</ul>
+      <div class="small fw-semibold mt-2">Unknown IPs (sample)</div>
+      <ul class="small text-muted">${unknownList || '<li>None</li>'}</ul>
+    `;
+  }
+
+  function initPidUploader() {
+    if (pidTargetHint) {
+      pidTargetHint.textContent = pidTargetPath
+        ? `Target: ${pidTargetPath}`
+        : 'Upload path not configured (set RISK_ASSESSMENT_SIM_SYSTEM_PATH).';
+    }
+    if (pidUploadTarget) {
+      pidUploadTarget.checked = Boolean(pidTargetPath);
+      pidUploadTarget.disabled = !pidTargetPath;
+    }
+  }
+
+  async function runPidValidation(options) {
+    setWorkflowStatus('Running validation…');
+    if (workflowReport) workflowReport.innerHTML = '';
+    try {
+      const response = await fetch("{% url 'dashboard:risk_assessment_pid_validate' %}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(options || {})
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setWorkflowStatus(data.error || 'Validation failed.', true);
+        return null;
+      }
+      const summary = data.summary || {};
+      const validation = data.validation || {};
+      const found = Array.isArray(validation.found) ? validation.found.length : 0;
+      const missing = Array.isArray(validation.missing) ? validation.missing.length : 0;
+      const expected = validation.expected_count ?? summary.count ?? 0;
+      setWorkflowStatus(`Validation complete: ${found} found, ${missing} missing (expected ${expected}).`);
+      renderWorkflowReport(data);
+      return data;
+    } catch (err) {
+      setWorkflowStatus('Validation unavailable.', true);
+      return null;
+    }
+  }
+
+  function setSystemStatus(message, isError=false) {
+    if (!systemStatus) return;
+    systemStatus.textContent = message;
+    systemStatus.classList.toggle('text-danger', isError);
+    systemStatus.classList.toggle('text-muted', !isError);
+  }
+
+  function renderSystemUnconnected(list) {
+    if (!systemUnconnected) return;
+    if (!Array.isArray(list) || list.length === 0) {
+      systemUnconnected.textContent = '';
+      return;
+    }
+    const preview = list.slice(0, 8).join(', ');
+    const suffix = list.length > 8 ? ` (+${list.length - 8} more)` : '';
+    systemUnconnected.textContent = `Unconnected cyber nodes: ${preview}${suffix}`;
+  }
+
+  function renderSystemGraph(elements) {
+    if (!systemGraphContainer) return;
+    if (!Array.isArray(elements) || elements.length === 0) {
+      systemGraphContainer.innerHTML = '<div class="text-muted text-center py-5">No system graph data available.</div>';
+      if (systemCy) {
+        systemCy.destroy();
+        systemCy = null;
+      }
+      return;
+    }
+
+    systemGraphContainer.innerHTML = '';
+    if (systemCy) {
+      systemCy.destroy();
+      systemCy = null;
+    }
+
+    systemCy = cytoscape({
+      container: systemGraphContainer,
+      elements,
+      style: [
+        { selector: 'node', style: {
+          'label': 'data(label_short)',
+          'font-size': 12,
+          'min-zoomed-font-size': 9,
+          'text-wrap': 'wrap',
+          'text-max-width': 120,
+          'text-valign': 'center',
+          'text-halign': 'center',
+          'text-background-color': '#ffffff',
+          'text-background-opacity': 0.85,
+          'text-background-shape': 'roundrectangle',
+          'text-border-color': '#334155',
+          'text-border-width': 0.5,
+          'border-width': 1,
+          'border-color': '#1f2937',
+          'width': 'label',
+          'height': 'label',
+          'padding': 8
+        }},
+        { selector: 'node[domain = \"physical\"]', style: {
+          'background-color': '#cbd5f5',
+          'shape': 'roundrectangle'
+        }},
+        { selector: 'node[domain = \"cyber\"]', style: {
+          'background-color': '#7dd3fc',
+          'shape': 'ellipse'
+        }},
+        { selector: 'node:selected', style: {
+          'border-color': '#1d4ed8',
+          'border-width': 3
+        }},
+        { selector: 'node[cyber_connected = false]', style: {
+          'border-color': '#dc2626',
+          'border-width': 3
+        }},
+        { selector: 'edge', style: {
+          'label': '',
+          'font-size': 9,
+          'color': '#111827',
+          'text-background-color': '#ffffff',
+          'text-background-opacity': 0.8,
+          'text-background-shape': 'roundrectangle',
+          'curve-style': 'bezier',
+          'width': 2,
+          'line-color': '#94a3b8',
+          'target-arrow-shape': 'triangle',
+          'target-arrow-color': '#94a3b8'
+        }},
+        { selector: 'edge:selected', style: {
+          'label': 'data(label)'
+        }},
+        { selector: 'edge[kind = \"process\"]', style: {
+          'line-color': '#94a3b8',
+          'target-arrow-color': '#94a3b8'
+        }},
+        { selector: 'edge[kind = \"network\"]', style: {
+          'line-color': '#22c55e',
+          'target-arrow-color': '#22c55e',
+          'line-style': 'dashed'
+        }}
+      ],
+      layout: buildSystemLayout()
+    });
+
+    if (systemDetailBody) {
+      systemDetailBody.textContent = 'Click a node to see details.';
+    }
+    systemCy.on('select', 'node', event => {
+      if (!systemDetailBody) return;
+      const data = event.target.data() || {};
+      const parts = [];
+      parts.push(`<div class="fw-semibold">${escapeHtml(data.label_full || data.label || data.id)}</div>`);
+      parts.push(`<div>Domain: ${escapeHtml(data.domain || 'unknown')}</div>`);
+      if (data.type) parts.push(`<div>Type: ${escapeHtml(data.type)}</div>`);
+      if (data.module) parts.push(`<div>Module: ${escapeHtml(data.module)}</div>`);
+      if (data.system) parts.push(`<div>System: ${escapeHtml(data.system)}</div>`);
+      if (data.unit) parts.push(`<div>Unit: ${escapeHtml(data.unit)}</div>`);
+      if (data.vlan) parts.push(`<div>VLAN: ${escapeHtml(data.vlan)}</div>`);
+      if (data.vlan_cidr) parts.push(`<div>VLAN CIDR: ${escapeHtml(data.vlan_cidr)}</div>`);
+      if (data.purdue_level) parts.push(`<div>Purdue: ${escapeHtml(data.purdue_level)}</div>`);
+      if (data.redundancy_group) parts.push(`<div>Redundancy: ${escapeHtml(data.redundancy_group)}</div>`);
+      if (data.description) parts.push(`<div>Description: ${escapeHtml(data.description)}</div>`);
+      if (data.ip) parts.push(`<div>IP: ${escapeHtml(data.ip)}</div>`);
+      if (data.agent_id) parts.push(`<div>Agent: ${escapeHtml(data.agent_id)}</div>`);
+      systemDetailBody.innerHTML = parts.join('');
+    });
+    systemCy.on('unselect', 'node', () => {
+      if (!systemDetailBody) return;
+      systemDetailBody.textContent = 'Click a node to see details.';
+    });
+  }
+
+  function currentSpacing() {
+    const raw = parseFloat(systemSpacingInput?.value || '1.8');
+    return Number.isFinite(raw) ? raw : 1.8;
+  }
+
+  function buildSystemLayout() {
+    const name = systemLayoutSelect?.value || 'breadthfirst';
+    const spacing = currentSpacing();
+    const base = {
+      name,
+      fit: true,
+      padding: 60,
+      spacingFactor: spacing
+    };
+
+    if (name === 'cose') {
+      return {
+        ...base,
+        animate: false,
+        randomize: true,
+        nodeRepulsion: 36000 * spacing,
+        idealEdgeLength: 240 * spacing,
+        edgeElasticity: 0.18,
+        gravity: 0.12,
+        numIter: 2200
+      };
+    }
+
+    if (name === 'breadthfirst') {
+      return {
+        ...base,
+        directed: true,
+        circle: false,
+        grid: false
+      };
+    }
+
+    if (name === 'circle') {
+      return {
+        ...base,
+        animate: false,
+        radius: 200 * spacing
+      };
+    }
+
+    return base;
+  }
+
+  function relayoutSystemGraph() {
+    if (!systemCy) return;
+    const layout = systemCy.layout(buildSystemLayout());
+    layout.run();
+  }
+
+  if (systemSpacingInput && systemSpacingValue) {
+    systemSpacingValue.textContent = currentSpacing().toFixed(1);
+    systemSpacingInput.addEventListener('input', () => {
+      systemSpacingValue.textContent = currentSpacing().toFixed(1);
+    });
+  }
+  if (systemRelayout) {
+    systemRelayout.addEventListener('click', () => relayoutSystemGraph());
+  }
+  if (systemLayoutSelect) {
+    systemLayoutSelect.addEventListener('change', () => relayoutSystemGraph());
+  }
+
+  async function loadSystemGraph() {
+    if (!systemGraphContainer) return;
+    const params = new URLSearchParams();
+    if (systemSource && systemSource.value) params.set('source', systemSource.value);
+    params.set('include_network', systemNetworkToggle && systemNetworkToggle.checked ? '1' : '0');
+
+    setSystemStatus('Loading system graph…');
+    try {
+      const response = await fetch("{% url 'dashboard:risk_assessment_pid_system_api' %}?" + params.toString());
+      const data = await response.json();
+      if (!response.ok) {
+        setSystemStatus(data.error || 'System graph unavailable.', true);
+        renderSystemGraph([]);
+        return;
+      }
+      renderSystemGraph(data.elements || []);
+      const meta = data.meta || {};
+      setSystemStatus(
+        `Loaded ${meta.variables || 0} nodes (${meta.cyber_nodes || 0} cyber, ${meta.physical_nodes || 0} physical), ` +
+        `${meta.connections || 0} process edges, ${meta.network_edges || 0} network edges.`
+      );
+      renderSystemUnconnected(meta.unconnected_cyber);
+    } catch (err) {
+      setSystemStatus('System graph unavailable.', true);
+      renderSystemGraph([]);
+    }
+  }
+
+  if (workflowExtract && pidUploadButton) {
+    workflowExtract.addEventListener('click', () => pidUploadButton.click());
+  }
+  if (workflowSystem) {
+    workflowSystem.addEventListener('click', () => {
+      const tab = document.getElementById('risk-system-tab');
+      if (tab) tab.click();
+      if (systemRefresh) systemRefresh.click();
+    });
+  }
+  if (workflowValidate) {
+    workflowValidate.addEventListener('click', () => {
+      const payload = {
+        source: systemSource?.value || 'auto',
+        scan: workflowScan?.value || '',
+        scan_sync: Boolean(workflowSync?.checked),
+        scan_run_id: workflowScanrun?.value ? Number(workflowScanrun.value) : null,
+      };
+      runPidValidation(payload);
+    });
+  }
+  if (workflowVuln) {
+    workflowVuln.addEventListener('click', () => {
+      const payload = {
+        source: systemSource?.value || 'auto',
+        openvas: true,
+      };
+      runPidValidation(payload);
+    });
+  }
+  if (workflowTwin) {
+    workflowTwin.addEventListener('click', async () => {
+      const payload = {
+        source: systemSource?.value || 'auto',
+        create_twin: true,
+      };
+      const data = await runPidValidation(payload);
+      if (data && data.digital_twin && data.digital_twin.scan_id) {
+        const scanId = data.digital_twin.scan_id;
+        setWorkflowStatus(`Digital twin scan created (scan_id=${scanId}). Open Digital Twin tab to launch.`, false);
+      }
+    });
+  }
+  if (workflowOpenTwin) {
+    workflowOpenTwin.addEventListener('click', () => {
+      window.location.href = "{% url 'dashboard:digital_twin_page' %}";
+    });
+  }
+  if (workflowRun) {
+    workflowRun.addEventListener('click', async () => {
+      if (!pidFileInput || !pidFileInput.files?.length) {
+        setWorkflowStatus('Select a draw.io XML file first.', true);
+        return;
+      }
+      const formData = new FormData();
+      formData.append('drawio_file', pidFileInput.files[0]);
+      formData.append('upload_target', pidUploadTarget?.checked ? '1' : '0');
+      formData.append('run_validation', '1');
+      formData.append('scan', workflowScan?.value || '');
+      formData.append('scan_sync', workflowSync?.checked ? '1' : '0');
+      formData.append('openvas', workflowIncludeOpenvas?.checked ? '1' : '0');
+      formData.append('create_twin', workflowIncludeTwin?.checked ? '1' : '0');
+      if (workflowScanrun?.value) {
+        formData.append('scan_run_id', workflowScanrun.value);
+      }
+      setWorkflowStatus('Running full workflow…');
+      try {
+        const response = await fetch("{% url 'dashboard:risk_assessment_pid_upload' %}", {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          setWorkflowStatus(data.error || 'Workflow failed.', true);
+          return;
+        }
+        if (data.validation) {
+          renderWorkflowReport({
+            summary: data.validation.summary,
+            validation: data.validation.validation,
+            validation_scans: data.validation.discovery_scans,
+          });
+          const validation = data.validation.validation || {};
+          const found = Array.isArray(validation.found) ? validation.found.length : 0;
+          const missing = Array.isArray(validation.missing) ? validation.missing.length : 0;
+          const expected = validation.expected_count ?? 0;
+          setWorkflowStatus(`Workflow complete: ${found} found, ${missing} missing (expected ${expected}).`);
+        } else {
+          setWorkflowStatus('Workflow complete.');
+        }
+      } catch (err) {
+        setWorkflowStatus('Workflow unavailable.', true);
+      }
+    });
   }
 
   function applyMappingFilter() {
@@ -820,25 +1487,33 @@
       return;
     }
 
-    const payload = {
-      T: Number.isNaN(tValue) ? 3 : tValue,
-      evidence,
-    };
-
-    if (nodesInput) {
-      payload.nodes = nodesInput.split(',').map(node => node.trim()).filter(Boolean);
-    }
-    if (cyberData) {
-      payload.cyber_data = cyberData;
-    }
-
     resultsEl.textContent = 'Calculating…';
     try {
-      const response = await fetch("{% url 'dashboard:risk_assessment_probability' %}", {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      let response;
+      if (cyberData) {
+        const payload = {
+          T: Number.isNaN(tValue) ? 3 : tValue,
+          cyber_data: cyberData,
+        };
+        response = await fetch("{% url 'dashboard:risk_assessment_probability' %}", {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        const payload = {
+          T: Number.isNaN(tValue) ? 3 : tValue,
+          evidence,
+        };
+        if (nodesInput) {
+          payload.nodes = nodesInput.split(',').map(node => node.trim()).filter(Boolean);
+        }
+        response = await fetch("{% url 'dashboard:risk_assessment_evidence' %}", {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
       const data = await response.json();
       resultsEl.textContent = response.ok ? JSON.stringify(data, null, 2) : (data.error || 'Calculation error');
     } catch (err) {
@@ -1108,6 +1783,72 @@
     } catch (err) {
       tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Risk service unavailable.</td></tr>';
     }
+  }
+
+  initPidUploader();
+  if (pidUploadButton) {
+    pidUploadButton.addEventListener('click', async () => {
+      if (!pidFileInput || !pidFileInput.files.length) {
+        setPidStatus('Select a draw.io XML file to upload.', true);
+        return;
+      }
+      const file = pidFileInput.files[0];
+      const formData = new FormData();
+      formData.append('drawio_file', file);
+      if (pidUploadTarget && pidUploadTarget.checked) {
+        formData.append('upload_target', '1');
+      }
+
+      setPidStatus('Converting draw.io XML…');
+      try {
+        const response = await fetch("{% url 'dashboard:risk_assessment_pid_upload' %}", {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': getCSRFToken()
+          },
+          body: formData
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          setPidStatus(data.error || 'Conversion failed.', true);
+          return;
+        }
+        let message = `Converted ${data.variables_count} nodes, ${data.connections_count} edges. Saved ${data.sim_system_path}.`;
+        if (data.upload && data.upload.attempted) {
+          if (data.upload.success) {
+            message += ` Uploaded to ${data.upload.path}.`;
+          } else if (data.upload.error) {
+            message += ` Upload failed: ${data.upload.error}`;
+          }
+          if (data.upload.posted) {
+            message += ' Posted to risk assessment API.';
+          } else if (data.upload.post_error) {
+            message += ` Post failed: ${data.upload.post_error}`;
+          }
+        }
+        setPidStatus(message);
+      } catch (err) {
+        setPidStatus('Conversion failed. Please try again.', true);
+      }
+    });
+  }
+
+  if (riskNodeSource) {
+    riskNodeSource.addEventListener('change', fetchNodes);
+  }
+
+  if (systemRefresh) {
+    systemRefresh.addEventListener('click', loadSystemGraph);
+  }
+  if (systemSource) {
+    systemSource.addEventListener('change', loadSystemGraph);
+  }
+  if (systemNetworkToggle) {
+    systemNetworkToggle.addEventListener('change', loadSystemGraph);
+  }
+  const systemTab = document.getElementById('risk-system-tab');
+  if (systemTab) {
+    systemTab.addEventListener('shown.bs.tab', loadSystemGraph);
   }
 
   document.getElementById('risk-network-refresh').addEventListener('click', fetchNetworkRisk);

@@ -105,6 +105,23 @@ from .siem_threat_intel import ingest_indicators, match_indicators, persist_ioc_
 from .siem_syslog import syslog_to_event
 from .siem_windows import windows_event_to_event
 from .health import health_snapshot, metrics_payload
+from .pid_drawio import (
+    build_timestamp_prefix,
+    convert_drawio_to_sim_system,
+    store_drawio_upload,
+    upload_sim_system,
+)
+from knowledge_extraction.drawio import DrawioParseError
+from .pid_system import (
+    build_system_elements,
+    load_sim_system_file,
+    resolve_sim_system_path,
+)
+from .pid_network import (
+    expected_cyber_nodes,
+    summarize_expected_nodes,
+    validate_expected_nodes,
+)
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 RISK_ASSESSMENT_TIMEOUT = 15
@@ -3125,7 +3142,227 @@ def network_topology_api(request):
 
 
 def risk_assessment_page(request):
-    return render(request, 'dashboard/risk_assessment.html')
+    return render(
+        request,
+        'dashboard/risk_assessment.html',
+        {
+            "risk_pid_target_path": getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", ""),
+        },
+    )
+
+
+@require_http_methods(["POST"])
+def risk_assessment_pid_upload(request):
+    upload = request.FILES.get("drawio_file")
+    if upload is None:
+        return JsonResponse({"error": "drawio_file is required."}, status=400)
+
+    output_dir_value = getattr(settings, "PID_DRAWIO_OUTPUT_DIR", None)
+    output_dir = Path(output_dir_value) if output_dir_value else Path(settings.BASE_DIR) / "out" / "pid_drawio"
+    prefix = build_timestamp_prefix()
+
+    try:
+        xml_path = store_drawio_upload(upload, output_dir, prefix)
+        sim_system, sim_path = convert_drawio_to_sim_system(xml_path, output_dir, prefix)
+    except DrawioParseError as exc:
+        return JsonResponse({"error": f"Invalid draw.io XML: {exc}"}, status=400)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+    upload_requested = str(request.POST.get("upload_target", "")).lower() in ("1", "true", "yes", "on")
+    run_validation = str(request.POST.get("run_validation", "")).lower() in ("1", "true", "yes", "on")
+    scan_method = (request.POST.get("scan") or "").lower()
+    scan_sync = str(request.POST.get("scan_sync") or "").lower() in ("1", "true", "yes", "on")
+    run_openvas = str(request.POST.get("openvas") or "").lower() in ("1", "true", "yes", "on")
+    create_twin = str(request.POST.get("create_twin") or "").lower() in ("1", "true", "yes", "on")
+    scan_run_id = request.POST.get("scan_run_id")
+    if scan_run_id:
+        try:
+            scan_run_id = int(scan_run_id)
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "scan_run_id must be an integer."}, status=400)
+    else:
+        scan_run_id = None
+    upload_path_value = getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", "")
+    upload_url = getattr(settings, "RISK_ASSESSMENT_UPLOAD_URL", "")
+    upload_token = getattr(settings, "RISK_ASSESSMENT_UPLOAD_TOKEN", "")
+    upload_result = {
+        "attempted": upload_requested,
+        "success": False,
+        "path": None,
+        "error": None,
+        "posted": False,
+        "post_error": None,
+    }
+
+    if upload_requested:
+        if upload_path_value:
+            try:
+                uploaded_path = upload_sim_system(sim_path, Path(upload_path_value))
+                upload_result["success"] = True
+                upload_result["path"] = _relative_to_base(uploaded_path)
+            except Exception as exc:
+                upload_result["error"] = str(exc)
+        else:
+            upload_result["error"] = "RISK_ASSESSMENT_SIM_SYSTEM_PATH not configured."
+
+        if upload_url:
+            try:
+                headers = {}
+                if upload_token:
+                    headers["Authorization"] = f"Bearer {upload_token}"
+                response = requests.post(upload_url, json=sim_system, headers=headers, timeout=RISK_ASSESSMENT_TIMEOUT)
+                response.raise_for_status()
+                upload_result["posted"] = True
+            except Exception as exc:
+                upload_result["post_error"] = str(exc)
+
+    variables = sim_system.get("variables", {}) if isinstance(sim_system, dict) else {}
+    connections = sim_system.get("connections", []) if isinstance(sim_system, dict) else []
+
+    validation_result = None
+    if run_validation:
+        validation_result = _pid_validation_pipeline(
+            sim_system=sim_system,
+            scan_method=scan_method,
+            scan_sync=scan_sync,
+            run_openvas=run_openvas,
+            create_twin=create_twin,
+            scan_run_id=scan_run_id,
+        )
+
+    return JsonResponse(
+        {
+            "variables_count": len(variables),
+            "connections_count": len(connections),
+            "drawio_path": _relative_to_base(xml_path),
+            "sim_system_path": _relative_to_base(sim_path),
+            "upload": upload_result,
+            "validation": {
+                "summary": validation_result[0],
+                "validation": validation_result[1],
+                "discovery_scans": validation_result[2],
+                "openvas_scans": validation_result[3],
+                "digital_twin": validation_result[4],
+            } if validation_result else None,
+        }
+    )
+
+
+@require_GET
+def risk_assessment_pid_system_api(request):
+    source = request.GET.get("source", "auto")
+    include_network = request.GET.get("include_network", "1").lower() not in ("0", "false", "no")
+
+    output_dir_value = getattr(settings, "PID_DRAWIO_OUTPUT_DIR", None)
+    output_dir = Path(output_dir_value) if output_dir_value else Path(settings.BASE_DIR) / "out" / "pid_drawio"
+    target_path_value = getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", "")
+    target_path = Path(target_path_value) if target_path_value else None
+
+    sim_path, resolved_source = resolve_sim_system_path(source, output_dir, target_path)
+    if not sim_path:
+        return JsonResponse({"error": "No sim_system.json found."}, status=404)
+
+    try:
+        sim_system = load_sim_system_file(sim_path)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+    elements, meta = build_system_elements(sim_system, include_network=include_network)
+    meta.update(
+        {
+            "source": resolved_source,
+            "file": _relative_to_base(sim_path),
+            "include_network": include_network,
+        }
+    )
+
+    return JsonResponse({"elements": elements, "meta": meta})
+
+
+@require_GET
+def risk_assessment_pid_nodes_api(request):
+    source = request.GET.get("source", "auto")
+    output_dir_value = getattr(settings, "PID_DRAWIO_OUTPUT_DIR", None)
+    output_dir = Path(output_dir_value) if output_dir_value else Path(settings.BASE_DIR) / "out" / "pid_drawio"
+    target_path_value = getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", "")
+    target_path = Path(target_path_value) if target_path_value else None
+
+    sim_path, resolved_source = resolve_sim_system_path(source, output_dir, target_path)
+    if not sim_path:
+        return JsonResponse({"error": "No sim_system.json found."}, status=404)
+
+    try:
+        sim_system = load_sim_system_file(sim_path)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+    variables = sim_system.get("variables", {}) if isinstance(sim_system, dict) else {}
+    nodes = []
+    for var_id, info in variables.items():
+        info = info if isinstance(info, dict) else {}
+        nodes.append({
+            "id": str(var_id),
+            "type": info.get("type") or "unknown",
+            "module": info.get("module") or "",
+            "domain": info.get("domain") or "",
+        })
+
+    return JsonResponse({"source": resolved_source, "nodes": nodes})
+
+
+@require_http_methods(["POST"])
+def risk_assessment_pid_validate(request):
+    try:
+        payload = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON payload.'}, status=400)
+
+    source = payload.get("source", "auto")
+    scan_method = (payload.get("scan") or "").lower()
+    scan_sync = bool(payload.get("scan_sync"))
+    run_openvas = bool(payload.get("openvas"))
+    create_twin = bool(payload.get("create_twin"))
+    scan_run_id = payload.get("scan_run_id")
+
+    if scan_run_id is not None:
+        try:
+            scan_run_id = int(scan_run_id)
+        except (TypeError, ValueError):
+            return JsonResponse({'error': 'scan_run_id must be an integer.'}, status=400)
+
+    output_dir_value = getattr(settings, "PID_DRAWIO_OUTPUT_DIR", None)
+    output_dir = Path(output_dir_value) if output_dir_value else Path(settings.BASE_DIR) / "out" / "pid_drawio"
+    target_path_value = getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", "")
+    target_path = Path(target_path_value) if target_path_value else None
+
+    sim_path, resolved_source = resolve_sim_system_path(source, output_dir, target_path)
+    if not sim_path:
+        return JsonResponse({"error": "No sim_system.json found."}, status=404)
+
+    try:
+        sim_system = load_sim_system_file(sim_path)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+    summary, validation, scan_results, openvas_results, twin_result = _pid_validation_pipeline(
+        sim_system=sim_system,
+        scan_method=scan_method,
+        scan_sync=scan_sync,
+        run_openvas=run_openvas,
+        create_twin=create_twin,
+        scan_run_id=scan_run_id,
+    )
+
+    return JsonResponse({
+        "source": resolved_source,
+        "sim_system_path": _relative_to_base(sim_path),
+        "summary": summary,
+        "validation": validation,
+        "discovery_scans": scan_results,
+        "openvas_scans": openvas_results,
+        "digital_twin": twin_result,
+    })
 
 
 @require_GET
@@ -3147,17 +3384,70 @@ def risk_assessment_nodes_api(request):
 
 
 @require_http_methods(["POST"])
+def risk_assessment_evidence_api(request):
+    try:
+        payload = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON payload.'}, status=400)
+
+    evidence = payload.get("evidence", {})
+    nodes = payload.get("nodes", None)
+    t_value = payload.get("T", None)
+
+    if not isinstance(evidence, dict):
+        return JsonResponse({'error': 'evidence must be an object.'}, status=400)
+
+    if nodes is not None and not isinstance(nodes, list):
+        return JsonResponse({'error': 'nodes must be a list of node names.'}, status=400)
+
+    if t_value is not None:
+        try:
+            t_value = int(t_value)
+        except (TypeError, ValueError):
+            return JsonResponse({'error': 'T must be an integer.'}, status=400)
+
+    try:
+        response = _risk_call(
+            requests.post,
+            '/evidence',
+            json={
+                "T": t_value if t_value is not None else 3,
+                "evidence": evidence,
+                "nodes": nodes,
+            },
+        )
+        return JsonResponse(response.json())
+    except Exception as exc:
+        return JsonResponse({'error': str(exc)}, status=502)
+
+
+@require_http_methods(["POST"])
 def risk_assessment_probability_api(request):
     try:
         payload = json.loads(request.body or '{}')
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON payload.'}, status=400)
 
+    t_value = payload.get("T", None)
+    if t_value is not None:
+        try:
+            t_value = int(t_value)
+        except (TypeError, ValueError):
+            return JsonResponse({'error': 'T must be an integer.'}, status=400)
+
+    cyber_data = payload.get("cyber_data")
+    if cyber_data is None and payload.get("scanned_nodes") is not None:
+        cyber_data = payload
+
+    if not isinstance(cyber_data, dict):
+        return JsonResponse({'error': 'cyber_data must be provided for /probability.'}, status=400)
+
     try:
         response = _risk_call(
             requests.post,
             '/probability',
-            json=payload,
+            json=cyber_data,
+            params={"T": t_value} if t_value is not None else None,
         )
         return JsonResponse(response.json())
     except Exception as exc:
@@ -3591,3 +3881,108 @@ def risk_assessment_testbed_generate(request):
 def _risk_api_url(path: str) -> str:
     base = getattr(settings, 'RISK_ASSESSMENT_API_URL', 'http://127.0.0.1:7890')
     return f"{base.rstrip('/')}/{path.lstrip('/')}"
+
+
+def _pid_validation_pipeline(
+    sim_system: dict,
+    scan_method: str,
+    scan_sync: bool,
+    run_openvas: bool,
+    create_twin: bool,
+    scan_run_id: Optional[int],
+) -> tuple[dict, dict, list, list, Optional[dict]]:
+    expected_nodes = expected_cyber_nodes(sim_system)
+    summary = summarize_expected_nodes(expected_nodes)
+
+    nodes_qs = Node.objects.all()
+    if scan_run_id:
+        nodes_qs = nodes_qs.filter(scan_run_id=scan_run_id)
+    discovered_ips = list(nodes_qs.values_list("ip_address", flat=True))
+    interface_ips = list(NodeInterface.objects.filter(node__in=nodes_qs).values_list("ip", flat=True))
+
+    validation = validate_expected_nodes(expected_nodes, [*discovered_ips, *interface_ips])
+
+    scan_results = []
+    if scan_method in {"ping", "nmap"}:
+        vlan_cidrs = []
+        for cidr_list in summary.get("vlan_cidrs", {}).values():
+            vlan_cidrs.extend(cidr_list)
+        vlan_cidrs = sorted(set(vlan_cidrs))
+        for cidr in vlan_cidrs:
+            if scan_method == "nmap":
+                result = nmap_discovery_task(cidr) if scan_sync else nmap_discovery_task.delay(cidr)
+            else:
+                result = scan_network_task(cidr) if scan_sync else scan_network_task.delay(cidr)
+            scan_results.append({"cidr": cidr, "method": scan_method, "result": str(result)})
+
+    openvas_results = []
+    if run_openvas:
+        vlan_cidrs = []
+        for cidr_list in summary.get("vlan_cidrs", {}).values():
+            vlan_cidrs.extend(cidr_list)
+        vlan_cidrs = sorted(set(vlan_cidrs))
+        for cidr in vlan_cidrs:
+            result = launch_openvas_scan_task.delay(cidr)
+            openvas_results.append({"cidr": cidr, "result": str(result)})
+
+    twin_result = None
+    if create_twin:
+        variables = sim_system.get("variables", {}) if isinstance(sim_system, dict) else {}
+        connections = sim_system.get("connections", []) if isinstance(sim_system, dict) else []
+        ip_by_id = {node.node_id: node.ip for node in expected_nodes if node.ip}
+
+        node_by_id = {}
+        link_count = 0
+        with transaction.atomic():
+            scan = ScanRun.objects.create(
+                cidr="pid",
+                status="COMPLETE",
+                scan_type="pid",
+                result_summary="Digital twin generated from PID sim_system.json",
+            )
+            for var_id, info in variables.items():
+                info = info if isinstance(info, dict) else {}
+                if var_id not in ip_by_id:
+                    continue
+                ip_addr = ip_by_id[var_id]
+                name = str(info.get("name") or var_id)
+                description_parts = []
+                if info.get("purdue_level"):
+                    description_parts.append(f"Purdue: {info.get('purdue_level')}")
+                if info.get("vlan"):
+                    description_parts.append(f"VLAN: {info.get('vlan')}")
+                if info.get("redundancy_group"):
+                    description_parts.append(f"Redundancy: {info.get('redundancy_group')}")
+                node = Node.objects.create(
+                    scan_run=scan,
+                    ip_address=ip_addr,
+                    name=name,
+                    status="online",
+                    description=" | ".join(description_parts),
+                )
+                node_by_id[str(var_id)] = node
+
+            for conn in connections:
+                if not isinstance(conn, dict):
+                    continue
+                source = str(conn.get("source"))
+                target = str(conn.get("target"))
+                if source in node_by_id and target in node_by_id:
+                    Link.objects.create(
+                        scan_run=scan,
+                        source=node_by_id[source],
+                        destination=node_by_id[target],
+                        weight=1.0,
+                    )
+                    link_count += 1
+
+        twin_result = {"scan_id": scan.id, "nodes": len(node_by_id), "links": link_count}
+
+    return summary, validation, scan_results, openvas_results, twin_result
+
+
+def _relative_to_base(path: Path) -> str:
+    try:
+        return str(path.relative_to(settings.BASE_DIR))
+    except Exception:
+        return str(path)

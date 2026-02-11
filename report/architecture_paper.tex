@@ -139,6 +139,10 @@ addresses, alongside per-zone scanner containers that validate reachability agai
 PID inventory. This enables reproducible validation of the emulated network before
 running higher-fidelity digital twin simulations.
 
+A verification step compares scanner reachability reports against the PID inventory and
+fails if any expected cyber nodes are unreachable, ensuring that the emulated network
+matches the baseline before proceeding to risk analysis.
+
 \section{Dashboard Orchestration and Visualization}
 The dashboard coordinates ingestion and analysis. It provides:
 (1) a P\&ID import UI for conversion and upload, (2) a system view with cyber/physical

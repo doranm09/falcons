@@ -133,6 +133,11 @@ docker compose -f docker-compose.yml -f out/pid_drawio/pid_testbed.compose.yml u
 The generator also emits `pid_inventory.json` for the zone scanners. These scanner
 containers validate TCP reachability for each PID cyber node within its VLAN.
 
+Verify reachability:
+```bash
+python manage.py pid_testbed_verify --inventory out/pid_drawio/pid_inventory.json --scans-dir testbed/ot/data/scans
+```
+
 Environment variables:
 - `PID_DRAWIO_OUTPUT_DIR`: override where conversion outputs are stored.
 - `RISK_ASSESSMENT_SIM_SYSTEM_PATH`: optional filesystem target for uploading the generated `sim_system.json` into the risk assessment workspace.

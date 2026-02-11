@@ -69,6 +69,14 @@ def _validate_cidr(cidr: Optional[str]) -> Optional[str]:
         return None
 
 
+def _next_conduit_ip(net: ipaddress._BaseNetwork, offset: int) -> Optional[str]:
+    hosts = list(net.hosts())
+    if not hosts:
+        return None
+    index = max(0, min(len(hosts) - 1, offset))
+    return str(hosts[index])
+
+
 def build_testbed_from_sim_system(
     sim_system: Dict[str, Any],
     output_dir: Path,
@@ -84,9 +92,15 @@ def build_testbed_from_sim_system(
 
     services: Dict[str, Any] = {}
     networks: Dict[str, Any] = {}
+    network_cidrs: Dict[str, Optional[ipaddress._BaseNetwork]] = {}
 
     inventory_assets: List[Dict[str, Any]] = []
     scanner_by_zone: Dict[str, str] = {}
+    conduit_maps: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+    conduit_ports: Dict[Tuple[str, str], List[int]] = {}
+    conduit_ip_offsets: Dict[str, int] = {}
+
+    node_by_id: Dict[str, ExpectedNode] = {node.node_id: node for node in expected_nodes}
 
     for node in expected_nodes:
         info = variables.get(node.node_id, {}) if isinstance(variables, dict) else {}
@@ -102,6 +116,7 @@ def build_testbed_from_sim_system(
             if vlan_cidr:
                 net_payload["ipam"] = {"config": [{"subnet": vlan_cidr}]}
             networks[net_key] = net_payload
+            network_cidrs[net_key] = ipaddress.ip_network(vlan_cidr, strict=False) if vlan_cidr else None
 
         port = _service_port(info if isinstance(info, dict) else {})
         protocol = _protocol(info if isinstance(info, dict) else {})
@@ -123,9 +138,9 @@ def build_testbed_from_sim_system(
                 "./testbed/ot/services:/app",
                 "./testbed/ot/data:/data",
             ],
-            "networks": {
-                net_key: {"ipv4_address": node.ip},
-            },
+                "networks": {
+                    net_key: {"ipv4_address": node.ip},
+                },
         }
 
         inventory_assets.append({
@@ -160,6 +175,71 @@ def build_testbed_from_sim_system(
                     net_key: {},
                 },
             }
+
+    connections = sim_system.get("connections", []) if isinstance(sim_system, dict) else []
+    for conn in connections:
+        if not isinstance(conn, dict):
+            continue
+        src_id = str(conn.get("source") or "")
+        tgt_id = str(conn.get("target") or "")
+        if not src_id or not tgt_id:
+            continue
+        src_node = node_by_id.get(src_id)
+        tgt_node = node_by_id.get(tgt_id)
+        if not src_node or not tgt_node:
+            continue
+        if not src_node.ip or not tgt_node.ip:
+            continue
+
+        src_net = _network_key(src_node)
+        tgt_net = _network_key(tgt_node)
+        if src_net == tgt_net:
+            continue
+
+        src_info = variables.get(src_id, {}) if isinstance(variables, dict) else {}
+        tgt_info = variables.get(tgt_id, {}) if isinstance(variables, dict) else {}
+        target_port = _service_port(tgt_info if isinstance(tgt_info, dict) else {})
+
+        key = tuple(sorted((src_net, tgt_net)))
+        conduit_maps.setdefault(key, [])
+        conduit_ports.setdefault(key, [])
+        conduit_maps[key].append({
+            "listen_port": target_port,
+            "target_host": tgt_node.ip,
+            "target_port": target_port,
+        })
+        if target_port not in conduit_ports[key]:
+            conduit_ports[key].append(target_port)
+
+    for (net_a, net_b), rules in conduit_maps.items():
+        conduit_name = f"conduit-{net_a}-{net_b}"
+        allowed_ports = ",".join(str(p) for p in sorted(conduit_ports.get((net_a, net_b), [])))
+        env_map = json.dumps(rules, indent=2)
+
+        networks_payload: Dict[str, Any] = {}
+        for net_key in (net_a, net_b):
+            net_obj = network_cidrs.get(net_key)
+            if net_obj:
+                offset = conduit_ip_offsets.get(net_key, 200)
+                conduit_ip_offsets[net_key] = offset + 1
+                ip_addr = _next_conduit_ip(net_obj, offset)
+                if ip_addr:
+                    networks_payload[net_key] = {"ipv4_address": ip_addr}
+                    continue
+            networks_payload[net_key] = {}
+
+        services[conduit_name] = {
+            "build": "./testbed/ot/conduit",
+            "cap_add": ["NET_ADMIN"],
+            "environment": {
+                "ALLOWED_PORTS": allowed_ports,
+                "CONDUIT_MAP": env_map,
+                "LOG_PATH": f"/data/{conduit_name}.log",
+                "FIXED_TIME": "2026-01-25T00:00:00Z",
+            },
+            "volumes": ["./testbed/ot/data:/data"],
+            "networks": networks_payload,
+        }
 
     inventory_payload = {
         "run_id": "pid-testbed",

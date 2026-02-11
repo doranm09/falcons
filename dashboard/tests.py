@@ -1,4 +1,6 @@
 import json
+import tempfile
+from pathlib import Path
 from django.test import TestCase, TransactionTestCase
 from django.test.client import Client
 from django.urls import reverse
@@ -11,6 +13,7 @@ import ipaddress
 from .models import *
 from .tasks import scan_network_task, launch_openvas_scan_task, poll_openvas_results
 from .utils import dijkstra, list_interfaces
+from .pid_testbed import build_testbed_from_sim_system
 
 
 class ScanRunModelTest(TestCase):
@@ -1238,3 +1241,38 @@ class AgentVersionTests(TestCase):
             self.assertEqual(data['agent_name'], 'TestAgent')
             self.assertEqual(len(data['agents']), 1)
             self.assertEqual(data['agents'][0]['agent_version'], '1.2.3')
+
+
+class PIDTestbedTests(TestCase):
+    def test_pid_testbed_generates_conduit(self):
+        sim_system = {
+            "variables": {
+                "PLC-1": {
+                    "name": "PLC-1",
+                    "type": "plc",
+                    "domain": "cyber",
+                    "ip_address": "172.30.1.10",
+                    "vlan": "L2",
+                    "vlan_cidr": "172.30.1.0/24",
+                    "service_port": 15022,
+                },
+                "HIST-1": {
+                    "name": "HIST-1",
+                    "type": "historian",
+                    "domain": "cyber",
+                    "ip_address": "172.30.2.10",
+                    "vlan": "L3",
+                    "vlan_cidr": "172.30.2.0/24",
+                    "service_port": 18080,
+                },
+            },
+            "connections": [
+                {"source": "PLC-1", "target": "HIST-1", "s_attr": "data", "t_attr": "ingest"},
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            files = build_testbed_from_sim_system(sim_system, Path(tmpdir))
+            compose_text = files.compose_path.read_text(encoding="utf-8")
+            self.assertIn("conduit-vlan-l2-vlan-l3", compose_text)
+            self.assertIn("CONDUIT_MAP", compose_text)

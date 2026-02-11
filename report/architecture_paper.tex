@@ -127,6 +127,10 @@ twin environment. The workflow returns a validation report summarizing missing n
 unexpected IPs, VLAN coverage, and redundancy group coverage to help analysts confirm
 that the network composition matches the intended Purdue segmentation.
 
+The implementation includes an end-to-end orchestration action in the dashboard that
+bundles conversion, validation, discovery, and digital-twin generation into a single
+transaction, returning the validation report directly to the operator.
+
 \section{Dashboard Orchestration and Visualization}
 The dashboard coordinates ingestion and analysis. It provides:
 (1) a P\&ID import UI for conversion and upload, (2) a system view with cyber/physical

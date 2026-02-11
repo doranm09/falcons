@@ -3170,6 +3170,19 @@ def risk_assessment_pid_upload(request):
         return JsonResponse({"error": str(exc)}, status=500)
 
     upload_requested = str(request.POST.get("upload_target", "")).lower() in ("1", "true", "yes", "on")
+    run_validation = str(request.POST.get("run_validation", "")).lower() in ("1", "true", "yes", "on")
+    scan_method = (request.POST.get("scan") or "").lower()
+    scan_sync = str(request.POST.get("scan_sync") or "").lower() in ("1", "true", "yes", "on")
+    run_openvas = str(request.POST.get("openvas") or "").lower() in ("1", "true", "yes", "on")
+    create_twin = str(request.POST.get("create_twin") or "").lower() in ("1", "true", "yes", "on")
+    scan_run_id = request.POST.get("scan_run_id")
+    if scan_run_id:
+        try:
+            scan_run_id = int(scan_run_id)
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "scan_run_id must be an integer."}, status=400)
+    else:
+        scan_run_id = None
     upload_path_value = getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", "")
     upload_url = getattr(settings, "RISK_ASSESSMENT_UPLOAD_URL", "")
     upload_token = getattr(settings, "RISK_ASSESSMENT_UPLOAD_TOKEN", "")
@@ -3207,6 +3220,17 @@ def risk_assessment_pid_upload(request):
     variables = sim_system.get("variables", {}) if isinstance(sim_system, dict) else {}
     connections = sim_system.get("connections", []) if isinstance(sim_system, dict) else []
 
+    validation_result = None
+    if run_validation:
+        validation_result = _pid_validation_pipeline(
+            sim_system=sim_system,
+            scan_method=scan_method,
+            scan_sync=scan_sync,
+            run_openvas=run_openvas,
+            create_twin=create_twin,
+            scan_run_id=scan_run_id,
+        )
+
     return JsonResponse(
         {
             "variables_count": len(variables),
@@ -3214,6 +3238,13 @@ def risk_assessment_pid_upload(request):
             "drawio_path": _relative_to_base(xml_path),
             "sim_system_path": _relative_to_base(sim_path),
             "upload": upload_result,
+            "validation": {
+                "summary": validation_result[0],
+                "validation": validation_result[1],
+                "discovery_scans": validation_result[2],
+                "openvas_scans": validation_result[3],
+                "digital_twin": validation_result[4],
+            } if validation_result else None,
         }
     )
 
@@ -3314,92 +3345,14 @@ def risk_assessment_pid_validate(request):
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=500)
 
-    expected_nodes = expected_cyber_nodes(sim_system)
-    summary = summarize_expected_nodes(expected_nodes)
-
-    nodes_qs = Node.objects.all()
-    if scan_run_id:
-        nodes_qs = nodes_qs.filter(scan_run_id=scan_run_id)
-    discovered_ips = list(nodes_qs.values_list("ip_address", flat=True))
-    interface_ips = list(NodeInterface.objects.filter(node__in=nodes_qs).values_list("ip", flat=True))
-
-    validation = validate_expected_nodes(expected_nodes, [*discovered_ips, *interface_ips])
-
-    scan_results = []
-    if scan_method in {"ping", "nmap"}:
-        vlan_cidrs = []
-        for cidr_list in summary.get("vlan_cidrs", {}).values():
-            vlan_cidrs.extend(cidr_list)
-        vlan_cidrs = sorted(set(vlan_cidrs))
-        for cidr in vlan_cidrs:
-            if scan_method == "nmap":
-                result = nmap_discovery_task(cidr) if scan_sync else nmap_discovery_task.delay(cidr)
-            else:
-                result = scan_network_task(cidr) if scan_sync else scan_network_task.delay(cidr)
-            scan_results.append({"cidr": cidr, "method": scan_method, "result": str(result)})
-
-    openvas_results = []
-    if run_openvas:
-        vlan_cidrs = []
-        for cidr_list in summary.get("vlan_cidrs", {}).values():
-            vlan_cidrs.extend(cidr_list)
-        vlan_cidrs = sorted(set(vlan_cidrs))
-        for cidr in vlan_cidrs:
-            result = launch_openvas_scan_task.delay(cidr)
-            openvas_results.append({"cidr": cidr, "result": str(result)})
-
-    twin_result = None
-    if create_twin:
-        variables = sim_system.get("variables", {}) if isinstance(sim_system, dict) else {}
-        connections = sim_system.get("connections", []) if isinstance(sim_system, dict) else []
-        ip_by_id = {node.node_id: node.ip for node in expected_nodes if node.ip}
-
-        node_by_id = {}
-        link_count = 0
-        with transaction.atomic():
-            scan = ScanRun.objects.create(
-                cidr="pid",
-                status="COMPLETE",
-                scan_type="pid",
-                result_summary="Digital twin generated from PID sim_system.json",
-            )
-            for var_id, info in variables.items():
-                info = info if isinstance(info, dict) else {}
-                if var_id not in ip_by_id:
-                    continue
-                ip_addr = ip_by_id[var_id]
-                name = str(info.get("name") or var_id)
-                description_parts = []
-                if info.get("purdue_level"):
-                    description_parts.append(f"Purdue: {info.get('purdue_level')}")
-                if info.get("vlan"):
-                    description_parts.append(f"VLAN: {info.get('vlan')}")
-                if info.get("redundancy_group"):
-                    description_parts.append(f"Redundancy: {info.get('redundancy_group')}")
-                node = Node.objects.create(
-                    scan_run=scan,
-                    ip_address=ip_addr,
-                    name=name,
-                    status="online",
-                    description=" | ".join(description_parts),
-                )
-                node_by_id[str(var_id)] = node
-
-            for conn in connections:
-                if not isinstance(conn, dict):
-                    continue
-                source = str(conn.get("source"))
-                target = str(conn.get("target"))
-                if source in node_by_id and target in node_by_id:
-                    Link.objects.create(
-                        scan_run=scan,
-                        source=node_by_id[source],
-                        destination=node_by_id[target],
-                        weight=1.0,
-                    )
-                    link_count += 1
-
-        twin_result = {"scan_id": scan.id, "nodes": len(node_by_id), "links": link_count}
+    summary, validation, scan_results, openvas_results, twin_result = _pid_validation_pipeline(
+        sim_system=sim_system,
+        scan_method=scan_method,
+        scan_sync=scan_sync,
+        run_openvas=run_openvas,
+        create_twin=create_twin,
+        scan_run_id=scan_run_id,
+    )
 
     return JsonResponse({
         "source": resolved_source,
@@ -3928,6 +3881,104 @@ def risk_assessment_testbed_generate(request):
 def _risk_api_url(path: str) -> str:
     base = getattr(settings, 'RISK_ASSESSMENT_API_URL', 'http://127.0.0.1:7890')
     return f"{base.rstrip('/')}/{path.lstrip('/')}"
+
+
+def _pid_validation_pipeline(
+    sim_system: dict,
+    scan_method: str,
+    scan_sync: bool,
+    run_openvas: bool,
+    create_twin: bool,
+    scan_run_id: Optional[int],
+) -> tuple[dict, dict, list, list, Optional[dict]]:
+    expected_nodes = expected_cyber_nodes(sim_system)
+    summary = summarize_expected_nodes(expected_nodes)
+
+    nodes_qs = Node.objects.all()
+    if scan_run_id:
+        nodes_qs = nodes_qs.filter(scan_run_id=scan_run_id)
+    discovered_ips = list(nodes_qs.values_list("ip_address", flat=True))
+    interface_ips = list(NodeInterface.objects.filter(node__in=nodes_qs).values_list("ip", flat=True))
+
+    validation = validate_expected_nodes(expected_nodes, [*discovered_ips, *interface_ips])
+
+    scan_results = []
+    if scan_method in {"ping", "nmap"}:
+        vlan_cidrs = []
+        for cidr_list in summary.get("vlan_cidrs", {}).values():
+            vlan_cidrs.extend(cidr_list)
+        vlan_cidrs = sorted(set(vlan_cidrs))
+        for cidr in vlan_cidrs:
+            if scan_method == "nmap":
+                result = nmap_discovery_task(cidr) if scan_sync else nmap_discovery_task.delay(cidr)
+            else:
+                result = scan_network_task(cidr) if scan_sync else scan_network_task.delay(cidr)
+            scan_results.append({"cidr": cidr, "method": scan_method, "result": str(result)})
+
+    openvas_results = []
+    if run_openvas:
+        vlan_cidrs = []
+        for cidr_list in summary.get("vlan_cidrs", {}).values():
+            vlan_cidrs.extend(cidr_list)
+        vlan_cidrs = sorted(set(vlan_cidrs))
+        for cidr in vlan_cidrs:
+            result = launch_openvas_scan_task.delay(cidr)
+            openvas_results.append({"cidr": cidr, "result": str(result)})
+
+    twin_result = None
+    if create_twin:
+        variables = sim_system.get("variables", {}) if isinstance(sim_system, dict) else {}
+        connections = sim_system.get("connections", []) if isinstance(sim_system, dict) else []
+        ip_by_id = {node.node_id: node.ip for node in expected_nodes if node.ip}
+
+        node_by_id = {}
+        link_count = 0
+        with transaction.atomic():
+            scan = ScanRun.objects.create(
+                cidr="pid",
+                status="COMPLETE",
+                scan_type="pid",
+                result_summary="Digital twin generated from PID sim_system.json",
+            )
+            for var_id, info in variables.items():
+                info = info if isinstance(info, dict) else {}
+                if var_id not in ip_by_id:
+                    continue
+                ip_addr = ip_by_id[var_id]
+                name = str(info.get("name") or var_id)
+                description_parts = []
+                if info.get("purdue_level"):
+                    description_parts.append(f"Purdue: {info.get('purdue_level')}")
+                if info.get("vlan"):
+                    description_parts.append(f"VLAN: {info.get('vlan')}")
+                if info.get("redundancy_group"):
+                    description_parts.append(f"Redundancy: {info.get('redundancy_group')}")
+                node = Node.objects.create(
+                    scan_run=scan,
+                    ip_address=ip_addr,
+                    name=name,
+                    status="online",
+                    description=" | ".join(description_parts),
+                )
+                node_by_id[str(var_id)] = node
+
+            for conn in connections:
+                if not isinstance(conn, dict):
+                    continue
+                source = str(conn.get("source"))
+                target = str(conn.get("target"))
+                if source in node_by_id and target in node_by_id:
+                    Link.objects.create(
+                        scan_run=scan,
+                        source=node_by_id[source],
+                        destination=node_by_id[target],
+                        weight=1.0,
+                    )
+                    link_count += 1
+
+        twin_result = {"scan_id": scan.id, "nodes": len(node_by_id), "links": link_count}
+
+    return summary, validation, scan_results, openvas_results, twin_result
 
 
 def _relative_to_base(path: Path) -> str:

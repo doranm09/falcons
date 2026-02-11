@@ -98,6 +98,11 @@
               <div class="text-muted small mb-2">Validate expected PID cyber nodes against discovered assets.</div>
               <button type="button" class="btn btn-primary w-100" id="risk-workflow-validate">Validate Network</button>
             </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Run End-to-End</div>
+              <div class="text-muted small mb-2">Convert, validate, scan, and generate a twin in one run.</div>
+              <button type="button" class="btn btn-dark w-100" id="risk-workflow-run">Run Full Workflow</button>
+            </div>
           </div>
           <div class="row g-3 mt-1">
             <div class="col-lg-4">
@@ -114,6 +119,18 @@
               <div class="fw-semibold mb-2">Step 6: Emulation</div>
               <div class="text-muted small mb-2">Open the Digital Twin workspace for emulation.</div>
               <button type="button" class="btn btn-outline-secondary w-100" id="risk-workflow-open-twin">Open Digital Twin</button>
+            </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Validation Flags</div>
+              <div class="text-muted small mb-2">Toggle optional steps for full workflow.</div>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="risk-workflow-include-openvas">
+                <label class="form-check-label small" for="risk-workflow-include-openvas">Include OpenVAS</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="risk-workflow-include-twin">
+                <label class="form-check-label small" for="risk-workflow-include-twin">Create Digital Twin</label>
+              </div>
             </div>
           </div>
           <div class="mt-3">
@@ -462,6 +479,9 @@
   const workflowVuln = document.getElementById('risk-workflow-vuln');
   const workflowTwin = document.getElementById('risk-workflow-twin');
   const workflowOpenTwin = document.getElementById('risk-workflow-open-twin');
+  const workflowRun = document.getElementById('risk-workflow-run');
+  const workflowIncludeOpenvas = document.getElementById('risk-workflow-include-openvas');
+  const workflowIncludeTwin = document.getElementById('risk-workflow-include-twin');
   const workflowScan = document.getElementById('risk-workflow-scan');
   const workflowSync = document.getElementById('risk-workflow-sync');
   const workflowScanrun = document.getElementById('risk-workflow-scanrun');
@@ -972,6 +992,53 @@
   if (workflowOpenTwin) {
     workflowOpenTwin.addEventListener('click', () => {
       window.location.href = "{% url 'dashboard:digital_twin_page' %}";
+    });
+  }
+  if (workflowRun) {
+    workflowRun.addEventListener('click', async () => {
+      if (!pidFileInput || !pidFileInput.files?.length) {
+        setWorkflowStatus('Select a draw.io XML file first.', true);
+        return;
+      }
+      const formData = new FormData();
+      formData.append('drawio_file', pidFileInput.files[0]);
+      formData.append('upload_target', pidUploadTarget?.checked ? '1' : '0');
+      formData.append('run_validation', '1');
+      formData.append('scan', workflowScan?.value || '');
+      formData.append('scan_sync', workflowSync?.checked ? '1' : '0');
+      formData.append('openvas', workflowIncludeOpenvas?.checked ? '1' : '0');
+      formData.append('create_twin', workflowIncludeTwin?.checked ? '1' : '0');
+      if (workflowScanrun?.value) {
+        formData.append('scan_run_id', workflowScanrun.value);
+      }
+      setWorkflowStatus('Running full workflow…');
+      try {
+        const response = await fetch("{% url 'dashboard:risk_assessment_pid_upload' %}", {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          setWorkflowStatus(data.error || 'Workflow failed.', true);
+          return;
+        }
+        if (data.validation) {
+          renderWorkflowReport({
+            summary: data.validation.summary,
+            validation: data.validation.validation,
+            validation_scans: data.validation.discovery_scans,
+          });
+          const validation = data.validation.validation || {};
+          const found = Array.isArray(validation.found) ? validation.found.length : 0;
+          const missing = Array.isArray(validation.missing) ? validation.missing.length : 0;
+          const expected = validation.expected_count ?? 0;
+          setWorkflowStatus(`Workflow complete: ${found} found, ${missing} missing (expected ${expected}).`);
+        } else {
+          setWorkflowStatus('Workflow complete.');
+        }
+      } catch (err) {
+        setWorkflowStatus('Workflow unavailable.', true);
+      }
     });
   }
 

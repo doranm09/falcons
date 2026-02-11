@@ -78,3 +78,10 @@ yarn-error.log
 utils/utils-venv
 .env
 out/
+
+# === LaTeX artifacts ===
+report/*.aux
+report/*.log
+report/*.fls
+report/*.fdb_latexmk
+report/*.pdf

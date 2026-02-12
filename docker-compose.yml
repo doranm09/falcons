@@ -19,6 +19,9 @@ services:
   web:
     build: .
     command: /code/docker/entrypoint-web.sh
+    # When using the bind mount (.:/code), match the container UID/GID to the host
+    # so Django collectstatic can write into /code/staticfiles.
+    user: "${LOCAL_UID:-1028}:${LOCAL_GID:-1028}"
     env_file: .env
     environment:
       POSTGRES_NAME: ${POSTGRES_NAME:-postgres}
@@ -67,6 +70,7 @@ services:
   celery:
     build: .
     command: celery -A cyber_pen_test worker --loglevel=info
+    user: "${LOCAL_UID:-1028}:${LOCAL_GID:-1028}"
     env_file: .env
     environment:
       POSTGRES_NAME: ${POSTGRES_NAME:-postgres}

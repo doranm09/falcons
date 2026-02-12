@@ -149,6 +149,11 @@ cp .env.example .env
 docker-compose up --build
 ```
 
+> Note (Linux bind-mount permissions): the dev compose file mounts `.:/code`. If you hit a Django `collectstatic` error like `Permission denied: '/code/staticfiles/...'`, run with your host UID/GID so the container can write to the mounted files:
+```bash
+LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker-compose up --build
+```
+
 - Web app: http://localhost:8000
 - Sniffer API: http://localhost:5050 or http://sniffer:5000 internally
 - Risk Assessment API: http://localhost:7890
@@ -165,6 +170,8 @@ For a production-like deployment (no bind mounts), use:
 ```bash
 docker-compose -f docker-compose.prod.yml up --build -d
 ```
+
+> Note: `LOCAL_UID`/`LOCAL_GID` is only needed for the dev compose bind mount. The production compose file should run with the image's default non-root user.
 
 ---
 

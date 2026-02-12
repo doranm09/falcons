@@ -19,9 +19,9 @@ services:
   web:
     build: .
     command: /code/docker/entrypoint-web.sh
-    # Match container UID/GID to the host to avoid bind-mount permission issues
-    # (e.g., Django collectstatic writing into /code/staticfiles).
-    user: "${LOCAL_UID:-1028}:${LOCAL_GID:-1028}"
+    # Production compose does not bind-mount the project into `/code`, so we keep
+    # the image's default non-root user (see Dockerfile). Overriding `user:` here
+    # can cause `/code` permission issues (e.g., during collectstatic).
     env_file: .env
     environment:
       POSTGRES_NAME: ${POSTGRES_NAME:-postgres}
@@ -69,7 +69,6 @@ services:
   celery:
     build: .
     command: celery -A cyber_pen_test worker --loglevel=info
-    user: "${LOCAL_UID:-1028}:${LOCAL_GID:-1028}"
     env_file: .env
     environment:
       POSTGRES_NAME: ${POSTGRES_NAME:-postgres}

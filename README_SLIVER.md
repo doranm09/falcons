@@ -267,6 +267,10 @@ services:
 # Start all services
 docker compose up -d --build
 
+# If you see a Django `collectstatic` permission error writing to `/code/staticfiles`
+# (common on Linux when using the `.:/code` bind mount), run with your host UID/GID:
+LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose up -d --build
+
 # Run setup script in container
 docker compose exec web python ../setup_sliver.py
 

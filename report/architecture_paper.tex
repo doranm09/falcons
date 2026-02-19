@@ -137,6 +137,16 @@ The dashboard coordinates ingestion and analysis. It provides:
 visual differentiation and network overlays, and (3) risk assessment workflows to map
 nodes, compute probabilities, and visualize results.
 
+\subsection{GPWR Physical Operations Workflow}
+The dashboard now includes a dedicated physical-operations page for GPWR-backed OT
+experimentation. The workflow supports: (1) direct bidirectional GPWR command execution
+(\texttt{getcsv}, \texttt{set}, \texttt{profile}), (2) live SIEM-backed telemetry rendering
+with subsystem, device, Purdue zone/level, and current values, (3) a guided OT pipeline
+for baseline network enumeration, digital-twin enumeration, and risk classification, and
+(4) subsystem graph visualization. The graph view renders subsystem-to-worker/client/value
+relationships and includes QEMU profile metadata to support high-fidelity emulation planning
+for heterogeneous OT endpoint architectures.
+
 \section{Security Considerations}
 The architecture includes token-based ingestion controls, optional TLS verification,
 and role-based SIEM access. Default deployments disable OpenSearch security for local

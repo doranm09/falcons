@@ -1,0 +1,411 @@
+{% extends "dashboard/base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="row mb-4">
+    <div class="col-12">
+      <h2><i class="bi bi-cpu"></i> Physical / GPWR Operations</h2>
+      <p class="text-muted">Operate directly on the GPWR physical simulation and monitor live telemetry events.</p>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-12 col-lg-5">
+      <div class="card">
+        <div class="card-header"><h6 class="mb-0">Connection + Commands</h6></div>
+        <div class="card-body">
+          <form id="gpwr-form">
+            {% csrf_token %}
+            <div class="row g-2 mb-3">
+              <div class="col-md-8">
+                <label class="form-label">Host</label>
+                <input class="form-control" id="gpwr-host" value="{{ default_host }}">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Port</label>
+                <input class="form-control" id="gpwr-port" value="{{ default_port }}">
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Read Variables</label>
+              <input class="form-control" id="gpwr-vars" placeholder="hmi_RCSTC502_VALUE hmi_RCSPT455A_VALUE">
+              <div class="form-text">Space or comma separated variable names.</div>
+            </div>
+            <div class="d-grid mb-3">
+              <button type="button" class="btn btn-primary" id="btn-read">Read getcsv</button>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Write Assignments</label>
+              <input class="form-control" id="gpwr-set" placeholder="hmi_RCSTC502_VALUE=309.113">
+              <div class="form-text">Format: var=value var2=value2</div>
+            </div>
+            <div class="d-grid mb-2">
+              <button type="button" class="btn btn-outline-warning" id="btn-write">Write set</button>
+            </div>
+
+            <div class="d-grid">
+              <button type="button" class="btn btn-outline-secondary" id="btn-profile">Run profile</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-7">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h6 class="mb-0">Command Output</h6>
+          <button class="btn btn-sm btn-outline-secondary" id="clear-output">Clear</button>
+        </div>
+        <div class="card-body">
+          <pre id="gpwr-output" style="min-height: 280px; white-space: pre-wrap;">Run a GPWR operation to see results.</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4 mt-2">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h6 class="mb-0">Live GPWR Telemetry (SIEM pipeline)</h6>
+          <div class="d-flex gap-2">
+            <span class="badge text-bg-info" id="live-count">0 events</span>
+            <button class="btn btn-sm btn-outline-primary" id="refresh-live">Refresh</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Device</th>
+                  <th>Subsystem</th>
+                  <th>Zone</th>
+                  <th>Current Values</th>
+                </tr>
+              </thead>
+              <tbody id="live-body">
+                <tr><td colspan="5" class="text-muted">No telemetry yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4 mt-2">
+    <div class="col-12 col-xl-5">
+      <div class="card">
+        <div class="card-header"><h6 class="mb-0">OT Workflow Runner</h6></div>
+        <div class="card-body">
+          <div class="mb-2">
+            <label class="form-label">Baseline CIDR</label>
+            <input class="form-control" id="wf-cidr" value="{{ default_scan_cidr }}">
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Risk Targets</label>
+            <input class="form-control" id="wf-targets" value="{{ default_risk_targets }}">
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Risk Ports</label>
+            <input class="form-control" id="wf-ports" value="{{ default_risk_ports }}">
+          </div>
+          <div class="d-grid gap-2 mt-3">
+            <button class="btn btn-outline-primary" id="wf-baseline">1) Baseline Scan</button>
+            <button class="btn btn-outline-secondary" id="wf-enumerate">2) Twin Enumeration</button>
+            <button class="btn btn-outline-danger" id="wf-risk">3) Pen-Test Risk Classify</button>
+            <button class="btn btn-dark" id="wf-run-all">Run Full Workflow</button>
+          </div>
+          <pre id="wf-output" class="mt-3" style="min-height: 200px; white-space: pre-wrap;">Workflow idle.</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-xl-7">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h6 class="mb-0">Subsystem Graph (Live)</h6>
+          <div class="d-flex gap-2">
+            <select id="graph-subsystem" class="form-select form-select-sm">
+              <option value="rcs">RCS</option>
+              <option value="mfw">MFW</option>
+              <option value="mrs">MRS</option>
+              <option value="cws">CWS</option>
+            </select>
+            <button class="btn btn-sm btn-outline-primary" id="graph-refresh">Refresh Graph</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="graph-meta" class="small text-muted mb-2">Choose a subsystem to visualize nodes and live tags.</div>
+          <svg id="subsystem-graph" width="100%" height="360" viewBox="0 0 900 360" style="border:1px solid rgba(100,100,100,0.2); border-radius:8px;"></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  function getCSRFToken() {
+    const input = document.querySelector('#gpwr-form input[name=csrfmiddlewaretoken]');
+    return input ? input.value : '';
+  }
+
+  function gpwrPayload(extra = {}) {
+    return {
+      host: document.getElementById('gpwr-host').value.trim(),
+      port: Number(document.getElementById('gpwr-port').value || '8082'),
+      ...extra
+    };
+  }
+
+  function appendOutput(title, payload) {
+    const box = document.getElementById('gpwr-output');
+    const now = new Date().toISOString();
+    const body = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
+    box.textContent = `[${now}] ${title}\n${body}\n\n` + box.textContent;
+  }
+
+  async function postJson(url, payload, label) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      appendOutput(label, data);
+    } catch (err) {
+      appendOutput(`${label} ERROR`, { error: err.message });
+    }
+  }
+
+  function setWfOutput(data) {
+    const box = document.getElementById('wf-output');
+    box.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  }
+
+  async function wfPost(url, payload) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() },
+      body: JSON.stringify(payload || {}),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  }
+
+  async function wfGet(url) {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  }
+
+  function renderSubsystemGraph(data) {
+    const svg = document.getElementById('subsystem-graph');
+    const meta = document.getElementById('graph-meta');
+    if (!svg || !data) return;
+    const width = 900;
+    const height = 360;
+    const cx = 450;
+    const cy = 180;
+    const radius = 130;
+    const nodes = Array.isArray(data.nodes) ? data.nodes : [];
+    const edges = Array.isArray(data.edges) ? data.edges : [];
+
+    const byId = {};
+    nodes.forEach((n) => { byId[n.id] = n; });
+    const core = nodes.find((n) => n.kind === 'subsystem') || nodes[0];
+    const others = nodes.filter((n) => !core || n.id !== core.id);
+
+    const positions = {};
+    if (core) positions[core.id] = { x: cx, y: cy };
+    others.forEach((n, idx) => {
+      const angle = (2 * Math.PI * idx) / Math.max(1, others.length);
+      positions[n.id] = {
+        x: cx + radius * Math.cos(angle),
+        y: cy + radius * Math.sin(angle),
+      };
+    });
+
+    const colorFor = (kind) => {
+      if (kind === 'subsystem') return '#0d6efd';
+      if (kind === 'worker') return '#198754';
+      if (kind === 'client') return '#fd7e14';
+      if (kind === 'metric') return '#6f42c1';
+      return '#6c757d';
+    };
+
+    let html = '<g>';
+    edges.forEach((e) => {
+      const s = positions[e.source];
+      const t = positions[e.target];
+      if (!s || !t) return;
+      html += `<line x1="${s.x}" y1="${s.y}" x2="${t.x}" y2="${t.y}" stroke="#9aa0a6" stroke-width="1.5" />`;
+    });
+    nodes.forEach((n) => {
+      const p = positions[n.id];
+      if (!p) return;
+      const color = colorFor(n.kind);
+      html += `<circle cx="${p.x}" cy="${p.y}" r="${n.kind === 'subsystem' ? 28 : 16}" fill="${color}" opacity="0.9"></circle>`;
+      html += `<text x="${p.x}" y="${p.y + (n.kind === 'subsystem' ? 45 : 30)}" text-anchor="middle" font-size="11" fill="#222">${(n.label || '').slice(0, 42)}</text>`;
+    });
+    html += '</g>';
+    svg.innerHTML = html;
+
+    const qp = data.qemu_profile || {};
+    meta.textContent = `Subsystem=${data.subsystem || '-'} | Zone=${data.zone || '-'} | Purdue=${data.purdue_level || '-'} | QEMU profile: ${qp.device_type || '-'} / ${qp.architecture || '-'} / ${qp.launch_mode || '-'}`;
+  }
+
+  function populateSubsystemOptions(subsystems) {
+    const sel = document.getElementById('graph-subsystem');
+    if (!sel || !Array.isArray(subsystems) || !subsystems.length) return;
+    const current = sel.value || 'rcs';
+    const merged = [];
+    const seen = new Set();
+    subsystems.forEach((s) => {
+      const name = (s.subsystem || '').toLowerCase();
+      if (!name || seen.has(name)) return;
+      seen.add(name);
+      merged.push(name);
+    });
+    if (!merged.length) return;
+    sel.innerHTML = merged
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => `<option value="${name}">${name.toUpperCase()}</option>`)
+      .join('');
+    if (seen.has(current)) sel.value = current;
+  }
+
+  async function refreshLive() {
+    const body = document.getElementById('live-body');
+    try {
+      const res = await fetch('{% url "dashboard:gpwr_live_telemetry_api" %}?limit=15');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      document.getElementById('live-count').textContent = `${data.count} events`;
+
+      if (!data.results || !data.results.length) {
+        body.innerHTML = '<tr><td colspan="5" class="text-muted">No telemetry yet.</td></tr>';
+        return;
+      }
+
+      body.innerHTML = data.results.map((row) => {
+        const metricPairs = Object.entries(row.current_values || row.metrics || {}).slice(0, 6)
+          .map(([k, v]) => `${k}=${v}`)
+          .join('<br>');
+        const subsystem = row.subsystem || '-';
+        const worker = row.worker ? ` / worker ${row.worker}` : '';
+        const zoneText = `${row.purdue_level || '-'} / ${row.purdue_zone || '-'}`;
+        const deviceParts = [];
+        if (row.device) deviceParts.push(row.device);
+        if (row.asset_ip) deviceParts.push(row.asset_ip);
+        if (row.client_id) deviceParts.push(row.client_id);
+        const deviceText = deviceParts.length ? deviceParts.join('<br>') : '-';
+        return `
+          <tr>
+            <td>${row.timestamp}</td>
+            <td>${deviceText}</td>
+            <td>${subsystem}${worker}</td>
+            <td>${zoneText}</td>
+            <td><code>${metricPairs || '-'}</code></td>
+          </tr>
+        `;
+      }).join('');
+    } catch (err) {
+      body.innerHTML = `<tr><td colspan="5" class="text-danger">Live fetch error: ${err.message}</td></tr>`;
+    }
+  }
+
+  document.getElementById('btn-read').addEventListener('click', () => {
+    const vars = document.getElementById('gpwr-vars').value.trim();
+    postJson('{% url "dashboard:gpwr_read_api" %}', gpwrPayload({ vars }), 'READ');
+  });
+
+  document.getElementById('btn-write').addEventListener('click', () => {
+    const setValue = document.getElementById('gpwr-set').value.trim();
+    postJson('{% url "dashboard:gpwr_write_api" %}', gpwrPayload({ set: setValue }), 'WRITE');
+  });
+
+  document.getElementById('btn-profile').addEventListener('click', () => {
+    postJson('{% url "dashboard:gpwr_profile_api" %}', gpwrPayload(), 'PROFILE');
+  });
+
+  document.getElementById('clear-output').addEventListener('click', () => {
+    document.getElementById('gpwr-output').textContent = 'Run a GPWR operation to see results.';
+  });
+
+  document.getElementById('refresh-live').addEventListener('click', refreshLive);
+  refreshLive();
+  setInterval(refreshLive, 5000);
+
+  async function runBaseline() {
+    const cidr = document.getElementById('wf-cidr').value.trim();
+    setWfOutput('Running baseline scan...');
+    const data = await wfPost('{% url "dashboard:gpwr_workflow_baseline_api" %}', { cidr, method: 'nmap', scan_sync: true });
+    setWfOutput(data);
+    return data;
+  }
+
+  async function runEnumerate(scanId = null) {
+    const url = scanId
+      ? `{% url "dashboard:gpwr_workflow_enumerate_api" %}?scan_id=${encodeURIComponent(scanId)}`
+      : `{% url "dashboard:gpwr_workflow_enumerate_api" %}`;
+    setWfOutput('Enumerating digital twin baseline...');
+    const data = await wfGet(url);
+    populateSubsystemOptions(data.catalog_subsystems || data.subsystems || []);
+    setWfOutput(data);
+    return data;
+  }
+
+  async function runRisk() {
+    const targets = document.getElementById('wf-targets').value.trim();
+    const ports = document.getElementById('wf-ports').value.trim();
+    setWfOutput('Running risk classification...');
+    const data = await wfPost('{% url "dashboard:gpwr_workflow_risk_api" %}', { targets, ports, siem_hours: 24 });
+    setWfOutput(data);
+    return data;
+  }
+
+  async function refreshGraph() {
+    const subsystem = document.getElementById('graph-subsystem').value;
+    try {
+      const data = await wfGet(`{% url "dashboard:gpwr_subsystem_graph_api" %}?subsystem=${encodeURIComponent(subsystem)}`);
+      renderSubsystemGraph(data);
+    } catch (err) {
+      document.getElementById('graph-meta').textContent = `Graph error: ${err.message}`;
+    }
+  }
+
+  document.getElementById('wf-baseline').addEventListener('click', async () => {
+    try { await runBaseline(); } catch (err) { setWfOutput(`Baseline error: ${err.message}`); }
+  });
+  document.getElementById('wf-enumerate').addEventListener('click', async () => {
+    try { await runEnumerate(); } catch (err) { setWfOutput(`Enumeration error: ${err.message}`); }
+  });
+  document.getElementById('wf-risk').addEventListener('click', async () => {
+    try { await runRisk(); } catch (err) { setWfOutput(`Risk error: ${err.message}`); }
+  });
+  document.getElementById('wf-run-all').addEventListener('click', async () => {
+    try {
+      const baseline = await runBaseline();
+      await runEnumerate(baseline.scan_id);
+      await runRisk();
+    } catch (err) {
+      setWfOutput(`Workflow error: ${err.message}`);
+    }
+  });
+  document.getElementById('graph-refresh').addEventListener('click', refreshGraph);
+  document.getElementById('graph-subsystem').addEventListener('change', refreshGraph);
+  runEnumerate().then(refreshGraph).catch(() => refreshGraph());
+</script>
+{% endblock %}

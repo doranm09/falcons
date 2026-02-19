@@ -1,0 +1,545 @@
+{
+  "generated_at": "2026-02-19T22:18:06.646762+00:00",
+  "input_csv": "artifacts/plant_inventory_find.csv",
+  "root_len": 3,
+  "min_count": 5,
+  "vars_per_subsystem": 6,
+  "subsystem_count": 37,
+  "subsystems": [
+    {
+      "subsystem": "abs",
+      "record_count": 46,
+      "value_tag_count": 5,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_ABSPT13_VALUE",
+        "hmi_ABSPT17B_VALUE",
+        "hmi_ABSPT17_VALUE",
+        "hmi_ABSPV17A_VALUE",
+        "hmi_ABSPV17B_VALUE"
+      ]
+    },
+    {
+      "subsystem": "afp",
+      "record_count": 5,
+      "value_tag_count": 3,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_AFPFV317_VALUE",
+        "hmi_AFPSC313A_VALUE",
+        "hmi_AFPST318A_VALUE"
+      ]
+    },
+    {
+      "subsystem": "afw",
+      "record_count": 29,
+      "value_tag_count": 24,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_AFWFT2_VALUE",
+        "hmi_AFWFT9_VALUE",
+        "hmi_AFWIT21_VALUE",
+        "hmi_AFWIT8_VALUE",
+        "hmi_AFWLT4_VALUE",
+        "hmi_AFWPT15_VALUE"
+      ]
+    },
+    {
+      "subsystem": "asi",
+      "record_count": 21,
+      "value_tag_count": 17,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_ASIHC943_VALUE",
+        "hmi_ASILT950_VALUE",
+        "hmi_ASILT951_VALUE",
+        "hmi_ASILT952_VALUE",
+        "hmi_ASILT953_VALUE",
+        "hmi_ASILT954_VALUE"
+      ]
+    },
+    {
+      "subsystem": "bds",
+      "record_count": 28,
+      "value_tag_count": 7,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_BDSFT26A_VALUE",
+        "hmi_BDSFT26B_VALUE",
+        "hmi_BDSFT54_VALUE",
+        "hmi_BDSLT16_VALUE",
+        "hmi_BDSLT56_VALUE",
+        "hmi_BDSPT39_VALUE"
+      ]
+    },
+    {
+      "subsystem": "brw",
+      "record_count": 7,
+      "value_tag_count": 6,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_BRWLT930_VALUE",
+        "hmi_BRWLT931_VALUE",
+        "hmi_BRWLT932_VALUE",
+        "hmi_BRWLT933_VALUE",
+        "hmi_BRWTT2_VALUE",
+        "hmi_BRWTT5_VALUE"
+      ]
+    },
+    {
+      "subsystem": "ccs",
+      "record_count": 6,
+      "value_tag_count": 2,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_CCSFT30_VALUE",
+        "hmi_CCSTT12_VALUE"
+      ]
+    },
+    {
+      "subsystem": "ccw",
+      "record_count": 117,
+      "value_tag_count": 45,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_CCWFT108_VALUE",
+        "hmi_CCWFT128_VALUE",
+        "hmi_CCWFT129_VALUE",
+        "hmi_CCWFT17_VALUE",
+        "hmi_CCWFT18_VALUE",
+        "hmi_CCWFT19_VALUE"
+      ]
+    },
+    {
+      "subsystem": "chs",
+      "record_count": 8,
+      "value_tag_count": 8,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_CHSCT10_VALUE",
+        "hmi_CHSCT19_VALUE",
+        "hmi_CHSRT311_VALUE",
+        "hmi_CHSRT312_VALUE",
+        "hmi_CHSRT313_VALUE",
+        "hmi_CHSRT321_VALUE"
+      ]
+    },
+    {
+      "subsystem": "con",
+      "record_count": 59,
+      "value_tag_count": 31,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_CONFT15A_VALUE",
+        "hmi_CONFT22A_VALUE",
+        "hmi_CONFT7A_VALUE",
+        "hmi_CONFV191_VALUE",
+        "hmi_CONIT1A_VALUE",
+        "hmi_CONIT1B_VALUE"
+      ]
+    },
+    {
+      "subsystem": "cps",
+      "record_count": 10,
+      "value_tag_count": 10,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_CPSPT40_VALUE",
+        "hmi_CPSRT221_VALUE",
+        "hmi_CPSRT222_VALUE",
+        "hmi_CPSRT223_VALUE",
+        "hmi_CPSRT331_VALUE",
+        "hmi_CPSRT332_VALUE"
+      ]
+    },
+    {
+      "subsystem": "css",
+      "record_count": 27,
+      "value_tag_count": 20,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_CSSFT11_VALUE",
+        "hmi_CSSFT13_VALUE",
+        "hmi_CSSFT14_VALUE",
+        "hmi_CSSFT5_VALUE",
+        "hmi_CSSIT19_VALUE",
+        "hmi_CSSIT5_VALUE"
+      ]
+    },
+    {
+      "subsystem": "ctm",
+      "record_count": 20,
+      "value_tag_count": 20,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_CTMCT27_VALUE",
+        "hmi_CTMCT28_VALUE",
+        "hmi_CTMPT1000A_VALUE",
+        "hmi_CTMTT12_VALUE",
+        "hmi_CTMTT16_VALUE",
+        "hmi_CTMTT20_VALUE"
+      ]
+    },
+    {
+      "subsystem": "cvc",
+      "record_count": 145,
+      "value_tag_count": 57,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_CVCCN110_VALUE",
+        "hmi_CVCCN111_VALUE",
+        "hmi_CVCFT110_VALUE",
+        "hmi_CVCFT111_VALUE",
+        "hmi_CVCFT121_VALUE",
+        "hmi_CVCFT132A_VALUE"
+      ]
+    },
+    {
+      "subsystem": "cws",
+      "record_count": 63,
+      "value_tag_count": 23,
+      "purdue_zone": "Circulating Water System",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_CWSPT12_VALUE",
+        "hmi_CWSPT204_VALUE",
+        "hmi_CWSPT211_VALUE",
+        "hmi_CWSPT218_VALUE",
+        "hmi_CWSTT31_VALUE",
+        "hmi_CWSTT32_VALUE"
+      ]
+    },
+    {
+      "subsystem": "eds",
+      "record_count": 9,
+      "value_tag_count": 7,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_EDSIT14_VALUE",
+        "hmi_EDSIT5_VALUE",
+        "hmi_EDSIT6_VALUE",
+        "hmi_EDSIT7_VALUE",
+        "hmi_EDSIT8_VALUE",
+        "hmi_EDSVT2_VALUE"
+      ]
+    },
+    {
+      "subsystem": "esw",
+      "record_count": 29,
+      "value_tag_count": 28,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_ESWFT53_VALUE",
+        "hmi_ESWFT54_VALUE",
+        "hmi_ESWIT12_VALUE",
+        "hmi_ESWIT25_VALUE",
+        "hmi_ESWLT27_VALUE",
+        "hmi_ESWPT19_VALUE"
+      ]
+    },
+    {
+      "subsystem": "fpc",
+      "record_count": 12,
+      "value_tag_count": 12,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_FPCFT17A_VALUE",
+        "hmi_FPCFT18A_VALUE",
+        "hmi_FPCFT43_VALUE",
+        "hmi_FPCFT79_VALUE",
+        "hmi_FPCFT80_VALUE",
+        "hmi_FPCLT39_VALUE"
+      ]
+    },
+    {
+      "subsystem": "fwh",
+      "record_count": 42,
+      "value_tag_count": 28,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_FWHFT72A_VALUE",
+        "hmi_FWHFT73A_VALUE",
+        "hmi_FWHFT89_VALUE",
+        "hmi_FWHIT13_VALUE",
+        "hmi_FWHIT9_VALUE",
+        "hmi_FWHLT255_VALUE"
+      ]
+    },
+    {
+      "subsystem": "hpc",
+      "record_count": 13,
+      "value_tag_count": 13,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_HPCFT917A_VALUE",
+        "hmi_HPCFT917B_VALUE",
+        "hmi_HPCFT918_VALUE",
+        "hmi_HPCFT922_VALUE",
+        "hmi_HPCIT18_VALUE",
+        "hmi_HPCIT6_VALUE"
+      ]
+    },
+    {
+      "subsystem": "hvc",
+      "record_count": 18,
+      "value_tag_count": 18,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_HVCPT21_VALUE",
+        "hmi_HVCPT22_VALUE",
+        "hmi_HVCPT24_VALUE",
+        "hmi_HVCPT32_VALUE",
+        "hmi_HVCPT33_VALUE",
+        "hmi_HVCPT35_VALUE"
+      ]
+    },
+    {
+      "subsystem": "hvf",
+      "record_count": 16,
+      "value_tag_count": 16,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_HVFPT18_VALUE",
+        "hmi_HVFPT19_VALUE",
+        "hmi_HVFPT20_VALUE",
+        "hmi_HVFPT24_VALUE",
+        "hmi_HVFPT25_VALUE",
+        "hmi_HVFPT26_VALUE"
+      ]
+    },
+    {
+      "subsystem": "mfw",
+      "record_count": 102,
+      "value_tag_count": 53,
+      "purdue_zone": "Main Feedwater",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_MFWFT105_VALUE",
+        "hmi_MFWFT1A_VALUE",
+        "hmi_MFWFT2A_VALUE",
+        "hmi_MFWFT511_VALUE",
+        "hmi_MFWFT521_VALUE",
+        "hmi_MFWFV510_VALUE"
+      ]
+    },
+    {
+      "subsystem": "mgp",
+      "record_count": 43,
+      "value_tag_count": 41,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_MGPIT1_VALUE",
+        "hmi_MGPIT2_VALUE",
+        "hmi_MGPIT3_VALUE",
+        "hmi_MGPIT4_VALUE",
+        "hmi_MGPIT5_VALUE",
+        "hmi_MGPIT6_VALUE"
+      ]
+    },
+    {
+      "subsystem": "mrs",
+      "record_count": 65,
+      "value_tag_count": 16,
+      "purdue_zone": "Steam Generator / Secondary Loop",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_MRSFT510_VALUE",
+        "hmi_MRSFT512_VALUE",
+        "hmi_MRSFT520_VALUE",
+        "hmi_MRSFT522_VALUE",
+        "hmi_MRSFT532_VALUE",
+        "hmi_MRSFT542_VALUE"
+      ]
+    },
+    {
+      "subsystem": "mtc",
+      "record_count": 6,
+      "value_tag_count": 2,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_MTCPT25_VALUE",
+        "hmi_MTCTT71_VALUE"
+      ]
+    },
+    {
+      "subsystem": "mtu",
+      "record_count": 131,
+      "value_tag_count": 103,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_MTUFT175A_VALUE",
+        "hmi_MTUFT175_VALUE",
+        "hmi_MTUFT178_VALUE",
+        "hmi_MTUFT184A_VALUE",
+        "hmi_MTUFT184_VALUE",
+        "hmi_MTUFT187_VALUE"
+      ]
+    },
+    {
+      "subsystem": "nbx",
+      "record_count": 31,
+      "value_tag_count": 27,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_NBXIT11_VALUE",
+        "hmi_NBXIT12_VALUE",
+        "hmi_NBXIT13_VALUE",
+        "hmi_NBXIT1A_VALUE",
+        "hmi_NBXIT1_VALUE",
+        "hmi_NBXIT26_VALUE"
+      ]
+    },
+    {
+      "subsystem": "rcs",
+      "record_count": 170,
+      "value_tag_count": 105,
+      "purdue_zone": "Reactor Coolant System",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_RCSCT5_VALUE",
+        "hmi_RCSFT121_VALUE",
+        "hmi_RCSFT414_VALUE",
+        "hmi_RCSFT424_VALUE",
+        "hmi_RCSFT434_VALUE",
+        "hmi_RCSFT444_VALUE"
+      ]
+    },
+    {
+      "subsystem": "rhr",
+      "record_count": 27,
+      "value_tag_count": 13,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_RHRFT618_VALUE",
+        "hmi_RHRFT619_VALUE",
+        "hmi_RHRFT988_VALUE",
+        "hmi_RHRHC606_VALUE",
+        "hmi_RHRHC607_VALUE",
+        "hmi_RHRIT20_VALUE"
+      ]
+    },
+    {
+      "subsystem": "rmu",
+      "record_count": 5,
+      "value_tag_count": 4,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_RMUFT25_VALUE",
+        "hmi_RMULT1_VALUE",
+        "hmi_RMUPT10_VALUE",
+        "hmi_RMUTT11_VALUE"
+      ]
+    },
+    {
+      "subsystem": "rps",
+      "record_count": 73,
+      "value_tag_count": 73,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_RPSSV2A_VALUE",
+        "hmi_RPS_02_A_VALUE",
+        "hmi_RPS_02_B_VALUE",
+        "hmi_RPS_02_C_VALUE",
+        "hmi_RPS_02_D_VALUE",
+        "hmi_RPS_03_A_VALUE"
+      ]
+    },
+    {
+      "subsystem": "rrc",
+      "record_count": 41,
+      "value_tag_count": 23,
+      "purdue_zone": "Reactor Regulation and Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_RRCNP10_VALUE",
+        "hmi_RRCNP1AA_VALUE",
+        "hmi_RRCNP1A_VALUE",
+        "hmi_RRCNP1BA_VALUE",
+        "hmi_RRCNP1B_VALUE",
+        "hmi_RRCNP1CA_VALUE"
+      ]
+    },
+    {
+      "subsystem": "scs",
+      "record_count": 6,
+      "value_tag_count": 4,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_SCSFT14_VALUE",
+        "hmi_SCSPT26_VALUE",
+        "hmi_SCSTT38A_VALUE",
+        "hmi_SCSTT39_VALUE"
+      ]
+    },
+    {
+      "subsystem": "spd",
+      "record_count": 8,
+      "value_tag_count": 8,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_SPDIT13_VALUE",
+        "hmi_SPDIT14_VALUE",
+        "hmi_SPDIT15_VALUE",
+        "hmi_SPDIT1_VALUE",
+        "hmi_SPDIT3_VALUE",
+        "hmi_SPDIT4_VALUE"
+      ]
+    },
+    {
+      "subsystem": "sss",
+      "record_count": 6,
+      "value_tag_count": 2,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_SSSPT08_VALUE",
+        "hmi_SSSPT10_VALUE"
+      ]
+    },
+    {
+      "subsystem": "tcs",
+      "record_count": 88,
+      "value_tag_count": 82,
+      "purdue_zone": "Basic Control",
+      "purdue_level": "L1",
+      "variables": [
+        "hmi_TCSCV1_VALUE",
+        "hmi_TCSCV2_VALUE",
+        "hmi_TCSCV3_VALUE",
+        "hmi_TCSCV4_VALUE",
+        "hmi_TCSHS15_VALUE",
+        "hmi_TCSHS4_VALUE"
+      ]
+    }
+  ]
+}

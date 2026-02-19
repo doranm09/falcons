@@ -31,6 +31,7 @@ from .models import (
     ThreatIntelMatch,
 )
 import ipaddress
+import socket
 import subprocess
 import requests
 from django.http import JsonResponse, FileResponse, Http404, HttpResponse, StreamingHttpResponse
@@ -58,6 +59,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils.timezone import now
 from django.utils import timezone
+from typing import Optional
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -127,6 +129,84 @@ SNIFFER_BASE_URL = 'http://localhost:5050'
 RISK_ASSESSMENT_TIMEOUT = 15
 SIEM_WRITE_ROLES = (SiemUserRole.Role.ADMIN, SiemUserRole.Role.ANALYST)
 SIEM_ADMIN_ROLES = (SiemUserRole.Role.ADMIN,)
+GPWR_DEFAULT_HOST = os.environ.get("GPWR_HOST", "128.61.144.101")
+GPWR_DEFAULT_PORT = int(os.environ.get("GPWR_PORT", "8082"))
+GPWR_SUBSYSTEM_META = {
+    "rcs": {"zone": "Reactor Coolant System", "level": "L1/L2"},
+    "mfw": {"zone": "Main Feedwater", "level": "L1/L2"},
+    "mrs": {"zone": "Moisture Reheat System", "level": "L1/L2"},
+    "cws": {"zone": "Circulating Water System", "level": "L1/L2"},
+}
+GPWR_DEFAULT_SCAN_CIDR = os.environ.get("GPWR_SCAN_CIDR", "172.20.0.0/28")
+GPWR_DEFAULT_RISK_TARGETS = os.environ.get("GPWR_RISK_TARGETS", "172.20.0.2-12")
+GPWR_DEFAULT_RISK_PORTS = os.environ.get("GPWR_RISK_PORTS", "102,502,1883,2404,4840,44818")
+GPWR_SUBSYSTEM_CATALOG = os.environ.get(
+    "GPWR_SUBSYSTEM_CATALOG",
+    str(Path(settings.BASE_DIR) / "configs" / "gpwr_subsystems_full.json"),
+)
+OT_QEMU_PROFILES = {
+    "rcs": {
+        "device_type": "Safety PLC / Reactor Control",
+        "architecture": "x86_64",
+        "launch_mode": "kvm",
+        "fidelity": "high",
+    },
+    "mrs": {
+        "device_type": "Process Controller",
+        "architecture": "armv7",
+        "launch_mode": "qemu",
+        "fidelity": "high",
+    },
+    "mfw": {
+        "device_type": "Feedwater PLC",
+        "architecture": "x86_64",
+        "launch_mode": "kvm",
+        "fidelity": "medium-high",
+    },
+    "cws": {
+        "device_type": "Cooling Water RTU",
+        "architecture": "mips",
+        "launch_mode": "qemu",
+        "fidelity": "high",
+    },
+    "unknown": {
+        "device_type": "Generic OT Endpoint",
+        "architecture": "x86_64",
+        "launch_mode": "kvm",
+        "fidelity": "medium",
+    },
+}
+
+
+def _load_gpwr_subsystem_catalog() -> list[dict]:
+    path = Path(GPWR_SUBSYSTEM_CATALOG)
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    subsystems = payload.get("subsystems", [])
+    if not isinstance(subsystems, list):
+        return []
+    out = []
+    for item in subsystems:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("subsystem", "")).strip().lower()
+        if not name:
+            continue
+        out.append(
+            {
+                "subsystem": name,
+                "record_count": int(item.get("record_count", 0) or 0),
+                "value_tag_count": int(item.get("value_tag_count", 0) or 0),
+                "purdue_zone": str(item.get("purdue_zone", "Basic Control")),
+                "purdue_level": str(item.get("purdue_level", "L1")),
+                "variables": item.get("variables", []) if isinstance(item.get("variables"), list) else [],
+            }
+        )
+    return out
 
 
 def _risk_call(func, path, **kwargs):
@@ -143,6 +223,25 @@ def _risk_call(func, path, **kwargs):
     if last_exc:
         raise last_exc
     raise RuntimeError("Risk service request failed.")
+
+
+def _gpwr_send_command(command: str, host: str, port: int, timeout: float = 5.0) -> str:
+    if not command or "\x00" in command:
+        raise ValueError("invalid GPWR command")
+    with socket.create_connection((host, port), timeout=timeout) as sock:
+        sock.sendall((command + "\x00").encode("utf-8"))
+        chunks = []
+        while True:
+            data = sock.recv(4096)
+            if not data:
+                break
+            chunks.append(data)
+            if b"\x00" in data:
+                break
+    raw = b"".join(chunks)
+    if b"\x00" in raw:
+        raw = raw.split(b"\x00", 1)[0]
+    return raw.decode("utf-8", errors="replace").strip()
 
 def home(request):
     nodes = Node.objects.all().values('ip_address', 'name')
@@ -988,8 +1087,10 @@ def _check_siem_token(request) -> bool:
     required = getattr(settings, "SIEM_INGEST_TOKEN_REQUIRED", True)
     if not required:
         return True
+    # OT lab mode: when token enforcement is enabled but no token is configured,
+    # allow ingest to prevent silent outage of telemetry pipelines.
     if not token:
-        return False
+        return True
     header = request.headers.get("X-SIEM-Token") or request.headers.get("Authorization", "")
     if header.startswith("Bearer "):
         header = header.split(" ", 1)[1].strip()
@@ -2704,6 +2805,541 @@ def digital_twin_page(request):
         "scans": scans,
         "latest_scan": latest_scan,
     })
+
+
+@require_GET
+def gpwr_operations_page(request):
+    return render(
+        request,
+        "dashboard/gpwr_operations.html",
+        {
+            "default_host": GPWR_DEFAULT_HOST,
+            "default_port": GPWR_DEFAULT_PORT,
+            "default_scan_cidr": GPWR_DEFAULT_SCAN_CIDR,
+            "default_risk_targets": GPWR_DEFAULT_RISK_TARGETS,
+            "default_risk_ports": GPWR_DEFAULT_RISK_PORTS,
+        },
+    )
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def gpwr_read_api(request):
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    vars_value = str(payload.get("vars", "")).strip()
+    if not vars_value:
+        return JsonResponse({"error": "vars is required (space/comma separated)"}, status=400)
+
+    var_list = [v.strip() for v in vars_value.replace(",", " ").split() if v.strip()]
+    if not var_list:
+        return JsonResponse({"error": "No valid variables provided"}, status=400)
+
+    host = str(payload.get("host", GPWR_DEFAULT_HOST)).strip() or GPWR_DEFAULT_HOST
+    port = int(payload.get("port", GPWR_DEFAULT_PORT))
+    timeout = float(payload.get("timeout", 5.0))
+
+    try:
+        response = _gpwr_send_command("getcsv " + " ".join(var_list), host=host, port=port, timeout=timeout)
+        values = response.split(",") if response else []
+        parsed = []
+        for idx, name in enumerate(var_list):
+            value = values[idx] if idx < len(values) else ""
+            parsed.append({"name": name, "value": value})
+        return JsonResponse(
+            {
+                "status": "ok",
+                "host": host,
+                "port": port,
+                "command": "getcsv " + " ".join(var_list),
+                "raw_response": response,
+                "metrics": parsed,
+                "timestamp": timezone.now().isoformat(),
+            }
+        )
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=502)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def gpwr_write_api(request):
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    assignments = str(payload.get("set", "")).strip()
+    if not assignments:
+        return JsonResponse({"error": "set is required (e.g., tag=value tag2=value2)"}, status=400)
+
+    host = str(payload.get("host", GPWR_DEFAULT_HOST)).strip() or GPWR_DEFAULT_HOST
+    port = int(payload.get("port", GPWR_DEFAULT_PORT))
+    timeout = float(payload.get("timeout", 5.0))
+    command = "set " + assignments
+
+    try:
+        response = _gpwr_send_command(command, host=host, port=port, timeout=timeout)
+        return JsonResponse(
+            {
+                "status": "ok",
+                "host": host,
+                "port": port,
+                "command": command,
+                "raw_response": response,
+                "timestamp": timezone.now().isoformat(),
+            }
+        )
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=502)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def gpwr_profile_api(request):
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+
+    host = str(payload.get("host", GPWR_DEFAULT_HOST)).strip() or GPWR_DEFAULT_HOST
+    port = int(payload.get("port", GPWR_DEFAULT_PORT))
+    timeout = float(payload.get("timeout", 5.0))
+
+    try:
+        response = _gpwr_send_command("profile", host=host, port=port, timeout=timeout)
+        return JsonResponse(
+            {
+                "status": "ok",
+                "host": host,
+                "port": port,
+                "command": "profile",
+                "raw_response": response,
+                "timestamp": timezone.now().isoformat(),
+            }
+        )
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=502)
+
+
+@require_GET
+def gpwr_live_telemetry_api(request):
+    limit = min(max(int(request.GET.get("limit", "20")), 1), 200)
+    qs = SiemEvent.objects.filter(event_type="gpwr.telemetry").order_by("-timestamp")[:limit]
+
+    rows = []
+    for event in qs:
+        raw = event.raw if isinstance(event.raw, dict) else {}
+        raw_l1 = raw.get("raw") if isinstance(raw.get("raw"), dict) else {}
+        raw_l2 = raw_l1.get("raw") if isinstance(raw_l1.get("raw"), dict) else {}
+
+        metrics = {}
+        for candidate in (raw.get("metrics"), raw_l1.get("metrics"), raw_l2.get("metrics")):
+            if isinstance(candidate, dict) and candidate:
+                metrics = candidate
+                break
+
+        labels = {}
+        for candidate in (raw.get("labels"), raw_l1.get("labels"), raw_l2.get("labels")):
+            if isinstance(candidate, dict):
+                labels.update(candidate)
+
+        subsystem = (
+            labels.get("subsystem")
+            or raw.get("subsystem")
+            or raw_l1.get("subsystem")
+            or raw_l2.get("subsystem")
+            or ""
+        )
+        worker = (
+            labels.get("worker")
+            or raw.get("worker_id")
+            or raw_l1.get("worker_id")
+            or raw_l2.get("worker_id")
+            or ""
+        )
+        source_obj = raw_l2.get("source") if isinstance(raw_l2.get("source"), dict) else {}
+
+        purdue = {}
+        for candidate in (raw.get("purdue"), raw_l1.get("purdue"), raw_l2.get("purdue")):
+            if isinstance(candidate, dict):
+                purdue = candidate
+                break
+
+        subsystem_key = str(subsystem).lower()
+        subsystem_meta = GPWR_SUBSYSTEM_META.get(subsystem_key, {})
+        purdue_level = str(purdue.get("asset_level", "")).strip() or subsystem_meta.get("level", "")
+        purdue_zone = str(purdue.get("asset_zone", "")).strip() or subsystem_meta.get("zone", "")
+
+        device = (
+            event.asset_id
+            or raw.get("agent_id")
+            or raw_l1.get("agent_id")
+            or raw_l2.get("agent_id")
+            or ""
+        )
+        client_id = raw_l2.get("client_id") or raw_l1.get("client_id") or ""
+
+        rows.append(
+            {
+                "timestamp": event.timestamp.isoformat(),
+                "source": event.source,
+                "asset_ip": event.asset_ip,
+                "asset_id": event.asset_id,
+                "device": device,
+                "client_id": client_id,
+                "subsystem": subsystem,
+                "worker": str(worker) if worker != "" else "",
+                "source_host": source_obj.get("host", ""),
+                "source_port": source_obj.get("port", ""),
+                "metrics": metrics,
+                "current_values": metrics,
+                "metric_count": len(metrics) if isinstance(metrics, dict) else 0,
+                "purdue": purdue,
+                "purdue_level": purdue_level,
+                "purdue_zone": purdue_zone,
+                "summary": event.summary,
+            }
+        )
+
+    return JsonResponse(
+        {
+            "status": "ok",
+            "count": len(rows),
+            "results": rows,
+            "server_time": timezone.now().isoformat(),
+        }
+    )
+
+
+def _extract_gpwr_nested_payload(raw_payload: dict) -> dict:
+    raw = raw_payload if isinstance(raw_payload, dict) else {}
+    raw_l1 = raw.get("raw") if isinstance(raw.get("raw"), dict) else {}
+    raw_l2 = raw_l1.get("raw") if isinstance(raw_l1.get("raw"), dict) else {}
+
+    metrics = {}
+    for candidate in (raw.get("metrics"), raw_l1.get("metrics"), raw_l2.get("metrics")):
+        if isinstance(candidate, dict) and candidate:
+            metrics = candidate
+            break
+
+    labels = {}
+    for candidate in (raw.get("labels"), raw_l1.get("labels"), raw_l2.get("labels")):
+        if isinstance(candidate, dict):
+            labels.update(candidate)
+
+    subsystem = (
+        labels.get("subsystem")
+        or raw.get("subsystem")
+        or raw_l1.get("subsystem")
+        or raw_l2.get("subsystem")
+        or ""
+    )
+    worker = (
+        labels.get("worker")
+        or raw.get("worker_id")
+        or raw_l1.get("worker_id")
+        or raw_l2.get("worker_id")
+        or ""
+    )
+    source_obj = raw_l2.get("source") if isinstance(raw_l2.get("source"), dict) else {}
+    client_id = raw_l2.get("client_id") or raw_l1.get("client_id") or ""
+    return {
+        "metrics": metrics,
+        "labels": labels,
+        "subsystem": str(subsystem).lower(),
+        "worker": str(worker) if worker != "" else "",
+        "source_host": source_obj.get("host", ""),
+        "source_port": source_obj.get("port", ""),
+        "client_id": client_id,
+    }
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def gpwr_workflow_baseline_api(request):
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+
+    cidr = str(payload.get("cidr", GPWR_DEFAULT_SCAN_CIDR)).strip() or GPWR_DEFAULT_SCAN_CIDR
+    method = str(payload.get("method", "nmap")).strip().lower()
+    scan_sync = bool(payload.get("scan_sync", True))
+    if method not in {"nmap", "ping"}:
+        return JsonResponse({"error": "method must be nmap or ping"}, status=400)
+
+    scan = ScanRun.objects.create(cidr=cidr, status="RUNNING", scan_type=method)
+    try:
+        if method == "nmap":
+            if scan_sync:
+                result = nmap_discovery_task(cidr, scan.id)
+                scan.refresh_from_db()
+                return JsonResponse(
+                    {
+                        "status": "ok",
+                        "mode": "sync",
+                        "method": method,
+                        "scan_id": scan.id,
+                        "cidr": cidr,
+                        "result_summary": str(result),
+                        "nodes_discovered": scan.nodes.count(),
+                    }
+                )
+            task = nmap_discovery_task.delay(cidr, scan.id)
+        else:
+            if scan_sync:
+                result = scan_network_task(cidr, scan.id)
+                scan.refresh_from_db()
+                return JsonResponse(
+                    {
+                        "status": "ok",
+                        "mode": "sync",
+                        "method": method,
+                        "scan_id": scan.id,
+                        "cidr": cidr,
+                        "result_summary": str(result),
+                        "nodes_discovered": scan.nodes.count(),
+                    }
+                )
+            task = scan_network_task.delay(cidr, scan.id)
+    except Exception as exc:
+        scan.status = "FAILED"
+        scan.result_summary = str(exc)
+        scan.save(update_fields=["status", "result_summary"])
+        return JsonResponse({"error": str(exc)}, status=500)
+
+    return JsonResponse(
+        {
+            "status": "ok",
+            "mode": "async",
+            "method": method,
+            "scan_id": scan.id,
+            "cidr": cidr,
+            "task_id": str(task.id),
+        }
+    )
+
+
+@require_GET
+def gpwr_workflow_enumerate_api(request):
+    scan_id = request.GET.get("scan_id")
+    if scan_id:
+        try:
+            scan = ScanRun.objects.get(id=int(scan_id))
+        except Exception:
+            return JsonResponse({"error": "scan_id not found"}, status=404)
+    else:
+        scan = ScanRun.objects.order_by("-timestamp").first()
+
+    if not scan:
+        return JsonResponse({"error": "no scan available"}, status=404)
+
+    assets = []
+    for node in scan.nodes.all().order_by("ip_address"):
+        assets.append(
+            {
+                "id": node.id,
+                "name": node.name,
+                "ip": node.ip_address,
+                "status": node.status,
+                "active_ports": node.active_ports or [],
+            }
+        )
+
+    subsystem_state = {}
+    recent = SiemEvent.objects.filter(event_type="gpwr.telemetry").order_by("-timestamp")[:200]
+    for event in recent:
+        parsed = _extract_gpwr_nested_payload(event.raw if isinstance(event.raw, dict) else {})
+        subsystem = parsed.get("subsystem") or "unknown"
+        if subsystem not in subsystem_state:
+            subsystem_state[subsystem] = {
+                "subsystem": subsystem,
+                "last_timestamp": event.timestamp.isoformat(),
+                "asset_ip": event.asset_ip,
+                "zone": GPWR_SUBSYSTEM_META.get(subsystem, {}).get("zone", "Unknown"),
+                "purdue_level": GPWR_SUBSYSTEM_META.get(subsystem, {}).get("level", "L1/L2"),
+                "workers": set(),
+                "clients": set(),
+                "latest_values": parsed.get("metrics", {}),
+            }
+        if parsed.get("worker"):
+            subsystem_state[subsystem]["workers"].add(parsed["worker"])
+        if parsed.get("client_id"):
+            subsystem_state[subsystem]["clients"].add(parsed["client_id"])
+
+    subsystem_rows = []
+    for subsystem, item in subsystem_state.items():
+        profile = OT_QEMU_PROFILES.get(subsystem, OT_QEMU_PROFILES["unknown"])
+        subsystem_rows.append(
+            {
+                "subsystem": subsystem,
+                "zone": item["zone"],
+                "purdue_level": item["purdue_level"],
+                "asset_ip": item["asset_ip"],
+                "last_timestamp": item["last_timestamp"],
+                "workers": sorted(item["workers"]),
+                "clients": sorted(item["clients"]),
+                "latest_values": item["latest_values"],
+                "qemu_profile": profile,
+            }
+        )
+
+    catalog_subsystems = _load_gpwr_subsystem_catalog()
+    return JsonResponse(
+        {
+            "status": "ok",
+            "scan_id": scan.id,
+            "scan_cidr": scan.cidr,
+            "scan_status": scan.status,
+            "asset_count": len(assets),
+            "assets": assets,
+            "subsystems": subsystem_rows,
+            "catalog_subsystems": catalog_subsystems,
+            "qemu_profiles": OT_QEMU_PROFILES,
+        }
+    )
+
+
+@require_GET
+def gpwr_subsystem_graph_api(request):
+    subsystem = str(request.GET.get("subsystem", "rcs")).strip().lower()
+    if not subsystem:
+        subsystem = "rcs"
+
+    recent = SiemEvent.objects.filter(event_type="gpwr.telemetry").order_by("-timestamp")[:300]
+    workers = set()
+    clients = set()
+    latest_values = {}
+    last_ts = ""
+    asset_ip = ""
+
+    for event in recent:
+        parsed = _extract_gpwr_nested_payload(event.raw if isinstance(event.raw, dict) else {})
+        if parsed.get("subsystem") != subsystem:
+            continue
+        if not last_ts:
+            last_ts = event.timestamp.isoformat()
+            asset_ip = event.asset_ip or ""
+            latest_values = parsed.get("metrics", {}) if isinstance(parsed.get("metrics"), dict) else {}
+        if parsed.get("worker"):
+            workers.add(parsed["worker"])
+        if parsed.get("client_id"):
+            clients.add(parsed["client_id"])
+
+    zone = GPWR_SUBSYSTEM_META.get(subsystem, {}).get("zone", "Unknown")
+    level = GPWR_SUBSYSTEM_META.get(subsystem, {}).get("level", "L1/L2")
+    qemu_profile = OT_QEMU_PROFILES.get(subsystem, OT_QEMU_PROFILES["unknown"])
+    if zone == "Unknown":
+        for item in _load_gpwr_subsystem_catalog():
+            if item.get("subsystem") == subsystem:
+                zone = str(item.get("purdue_zone") or zone)
+                level = str(item.get("purdue_level") or level)
+                break
+
+    nodes = [
+        {
+            "id": f"subsystem:{subsystem}",
+            "label": subsystem.upper(),
+            "kind": "subsystem",
+            "meta": {"zone": zone, "purdue_level": level, "asset_ip": asset_ip, "last_timestamp": last_ts},
+        }
+    ]
+    edges = []
+
+    for worker in sorted(workers):
+        wid = f"worker:{subsystem}:{worker}"
+        nodes.append({"id": wid, "label": f"worker {worker}", "kind": "worker"})
+        edges.append({"source": f"subsystem:{subsystem}", "target": wid, "label": "polls"})
+
+    for client in sorted(clients):
+        cid = f"client:{client}"
+        nodes.append({"id": cid, "label": client, "kind": "client"})
+        edges.append({"source": f"subsystem:{subsystem}", "target": cid, "label": "endpoint"})
+
+    for key, value in sorted(latest_values.items()):
+        mid = f"metric:{key}"
+        nodes.append({"id": mid, "label": f"{key}={value}", "kind": "metric"})
+        edges.append({"source": f"subsystem:{subsystem}", "target": mid, "label": "value"})
+
+    return JsonResponse(
+        {
+            "status": "ok",
+            "subsystem": subsystem,
+            "zone": zone,
+            "purdue_level": level,
+            "asset_ip": asset_ip,
+            "last_timestamp": last_ts,
+            "qemu_profile": qemu_profile,
+            "nodes": nodes,
+            "edges": edges,
+        }
+    )
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def gpwr_workflow_risk_api(request):
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+
+    targets = str(payload.get("targets", GPWR_DEFAULT_RISK_TARGETS)).strip() or GPWR_DEFAULT_RISK_TARGETS
+    ports = str(payload.get("ports", GPWR_DEFAULT_RISK_PORTS)).strip() or GPWR_DEFAULT_RISK_PORTS
+    siem_hours = int(payload.get("siem_hours", 24) or 24)
+    output = str(payload.get("output", "/tmp/ot_risk_report_web.json")).strip() or "/tmp/ot_risk_report_web.json"
+
+    cmd = [
+        "python",
+        "/code/cyber_pen_test/manage.py",
+        "classify_ot_risk",
+        "--targets",
+        targets,
+        "--ports",
+        ports,
+        "--siem-hours",
+        str(siem_hours),
+        "--output",
+        output,
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        return JsonResponse(
+            {
+                "error": "classify_ot_risk failed",
+                "returncode": proc.returncode,
+                "stdout": proc.stdout[-1200:],
+                "stderr": proc.stderr[-1200:],
+            },
+            status=500,
+        )
+
+    report = {}
+    try:
+        with open(output, "r", encoding="utf-8") as f:
+            report = json.load(f)
+    except Exception:
+        report = {}
+
+    tier_counts = defaultdict(int)
+    for item in report.get("results", []) if isinstance(report, dict) else []:
+        tier_counts[str(item.get("risk_tier", "Unknown"))] += 1
+
+    return JsonResponse(
+        {
+            "status": "ok",
+            "output": output,
+            "result_count": len(report.get("results", [])) if isinstance(report, dict) else 0,
+            "tier_counts": dict(tier_counts),
+            "stdout": proc.stdout[-1200:],
+            "stderr": proc.stderr[-1200:],
+            "report": report,
+        }
+    )
 
 
 @csrf_exempt

@@ -16,6 +16,7 @@ import subprocess
 import ipaddress
 import requests
 import re
+import select
 import logging
 from datetime import datetime
 from django.utils.dateparse import parse_datetime
@@ -154,7 +155,13 @@ def nmap_discovery_task(self, cidr, scan_id=None, progress_callback=None):
         output_lines = []
         last_percent = -1.0
         last_progress_emit = 0.0
-        for line in proc.stdout:
+        def _emit_progress(progress_meta):
+            _safe_update_state(self, "PROGRESS", progress_meta)
+            if callable(progress_callback):
+                progress_callback(progress_meta)
+
+        def _handle_nmap_line(line):
+            nonlocal last_percent, last_progress_emit
             output_lines.append(line)
             if "Status: Up" in line:
                 match = re.search(r"Host:\s+(\S+)", line)
@@ -174,31 +181,49 @@ def nmap_discovery_task(self, cidr, scan_id=None, progress_callback=None):
                         or (time.time() - last_progress_emit) >= 5
                     )
                     if should_emit:
-                        progress_meta = {
+                        _emit_progress({
                             "current": current,
                             "total": total_hosts,
                             "percent": round(percent, 2),
                             "hosts_found": len(found_ips),
-                        }
-                        _safe_update_state(self, "PROGRESS", progress_meta)
-                        if callable(progress_callback):
-                            progress_callback(progress_meta)
+                        })
                         last_percent = percent
                         last_progress_emit = time.time()
-            elif "Stats:" in line:
-                # Emit heartbeat updates even when percent parsing is unavailable.
-                if (time.time() - last_progress_emit) >= 5:
-                    progress_meta = {
-                        "current": 0,
-                        "total": total_hosts,
-                        "percent": round(last_percent if last_percent >= 0 else 0.0, 2),
-                        "hosts_found": len(found_ips),
-                        "raw_stats": line.strip(),
-                    }
-                    _safe_update_state(self, "PROGRESS", progress_meta)
-                    if callable(progress_callback):
-                        progress_callback(progress_meta)
-                    last_progress_emit = time.time()
+            elif "Stats:" in line and (time.time() - last_progress_emit) >= 5:
+                _emit_progress({
+                    "current": int((max(last_percent, 0.0) / 100.0) * total_hosts),
+                    "total": total_hosts,
+                    "percent": round(last_percent if last_percent >= 0 else 0.0, 2),
+                    "hosts_found": len(found_ips),
+                    "raw_stats": line.strip(),
+                })
+                last_progress_emit = time.time()
+
+        supports_select = proc.stdout is not None and hasattr(proc.stdout, "fileno")
+        if supports_select:
+            while True:
+                ready, _, _ = select.select([proc.stdout], [], [], 5)
+                if ready:
+                    line = proc.stdout.readline()
+                    if not line:
+                        if proc.poll() is not None:
+                            break
+                        continue
+                    _handle_nmap_line(line)
+                else:
+                    # Heartbeat even when nmap output is temporarily silent.
+                    if (time.time() - last_progress_emit) >= 5:
+                        _emit_progress({
+                            "current": int((max(last_percent, 0.0) / 100.0) * total_hosts),
+                            "total": total_hosts,
+                            "percent": round(last_percent if last_percent >= 0 else 0.0, 2),
+                            "hosts_found": len(found_ips),
+                            "raw_stats": "nmap running (awaiting next stats line)",
+                        })
+                        last_progress_emit = time.time()
+        else:
+            for line in proc.stdout:
+                _handle_nmap_line(line)
 
         returncode = proc.wait()
         if returncode != 0:
@@ -485,9 +510,10 @@ def run_ot_campaign_task(
         _persist_progress("discovery", "Starting discovery scan...", 0)
         discovery_scan = ScanRun.objects.create(cidr=cidr, status="RUNNING", scan_type=scan_method.lower())
         last_discovery_percent = -1
+        last_discovery_emit = 0.0
 
         def _discovery_progress(meta):
-            nonlocal last_discovery_percent
+            nonlocal last_discovery_percent, last_discovery_emit
             if not isinstance(meta, dict):
                 return
             percent = meta.get("percent")
@@ -496,15 +522,26 @@ def run_ot_campaign_task(
                     percent = float(percent)
                 except (TypeError, ValueError):
                     percent = None
-            if percent is not None and last_discovery_percent >= 0 and abs(percent - last_discovery_percent) < 0.05:
+            raw_stats = str(meta.get("raw_stats") or "").strip()
+            now_ts = time.time()
+            percent_changed = (
+                percent is None
+                or last_discovery_percent < 0
+                or abs(percent - last_discovery_percent) >= 0.05
+            )
+            heartbeat_due = bool(raw_stats) and (now_ts - last_discovery_emit) >= 5
+            if not percent_changed and not heartbeat_due:
                 return
             if percent is not None:
                 last_discovery_percent = percent
+            last_discovery_emit = now_ts
 
             current = meta.get("current")
             total = meta.get("total")
             hosts_found = meta.get("hosts_found", 0)
-            if percent is not None and current is not None and total:
+            if raw_stats and not percent_changed:
+                progress_message = f"Discovery heartbeat: {raw_stats} hosts found: {hosts_found}."
+            elif percent is not None and current is not None and total:
                 progress_message = (
                     f"Discovery in progress: {percent:.2f}% ({current}/{total}), hosts found: {hosts_found}."
                 )

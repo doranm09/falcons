@@ -35,8 +35,22 @@ def _campaign_step_meta(step, message, steps_completed, total_steps, details=Non
     return meta
 
 
+def _campaign_log_line(step, message):
+    timestamp = now().strftime("%H:%M:%S")
+    label = str(step or "campaign").strip() or "campaign"
+    text = str(message or "").strip()
+    return f"{timestamp} [{label}] {text}"
+
+
+def _safe_update_state(task, state, meta):
+    try:
+        task.update_state(state=state, meta=meta)
+    except ValueError:
+        logger.debug("Skipping task state update without active task id")
+
+
 @shared_task(bind=True)
-def scan_network_task(self, cidr, scan_id=None):
+def scan_network_task(self, cidr, scan_id=None, progress_callback=None):
     from .models import ScanRun, Node, Link  # ensure local import in tasks
     import subprocess, ipaddress
 
@@ -78,11 +92,15 @@ def scan_network_task(self, cidr, scan_id=None):
 
         if scanned % update_every == 0 or scanned == total_hosts:
             percent = int((scanned / total_hosts) * 100)
-            self.update_state(state="PROGRESS", meta={
+            progress_meta = {
                 "current": scanned,
                 "total": total_hosts,
                 "percent": percent,
-            })
+                "hosts_found": len(found_nodes),
+            }
+            _safe_update_state(self, "PROGRESS", progress_meta)
+            if callable(progress_callback):
+                progress_callback(progress_meta)
 
     # Create weighted links between nodes
     for i in range(len(found_nodes)):
@@ -101,7 +119,7 @@ def scan_network_task(self, cidr, scan_id=None):
 
 
 @shared_task(bind=True)
-def nmap_discovery_task(self, cidr, scan_id=None):
+def nmap_discovery_task(self, cidr, scan_id=None, progress_callback=None):
     if scan_id:
         try:
             scan = ScanRun.objects.get(id=scan_id)
@@ -120,7 +138,10 @@ def nmap_discovery_task(self, cidr, scan_id=None):
         total_hosts = network.num_addresses if network.prefixlen >= 31 else max(1, network.num_addresses - 2)
     else:
         total_hosts = max(1, network.num_addresses)
-    self.update_state(state="PROGRESS", meta={"current": 0, "total": total_hosts, "percent": 0})
+    initial_progress = {"current": 0, "total": total_hosts, "percent": 0, "hosts_found": 0}
+    _safe_update_state(self, "PROGRESS", initial_progress)
+    if callable(progress_callback):
+        progress_callback(initial_progress)
 
     try:
         cmd = ["nmap", "-sn", cidr, "--stats-every", "1s", "-oG", "-"]
@@ -131,6 +152,7 @@ def nmap_discovery_task(self, cidr, scan_id=None):
             text=True,
         )
         output_lines = []
+        last_percent = -1
         for line in proc.stdout:
             output_lines.append(line)
             if "Status: Up" in line:
@@ -144,12 +166,18 @@ def nmap_discovery_task(self, cidr, scan_id=None):
                     percent = int(float(progress_match.group(1)))
                 except (TypeError, ValueError):
                     percent = None
-                if percent is not None:
+                if percent is not None and percent != last_percent:
                     current = int((percent / 100.0) * total_hosts)
-                    self.update_state(
-                        state="PROGRESS",
-                        meta={"current": current, "total": total_hosts, "percent": percent},
-                    )
+                    progress_meta = {
+                        "current": current,
+                        "total": total_hosts,
+                        "percent": percent,
+                        "hosts_found": len(found_ips),
+                    }
+                    _safe_update_state(self, "PROGRESS", progress_meta)
+                    if callable(progress_callback):
+                        progress_callback(progress_meta)
+                    last_percent = percent
 
         returncode = proc.wait()
         if returncode != 0:
@@ -158,6 +186,16 @@ def nmap_discovery_task(self, cidr, scan_id=None):
 
         for ip in found_ips:
             Node.objects.create(scan_run=scan, ip_address=ip, name=ip)
+
+        final_progress = {
+            "current": total_hosts,
+            "total": total_hosts,
+            "percent": 100,
+            "hosts_found": len(found_ips),
+        }
+        _safe_update_state(self, "PROGRESS", final_progress)
+        if callable(progress_callback):
+            progress_callback(final_progress)
 
         scan.status = "COMPLETE"
         scan.result_summary = f"{len(found_ips)} hosts discovered (nmap)"
@@ -377,8 +415,18 @@ def run_ot_campaign_task(
         "agent_scan": {},
         "errors": [],
     }
+    campaign_log_lines = []
+    if campaign_run and isinstance(campaign_run.result_payload, dict):
+        existing_lines = campaign_run.result_payload.get("log_lines") or []
+        if isinstance(existing_lines, list):
+            campaign_log_lines = [str(line) for line in existing_lines if line is not None][-200:]
 
     def _persist_progress(step, message, steps_completed, details=None):
+        log_line = _campaign_log_line(step, message)
+        if not campaign_log_lines or campaign_log_lines[-1] != log_line:
+            campaign_log_lines.append(log_line)
+            if len(campaign_log_lines) > 200:
+                del campaign_log_lines[:-200]
         if campaign_run:
             CampaignRun.objects.filter(id=campaign_run.id).update(
                 status=CampaignRun.Status.RUNNING,
@@ -387,15 +435,18 @@ def run_ot_campaign_task(
                 step_message=(message or "")[:255],
                 steps_completed=steps_completed,
                 total_steps=total_steps,
+                result_payload={"log_lines": campaign_log_lines[-200:]},
             )
-        self.update_state(
-            state="PROGRESS",
-            meta=_campaign_step_meta(step, message, steps_completed, total_steps, details=details),
+        _safe_update_state(
+            self,
+            "PROGRESS",
+            _campaign_step_meta(step, message, steps_completed, total_steps, details=details),
         )
 
-    def _record_error(step_name, exc):
+    def _record_error(step_name, exc, steps_completed):
         message = f"{step_name}: {exc}"
         result["errors"].append(message)
+        _persist_progress(step_name, f"Error: {exc}", steps_completed, details={"error": str(exc)})
         logger.exception("OT campaign step failed (%s): %s", step_name, exc)
 
     if campaign_run:
@@ -412,10 +463,51 @@ def run_ot_campaign_task(
     try:
         _persist_progress("discovery", "Starting discovery scan...", 0)
         discovery_scan = ScanRun.objects.create(cidr=cidr, status="RUNNING", scan_type=scan_method.lower())
+        last_discovery_percent = -1
+
+        def _discovery_progress(meta):
+            nonlocal last_discovery_percent
+            if not isinstance(meta, dict):
+                return
+            percent = meta.get("percent")
+            if percent is not None:
+                try:
+                    percent = int(percent)
+                except (TypeError, ValueError):
+                    percent = None
+            if percent is not None and percent == last_discovery_percent:
+                return
+            if percent is not None:
+                last_discovery_percent = percent
+
+            current = meta.get("current")
+            total = meta.get("total")
+            hosts_found = meta.get("hosts_found", 0)
+            if percent is not None and current is not None and total:
+                progress_message = (
+                    f"Discovery in progress: {percent}% ({current}/{total}), hosts found: {hosts_found}."
+                )
+            elif percent is not None:
+                progress_message = f"Discovery in progress: {percent}%, hosts found: {hosts_found}."
+            else:
+                progress_message = f"Discovery in progress, hosts found: {hosts_found}."
+
+            _persist_progress(
+                "discovery",
+                progress_message,
+                0,
+                details={
+                    "progress": percent,
+                    "current": current,
+                    "total": total,
+                    "hosts_found": hosts_found,
+                },
+            )
+
         if scan_method.lower() == "ping":
-            scan_network_task.apply(args=(cidr, discovery_scan.id))
+            scan_network_task(cidr, discovery_scan.id, progress_callback=_discovery_progress)
         else:
-            nmap_discovery_task.apply(args=(cidr, discovery_scan.id))
+            nmap_discovery_task(cidr, discovery_scan.id, progress_callback=_discovery_progress)
 
         discovery_scan.refresh_from_db()
         discovered_ips = list(
@@ -433,7 +525,7 @@ def run_ot_campaign_task(
             details={"scan_id": discovery_scan.id, "hosts_found": len(discovered_ips)},
         )
     except Exception as exc:
-        _record_error("discovery", exc)
+        _record_error("discovery", exc, 0)
 
     # Step 2: optional agent scan queue
     try:
@@ -454,7 +546,7 @@ def run_ot_campaign_task(
             }
         _persist_progress("agent_scan", "Agent scan step complete.", 2)
     except Exception as exc:
-        _record_error("agent_scan", exc)
+        _record_error("agent_scan", exc, 2)
 
     # Step 3: optional OpenVAS vulnerability pass
     try:
@@ -513,7 +605,7 @@ def run_ot_campaign_task(
 
         _persist_progress("openvas", "OpenVAS step complete.", 3)
     except Exception as exc:
-        _record_error("openvas", exc)
+        _record_error("openvas", exc, 3)
 
     # Step 4: optional Sliver automation
     try:
@@ -557,9 +649,10 @@ def run_ot_campaign_task(
 
         _persist_progress("sliver", "Sliver step complete.", 4)
     except Exception as exc:
-        _record_error("sliver", exc)
+        _record_error("sliver", exc, 4)
 
     result["status"] = "completed_with_errors" if result["errors"] else "completed"
+    result["log_lines"] = campaign_log_lines[-200:]
     if campaign_run:
         campaign_run.refresh_from_db(fields=["started_at"])
         completed_at = now()

@@ -879,11 +879,20 @@ def get_scan_history(request):
 
 
 def _serialize_campaign_run(run):
+    openvas_task_id = ""
+    if run.openvas_scan_id and run.openvas_scan:
+        openvas_task_id = run.openvas_scan.openvas_task_id or ""
+
     report_url = (
         reverse("dashboard:vuln-detail", args=[run.openvas_scan_id])
         if run.openvas_scan_id
         else ""
     )
+    openvas_ui_url = getattr(settings, "OPENVAS_UI_URL", "http://127.0.0.1:9392")
+    payload = run.result_payload if isinstance(run.result_payload, dict) else {}
+    log_lines = payload.get("log_lines") if isinstance(payload, dict) else []
+    if not isinstance(log_lines, list):
+        log_lines = []
     return {
         "id": run.id,
         "started_at": run.started_at.strftime('%Y-%m-%d %H:%M:%S'),
@@ -900,9 +909,12 @@ def _serialize_campaign_run(run):
         "step": run.current_step or "",
         "message": run.step_message or "",
         "openvas_scan_id": run.openvas_scan_id,
+        "openvas_task_id": openvas_task_id,
         "openvas_report_id": run.openvas_report_id or "",
+        "openvas_ui_url": openvas_ui_url,
         "report_url": report_url,
         "task_id": run.celery_task_id or "",
+        "log_lines": [str(line) for line in log_lines[-200:]],
     }
 
 

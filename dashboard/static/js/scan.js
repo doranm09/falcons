@@ -7,6 +7,10 @@ document.addEventListener('DOMContentLoaded', function () {
   const campaignForm = document.getElementById('campaign-form');
   const scanStatus   = document.getElementById('scan-status');
   const campaignStatus = document.getElementById('campaign-status');
+  const campaignOpenvasUiLink = document.getElementById('campaign-openvas-ui-link');
+  const campaignReportLink = document.getElementById('campaign-report-link');
+  const campaignOpenvasTask = document.getElementById('campaign-openvas-task');
+  const campaignLogConsole = document.getElementById('campaign-log-console');
   const nodesBody    = document.getElementById('nodes-body');
   const historyTbody = document.getElementById('scan-history-body');
   const campaignHistoryBody = document.getElementById('campaign-history-body');
@@ -51,6 +55,47 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!campaignStatus) return;
     campaignStatus.className = `mt-3 small text-${type}`;
     campaignStatus.innerText = msg;
+  }
+  function setCampaignLogLines(lines = []) {
+    if (!campaignLogConsole) return;
+    const normalized = Array.isArray(lines)
+      ? lines.map(line => String(line)).slice(-200)
+      : [];
+    campaignLogConsole.textContent = normalized.length
+      ? normalized.join('\n')
+      : 'Waiting for campaign output...';
+    campaignLogConsole.scrollTop = campaignLogConsole.scrollHeight;
+  }
+  function appendCampaignLogLine(line) {
+    if (!campaignLogConsole) return;
+    const text = String(line || '').trim();
+    if (!text) return;
+
+    const current = campaignLogConsole.textContent === 'Waiting for campaign output...'
+      ? []
+      : String(campaignLogConsole.textContent || '').split('\n');
+    if (current.length && current[current.length - 1] === text) return;
+    current.push(text);
+    while (current.length > 200) current.shift();
+    campaignLogConsole.textContent = current.join('\n');
+    campaignLogConsole.scrollTop = campaignLogConsole.scrollHeight;
+  }
+  function updateCampaignLinks(data = {}) {
+    if (campaignOpenvasUiLink) {
+      campaignOpenvasUiLink.href = data.openvas_ui_url || 'http://127.0.0.1:9392';
+    }
+    if (campaignReportLink) {
+      if (data.report_url) {
+        campaignReportLink.href = data.report_url;
+        campaignReportLink.classList.remove('d-none');
+      } else {
+        campaignReportLink.href = '#';
+        campaignReportLink.classList.add('d-none');
+      }
+    }
+    if (campaignOpenvasTask) {
+      campaignOpenvasTask.innerText = data.openvas_task_id ? `OpenVAS task: ${data.openvas_task_id}` : '';
+    }
   }
   function disableForm(form, disabled) {
     if (!form) return;
@@ -110,8 +155,12 @@ document.addEventListener('DOMContentLoaded', function () {
       (data.history || []).forEach(run => {
         const badge = badgeClass(run.status);
         const duration = run.duration_seconds == null ? '-' : `${run.duration_seconds}s`;
+        const taskHint = run.openvas_task_id
+          ? `<span class="small text-muted me-2">Task ${escapeHtml(run.openvas_task_id)}</span>`
+          : '';
         const reportAction = run.report_url
-          ? `<a class="btn btn-sm btn-outline-primary" href="${escapeHtml(run.report_url)}">OpenVAS</a>`
+          ? `<a class="btn btn-sm btn-outline-primary" href="${escapeHtml(run.report_url)}">Report</a>
+             <a class="btn btn-sm btn-outline-secondary" href="${escapeHtml(run.openvas_ui_url || 'http://127.0.0.1:9392')}" target="_blank" rel="noopener">OpenVAS UI</a>`
           : '<button class="btn btn-sm btn-outline-secondary" disabled>-</button>';
 
         const tr = document.createElement('tr');
@@ -123,7 +172,7 @@ document.addEventListener('DOMContentLoaded', function () {
           <td>${escapeHtml(run.discovered_hosts_count ?? 0)}</td>
           <td>${escapeHtml(run.vulnerability_count ?? 0)}</td>
           <td title="${escapeHtml(run.error_details || '')}">${escapeHtml(run.error_count ?? 0)}</td>
-          <td>${reportAction}</td>
+          <td>${taskHint}${reportAction}</td>
         `;
         campaignHistoryBody.appendChild(tr);
       });
@@ -305,9 +354,11 @@ document.addEventListener('DOMContentLoaded', function () {
   // --- Scan form ---
   if (scanForm) {
     scanForm.addEventListener('submit', async e=>{
-      e.preventDefault(); disableForm(scanForm,true); setStatus('Starting discovery scan…');
+      e.preventDefault();
+      const formData=new FormData(scanForm);
+      disableForm(scanForm,true);
+      setStatus('Starting discovery scan…');
       try {
-        const formData=new FormData(scanForm);
         const res=await fetch('/scan/start/',{method:'POST',headers:{'X-CSRFToken':getCSRFToken()},body:formData});
         const data=await res.json(); const taskId=data.task_id; if(!taskId) throw new Error('No task id');
         pollTask({
@@ -341,9 +392,10 @@ document.addEventListener('DOMContentLoaded', function () {
   // --- Vuln form ---
   if (vulnForm) {
     vulnForm.addEventListener('submit', async e=>{
-      e.preventDefault(); disableForm(vulnForm,true);
+      e.preventDefault();
+      const formData=new FormData(vulnForm);
+      disableForm(vulnForm,true);
       try {
-        const formData=new FormData(vulnForm);
         const res=await fetch('/scan/vuln/start/',{method:'POST',headers:{'X-CSRFToken':getCSRFToken()},body:formData});
         const data=await res.json(); const scan_id=data.scan_id; if(!scan_id) throw new Error(data.error || 'No scan id');
         const reportHref = `/vulnerabilities/${encodeURIComponent(scan_id)}/`;
@@ -377,11 +429,11 @@ document.addEventListener('DOMContentLoaded', function () {
   if (agentScanForm) {
     agentScanForm.addEventListener('submit', async e => {
       e.preventDefault();
+      const formData = new FormData(agentScanForm);
+      const payload = Object.fromEntries(formData.entries());
       disableForm(agentScanForm, true);
       setStatus('Dispatching agent scan…');
       try {
-        const formData = new FormData(agentScanForm);
-        const payload = Object.fromEntries(formData.entries());
         const res = await fetch('/scan/agent/start/', {
           method: 'POST',
           headers: {
@@ -405,14 +457,15 @@ document.addEventListener('DOMContentLoaded', function () {
   if (campaignForm) {
     campaignForm.addEventListener('submit', async e => {
       e.preventDefault();
+      const formData = new FormData(campaignForm);
+      const openvasEnabled = campaignForm.querySelector('[name="run_openvas"]')?.checked;
+      const collectLootEnabled = campaignForm.querySelector('[name="collect_loot"]')?.checked;
+      formData.set('run_openvas', openvasEnabled ? '1' : '0');
+      formData.set('collect_loot', collectLootEnabled ? '1' : '0');
       disableForm(campaignForm, true);
       setCampaignStatus('Starting OT campaign...', 'info');
+      setCampaignLogLines(['Waiting for first campaign update...']);
       try {
-        const formData = new FormData(campaignForm);
-        const openvasEnabled = campaignForm.querySelector('[name="run_openvas"]')?.checked;
-        const collectLootEnabled = campaignForm.querySelector('[name="collect_loot"]')?.checked;
-        formData.set('run_openvas', openvasEnabled ? '1' : '0');
-        formData.set('collect_loot', collectLootEnabled ? '1' : '0');
         const res = await fetch('/scan/campaign/start/', {
           method: 'POST',
           headers: { 'X-CSRFToken': getCSRFToken() },
@@ -425,24 +478,50 @@ document.addEventListener('DOMContentLoaded', function () {
         const campaignRunId = data.campaign_run_id;
         if (campaignRunId) {
           setCampaignStatus(`Campaign #${campaignRunId} started. Waiting for progress...`, 'info');
+          appendCampaignLogLine(`${new Date().toLocaleTimeString()} [queued] Campaign #${campaignRunId} accepted by worker.`);
         }
+        updateCampaignLinks();
         updateCampaignHistory();
 
         pollTask({
           statusUrl: `/scan/campaign/status/${encodeURIComponent(taskId)}/`,
           intervalMs: 4000,
           onTick: s => {
+            const campaign = s.campaign || {};
+            if (campaign && Object.keys(campaign).length) {
+              updateCampaignLinks(campaign);
+              if (Array.isArray(campaign.log_lines) && campaign.log_lines.length) {
+                setCampaignLogLines(campaign.log_lines);
+              }
+            }
             if (s.state === 'PROGRESS') {
               const step = s.step ? `[${s.step}] ` : '';
+              const openvasProgress = s.step === 'openvas' && s.details && s.details.progress != null
+                ? ` ${s.details.progress}%`
+                : '';
+              const openvasTask = campaign.openvas_task_id ? ` (task ${campaign.openvas_task_id})` : '';
               const progress = (s.steps_completed != null && s.total_steps != null)
                 ? ` (${s.steps_completed}/${s.total_steps})`
                 : '';
-              setCampaignStatus(`${step}${s.message || 'Running...'}${progress}`, 'info');
+              setCampaignStatus(`${step}${s.message || 'Running...'}${openvasProgress}${openvasTask}${progress}`, 'info');
+              if (!Array.isArray(campaign.log_lines) || !campaign.log_lines.length) {
+                appendCampaignLogLine(`${new Date().toLocaleTimeString()} ${step}${s.message || 'Running...'}`);
+              }
               return;
             }
             setCampaignStatus(`Campaign state: ${s.state}`, 'info');
+            if (!Array.isArray(campaign.log_lines) || !campaign.log_lines.length) {
+              appendCampaignLogLine(`${new Date().toLocaleTimeString()} [state] ${s.state}`);
+            }
           },
           onDone: s => {
+            const campaign = s.campaign || {};
+            if (campaign && Object.keys(campaign).length) {
+              updateCampaignLinks(campaign);
+              if (Array.isArray(campaign.log_lines) && campaign.log_lines.length) {
+                setCampaignLogLines(campaign.log_lines);
+              }
+            }
             const result = s.result || {};
             if (s.state === 'SUCCESS') {
               const found = Array.isArray(result.discovered_ips) ? result.discovered_ips.length : 0;
@@ -454,9 +533,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 `Campaign complete: hosts=${found}, vulns=${vulnCount}, errors=${errCount}.`,
                 errCount ? 'warning' : 'success'
               );
+              appendCampaignLogLine(
+                `${new Date().toLocaleTimeString()} [complete] hosts=${found}, vulns=${vulnCount}, errors=${errCount}`
+              );
             } else {
               const msg = s.message || (result && result.error) || 'Campaign failed.';
               setCampaignStatus(`Campaign failed: ${msg}`, 'danger');
+              appendCampaignLogLine(`${new Date().toLocaleTimeString()} [failed] ${msg}`);
             }
             updateScanHistory();
             updateCampaignHistory();
@@ -465,12 +548,14 @@ document.addEventListener('DOMContentLoaded', function () {
           },
           onError: err => {
             setCampaignStatus(`Campaign status error: ${err.message}`, 'danger');
+            appendCampaignLogLine(`${new Date().toLocaleTimeString()} [error] ${err.message}`);
             updateCampaignHistory();
             disableForm(campaignForm, false);
           }
         });
       } catch (err) {
         setCampaignStatus(`Could not start campaign: ${err.message}`, 'danger');
+        appendCampaignLogLine(`${new Date().toLocaleTimeString()} [error] ${err.message}`);
         disableForm(campaignForm, false);
       }
     });

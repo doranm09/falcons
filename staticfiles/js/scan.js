@@ -150,9 +150,10 @@ document.addEventListener('DOMContentLoaded', function () {
     try {
       if (!campaignHistoryBody) return;
       const data = await jsonFetch('/scan/campaign/history/');
+      const runs = data.history || [];
       campaignHistoryBody.innerHTML = '';
 
-      (data.history || []).forEach(run => {
+      runs.forEach(run => {
         const badge = badgeClass(run.status);
         const duration = run.duration_seconds == null ? '-' : `${run.duration_seconds}s`;
         const taskHint = run.openvas_task_id
@@ -177,10 +178,35 @@ document.addEventListener('DOMContentLoaded', function () {
         campaignHistoryBody.appendChild(tr);
       });
 
-      if (!data.history || !data.history.length) {
+      if (!runs.length) {
         const tr = document.createElement('tr');
         tr.innerHTML = '<td colspan="8">No campaign runs found.</td>';
         campaignHistoryBody.appendChild(tr);
+        setCampaignLogLines([]);
+        return;
+      }
+
+      const latest = runs[0];
+      updateCampaignLinks(latest);
+      if (Array.isArray(latest.log_lines) && latest.log_lines.length) {
+        setCampaignLogLines(latest.log_lines);
+      }
+
+      const latestStatus = String(latest.status || '').toUpperCase();
+      const latestStep = latest.step ? `[${latest.step}] ` : '';
+      const latestProgress = (latest.steps_completed != null && latest.total_steps != null)
+        ? ` (${latest.steps_completed}/${latest.total_steps})`
+        : '';
+      const latestMessage = latest.message || `Campaign status: ${latest.status || 'unknown'}`;
+      const latestTone = latestStatus === 'FAILED'
+        ? 'danger'
+        : (latestStatus === 'COMPLETED' ? 'success' : 'info');
+      setCampaignStatus(`${latestStep}${latestMessage}${latestProgress}`, latestTone);
+
+      if (latestStatus === 'RUNNING' && latest.task_id) {
+        startCampaignPolling(latest.task_id, { unlockOnFinish: false });
+      } else if (activeCampaignTaskId && activeCampaignTaskId !== latest.task_id) {
+        stopActiveCampaignPoll();
       }
     } catch (e) {
       console.warn('Campaign history refresh failed:', e.message);
@@ -350,6 +376,94 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     tick(); return ()=>{stopped=true;};
   }
+  let activeCampaignTaskId = null;
+  let stopCampaignPoll = null;
+
+  function stopActiveCampaignPoll() {
+    if (typeof stopCampaignPoll === 'function') stopCampaignPoll();
+    stopCampaignPoll = null;
+    activeCampaignTaskId = null;
+  }
+
+  function startCampaignPolling(taskId, { unlockOnFinish = true } = {}) {
+    if (!taskId) return;
+    if (activeCampaignTaskId === taskId && typeof stopCampaignPoll === 'function') return;
+    stopActiveCampaignPoll();
+    activeCampaignTaskId = taskId;
+
+    stopCampaignPoll = pollTask({
+      statusUrl: `/scan/campaign/status/${encodeURIComponent(taskId)}/`,
+      intervalMs: 4000,
+      onTick: s => {
+        const campaign = s.campaign || {};
+        if (campaign && Object.keys(campaign).length) {
+          updateCampaignLinks(campaign);
+          if (Array.isArray(campaign.log_lines) && campaign.log_lines.length) {
+            setCampaignLogLines(campaign.log_lines);
+          }
+        }
+        if (s.state === 'PROGRESS') {
+          const step = s.step ? `[${s.step}] ` : '';
+          const openvasProgress = s.step === 'openvas' && s.details && s.details.progress != null
+            ? ` ${s.details.progress}%`
+            : '';
+          const openvasTask = campaign.openvas_task_id ? ` (task ${campaign.openvas_task_id})` : '';
+          const progress = (s.steps_completed != null && s.total_steps != null)
+            ? ` (${s.steps_completed}/${s.total_steps})`
+            : '';
+          setCampaignStatus(`${step}${s.message || 'Running...'}${openvasProgress}${openvasTask}${progress}`, 'info');
+          if (!Array.isArray(campaign.log_lines) || !campaign.log_lines.length) {
+            appendCampaignLogLine(`${new Date().toLocaleTimeString()} ${step}${s.message || 'Running...'}`);
+          }
+          return;
+        }
+        setCampaignStatus(`Campaign state: ${s.state}`, 'info');
+        if (!Array.isArray(campaign.log_lines) || !campaign.log_lines.length) {
+          appendCampaignLogLine(`${new Date().toLocaleTimeString()} [state] ${s.state}`);
+        }
+      },
+      onDone: s => {
+        const campaign = s.campaign || {};
+        if (campaign && Object.keys(campaign).length) {
+          updateCampaignLinks(campaign);
+          if (Array.isArray(campaign.log_lines) && campaign.log_lines.length) {
+            setCampaignLogLines(campaign.log_lines);
+          }
+        }
+        const result = s.result || {};
+        if (s.state === 'SUCCESS') {
+          const found = Array.isArray(result.discovered_ips) ? result.discovered_ips.length : 0;
+          const vulnCount = result.openvas && typeof result.openvas.vulnerability_count === 'number'
+            ? result.openvas.vulnerability_count
+            : 0;
+          const errCount = Array.isArray(result.errors) ? result.errors.length : 0;
+          setCampaignStatus(
+            `Campaign complete: hosts=${found}, vulns=${vulnCount}, errors=${errCount}.`,
+            errCount ? 'warning' : 'success'
+          );
+          appendCampaignLogLine(
+            `${new Date().toLocaleTimeString()} [complete] hosts=${found}, vulns=${vulnCount}, errors=${errCount}`
+          );
+        } else {
+          const msg = s.message || (result && result.error) || 'Campaign failed.';
+          setCampaignStatus(`Campaign failed: ${msg}`, 'danger');
+          appendCampaignLogLine(`${new Date().toLocaleTimeString()} [failed] ${msg}`);
+        }
+        updateScanHistory();
+        updateCampaignHistory();
+        renderGraph();
+        stopActiveCampaignPoll();
+        if (unlockOnFinish) disableForm(campaignForm, false);
+      },
+      onError: err => {
+        setCampaignStatus(`Campaign status error: ${err.message}`, 'danger');
+        appendCampaignLogLine(`${new Date().toLocaleTimeString()} [error] ${err.message}`);
+        updateCampaignHistory();
+        stopActiveCampaignPoll();
+        if (unlockOnFinish) disableForm(campaignForm, false);
+      }
+    });
+  }
 
   // --- Scan form ---
   if (scanForm) {
@@ -482,77 +596,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         updateCampaignLinks();
         updateCampaignHistory();
-
-        pollTask({
-          statusUrl: `/scan/campaign/status/${encodeURIComponent(taskId)}/`,
-          intervalMs: 4000,
-          onTick: s => {
-            const campaign = s.campaign || {};
-            if (campaign && Object.keys(campaign).length) {
-              updateCampaignLinks(campaign);
-              if (Array.isArray(campaign.log_lines) && campaign.log_lines.length) {
-                setCampaignLogLines(campaign.log_lines);
-              }
-            }
-            if (s.state === 'PROGRESS') {
-              const step = s.step ? `[${s.step}] ` : '';
-              const openvasProgress = s.step === 'openvas' && s.details && s.details.progress != null
-                ? ` ${s.details.progress}%`
-                : '';
-              const openvasTask = campaign.openvas_task_id ? ` (task ${campaign.openvas_task_id})` : '';
-              const progress = (s.steps_completed != null && s.total_steps != null)
-                ? ` (${s.steps_completed}/${s.total_steps})`
-                : '';
-              setCampaignStatus(`${step}${s.message || 'Running...'}${openvasProgress}${openvasTask}${progress}`, 'info');
-              if (!Array.isArray(campaign.log_lines) || !campaign.log_lines.length) {
-                appendCampaignLogLine(`${new Date().toLocaleTimeString()} ${step}${s.message || 'Running...'}`);
-              }
-              return;
-            }
-            setCampaignStatus(`Campaign state: ${s.state}`, 'info');
-            if (!Array.isArray(campaign.log_lines) || !campaign.log_lines.length) {
-              appendCampaignLogLine(`${new Date().toLocaleTimeString()} [state] ${s.state}`);
-            }
-          },
-          onDone: s => {
-            const campaign = s.campaign || {};
-            if (campaign && Object.keys(campaign).length) {
-              updateCampaignLinks(campaign);
-              if (Array.isArray(campaign.log_lines) && campaign.log_lines.length) {
-                setCampaignLogLines(campaign.log_lines);
-              }
-            }
-            const result = s.result || {};
-            if (s.state === 'SUCCESS') {
-              const found = Array.isArray(result.discovered_ips) ? result.discovered_ips.length : 0;
-              const vulnCount = result.openvas && typeof result.openvas.vulnerability_count === 'number'
-                ? result.openvas.vulnerability_count
-                : 0;
-              const errCount = Array.isArray(result.errors) ? result.errors.length : 0;
-              setCampaignStatus(
-                `Campaign complete: hosts=${found}, vulns=${vulnCount}, errors=${errCount}.`,
-                errCount ? 'warning' : 'success'
-              );
-              appendCampaignLogLine(
-                `${new Date().toLocaleTimeString()} [complete] hosts=${found}, vulns=${vulnCount}, errors=${errCount}`
-              );
-            } else {
-              const msg = s.message || (result && result.error) || 'Campaign failed.';
-              setCampaignStatus(`Campaign failed: ${msg}`, 'danger');
-              appendCampaignLogLine(`${new Date().toLocaleTimeString()} [failed] ${msg}`);
-            }
-            updateScanHistory();
-            updateCampaignHistory();
-            renderGraph();
-            disableForm(campaignForm, false);
-          },
-          onError: err => {
-            setCampaignStatus(`Campaign status error: ${err.message}`, 'danger');
-            appendCampaignLogLine(`${new Date().toLocaleTimeString()} [error] ${err.message}`);
-            updateCampaignHistory();
-            disableForm(campaignForm, false);
-          }
-        });
+        startCampaignPolling(taskId, { unlockOnFinish: true });
       } catch (err) {
         setCampaignStatus(`Could not start campaign: ${err.message}`, 'danger');
         appendCampaignLogLine(`${new Date().toLocaleTimeString()} [error] ${err.message}`);

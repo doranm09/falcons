@@ -138,7 +138,7 @@ def nmap_discovery_task(self, cidr, scan_id=None, progress_callback=None):
         total_hosts = network.num_addresses if network.prefixlen >= 31 else max(1, network.num_addresses - 2)
     else:
         total_hosts = max(1, network.num_addresses)
-    initial_progress = {"current": 0, "total": total_hosts, "percent": 0, "hosts_found": 0}
+    initial_progress = {"current": 0, "total": total_hosts, "percent": 0.0, "hosts_found": 0}
     _safe_update_state(self, "PROGRESS", initial_progress)
     if callable(progress_callback):
         progress_callback(initial_progress)
@@ -152,7 +152,8 @@ def nmap_discovery_task(self, cidr, scan_id=None, progress_callback=None):
             text=True,
         )
         output_lines = []
-        last_percent = -1
+        last_percent = -1.0
+        last_progress_emit = 0.0
         for line in proc.stdout:
             output_lines.append(line)
             if "Status: Up" in line:
@@ -163,21 +164,41 @@ def nmap_discovery_task(self, cidr, scan_id=None, progress_callback=None):
             progress_match = re.search(r"About\s+([0-9.]+)%\s+done", line)
             if progress_match:
                 try:
-                    percent = int(float(progress_match.group(1)))
+                    percent = float(progress_match.group(1))
                 except (TypeError, ValueError):
                     percent = None
-                if percent is not None and percent != last_percent:
+                if percent is not None:
                     current = int((percent / 100.0) * total_hosts)
+                    should_emit = (
+                        abs(percent - last_percent) >= 0.05
+                        or (time.time() - last_progress_emit) >= 5
+                    )
+                    if should_emit:
+                        progress_meta = {
+                            "current": current,
+                            "total": total_hosts,
+                            "percent": round(percent, 2),
+                            "hosts_found": len(found_ips),
+                        }
+                        _safe_update_state(self, "PROGRESS", progress_meta)
+                        if callable(progress_callback):
+                            progress_callback(progress_meta)
+                        last_percent = percent
+                        last_progress_emit = time.time()
+            elif "Stats:" in line:
+                # Emit heartbeat updates even when percent parsing is unavailable.
+                if (time.time() - last_progress_emit) >= 5:
                     progress_meta = {
-                        "current": current,
+                        "current": 0,
                         "total": total_hosts,
-                        "percent": percent,
+                        "percent": round(last_percent if last_percent >= 0 else 0.0, 2),
                         "hosts_found": len(found_ips),
+                        "raw_stats": line.strip(),
                     }
                     _safe_update_state(self, "PROGRESS", progress_meta)
                     if callable(progress_callback):
                         progress_callback(progress_meta)
-                    last_percent = percent
+                    last_progress_emit = time.time()
 
         returncode = proc.wait()
         if returncode != 0:
@@ -472,10 +493,10 @@ def run_ot_campaign_task(
             percent = meta.get("percent")
             if percent is not None:
                 try:
-                    percent = int(percent)
+                    percent = float(percent)
                 except (TypeError, ValueError):
                     percent = None
-            if percent is not None and percent == last_discovery_percent:
+            if percent is not None and last_discovery_percent >= 0 and abs(percent - last_discovery_percent) < 0.05:
                 return
             if percent is not None:
                 last_discovery_percent = percent
@@ -485,10 +506,10 @@ def run_ot_campaign_task(
             hosts_found = meta.get("hosts_found", 0)
             if percent is not None and current is not None and total:
                 progress_message = (
-                    f"Discovery in progress: {percent}% ({current}/{total}), hosts found: {hosts_found}."
+                    f"Discovery in progress: {percent:.2f}% ({current}/{total}), hosts found: {hosts_found}."
                 )
             elif percent is not None:
-                progress_message = f"Discovery in progress: {percent}%, hosts found: {hosts_found}."
+                progress_message = f"Discovery in progress: {percent:.2f}%, hosts found: {hosts_found}."
             else:
                 progress_message = f"Discovery in progress, hosts found: {hosts_found}."
 

@@ -58,6 +58,66 @@ class ScanRun(models.Model):
         return f"Scan on {self.cidr} at {ts}"
 
 
+class CampaignRun(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        RUNNING = "RUNNING", "Running"
+        COMPLETED = "COMPLETED", "Completed"
+        FAILED = "FAILED", "Failed"
+
+    started_at = models.DateTimeField(default=timezone.now, db_index=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    duration_seconds = models.PositiveIntegerField(null=True, blank=True)
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="campaign_runs",
+    )
+
+    cidr = models.CharField(max_length=64)
+    scan_method = models.CharField(max_length=32, choices=SCAN_TYPE_CHOICES, default="nmap")
+    run_openvas = models.BooleanField(default=True)
+    openvas_config = models.CharField(max_length=64, blank=True, default="full_and_fast")
+    collect_loot = models.BooleanField(default=True)
+    sliver_session_id = models.CharField(max_length=128, blank=True)
+    sliver_command = models.CharField(max_length=512, blank=True, default="whoami")
+
+    celery_task_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+    status = models.CharField(max_length=32, choices=Status.choices, default=Status.PENDING)
+    current_step = models.CharField(max_length=64, blank=True)
+    step_message = models.CharField(max_length=255, blank=True)
+    steps_completed = models.PositiveSmallIntegerField(default=0)
+    total_steps = models.PositiveSmallIntegerField(default=4)
+
+    discovered_hosts_count = models.PositiveIntegerField(default=0)
+    vulnerability_count = models.PositiveIntegerField(default=0)
+    error_count = models.PositiveIntegerField(default=0)
+    error_details = models.TextField(blank=True)
+    openvas_scan = models.ForeignKey(
+        ScanRun,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="campaign_runs",
+    )
+    openvas_report_id = models.CharField(max_length=64, blank=True)
+    result_payload = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "started_at"]),
+            models.Index(fields=["cidr", "started_at"]),
+        ]
+        ordering = ["-started_at"]
+
+    def __str__(self):
+        return f"Campaign {self.id} ({self.cidr}) [{self.status}]"
+
+
 class MinimegaExecutionLog(models.Model):
     class Action(models.TextChoices):
         EXECUTE = "execute", "Execute"

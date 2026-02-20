@@ -4,9 +4,12 @@ document.addEventListener('DOMContentLoaded', function () {
   const scanForm     = document.getElementById('scan-form');
   const vulnForm     = document.getElementById('vuln-scan-form');
   const agentScanForm = document.getElementById('agent-scan-form');
+  const campaignForm = document.getElementById('campaign-form');
   const scanStatus   = document.getElementById('scan-status');
+  const campaignStatus = document.getElementById('campaign-status');
   const nodesBody    = document.getElementById('nodes-body');
   const historyTbody = document.getElementById('scan-history-body');
+  const campaignHistoryBody = document.getElementById('campaign-history-body');
   const btnDownloadPng = document.getElementById('btn-download-png');
 
   // --- CSRF helpers ---
@@ -44,12 +47,24 @@ document.addEventListener('DOMContentLoaded', function () {
     scanStatus.className = `mt-3 text-${type}`;
     scanStatus.innerText = msg;
   }
+  function setCampaignStatus(msg, type = 'muted') {
+    if (!campaignStatus) return;
+    campaignStatus.className = `mt-3 small text-${type}`;
+    campaignStatus.innerText = msg;
+  }
   function disableForm(form, disabled) {
     if (!form) return;
     form.querySelectorAll('input,select,textarea,button').forEach(el => el.disabled = disabled);
   }
   function escapeHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+  }
+  function badgeClass(status) {
+    const normalized = String(status || '').toLowerCase();
+    if (normalized === 'complete' || normalized === 'completed') return 'success';
+    if (normalized === 'running' || normalized === 'in_progress') return 'info';
+    if (normalized === 'failed') return 'danger';
+    return 'secondary';
   }
 
   // --- History refresh ---
@@ -59,11 +74,7 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!historyTbody) return;
       historyTbody.innerHTML = '';
       (data.history || []).forEach(run => {
-        const status = (run.status || '').toLowerCase();
-        const badge =
-          status === 'complete' || status === 'completed' ? 'success' :
-          status === 'running' || status === 'in_progress' ? 'info' :
-          status === 'failed' ? 'danger' : 'secondary';
+        const badge = badgeClass(run.status);
         const reportHref = run.scan_type === 'openvas' && run.id
           ? `/vulnerabilities/${encodeURIComponent(run.id)}/`
           : null;
@@ -88,6 +99,43 @@ document.addEventListener('DOMContentLoaded', function () {
         const tr = document.createElement('tr'); tr.innerHTML = `<td colspan="5">No scans found.</td>`; historyTbody.appendChild(tr);
       }
     } catch(e){ console.warn('History refresh failed:', e.message); }
+  }
+
+  async function updateCampaignHistory() {
+    try {
+      if (!campaignHistoryBody) return;
+      const data = await jsonFetch('/scan/campaign/history/');
+      campaignHistoryBody.innerHTML = '';
+
+      (data.history || []).forEach(run => {
+        const badge = badgeClass(run.status);
+        const duration = run.duration_seconds == null ? '-' : `${run.duration_seconds}s`;
+        const reportAction = run.report_url
+          ? `<a class="btn btn-sm btn-outline-primary" href="${escapeHtml(run.report_url)}">OpenVAS</a>`
+          : '<button class="btn btn-sm btn-outline-secondary" disabled>-</button>';
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(run.started_at || '')}</td>
+          <td>${escapeHtml(run.cidr || '')}</td>
+          <td><span class="badge bg-${badge}">${escapeHtml(run.status || '')}</span></td>
+          <td>${escapeHtml(duration)}</td>
+          <td>${escapeHtml(run.discovered_hosts_count ?? 0)}</td>
+          <td>${escapeHtml(run.vulnerability_count ?? 0)}</td>
+          <td title="${escapeHtml(run.error_details || '')}">${escapeHtml(run.error_count ?? 0)}</td>
+          <td>${reportAction}</td>
+        `;
+        campaignHistoryBody.appendChild(tr);
+      });
+
+      if (!data.history || !data.history.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="8">No campaign runs found.</td>';
+        campaignHistoryBody.appendChild(tr);
+      }
+    } catch (e) {
+      console.warn('Campaign history refresh failed:', e.message);
+    }
   }
 
   // --- Nodes table ---
@@ -354,6 +402,80 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
+  if (campaignForm) {
+    campaignForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      disableForm(campaignForm, true);
+      setCampaignStatus('Starting OT campaign...', 'info');
+      try {
+        const formData = new FormData(campaignForm);
+        const openvasEnabled = campaignForm.querySelector('[name="run_openvas"]')?.checked;
+        const collectLootEnabled = campaignForm.querySelector('[name="collect_loot"]')?.checked;
+        formData.set('run_openvas', openvasEnabled ? '1' : '0');
+        formData.set('collect_loot', collectLootEnabled ? '1' : '0');
+        const res = await fetch('/scan/campaign/start/', {
+          method: 'POST',
+          headers: { 'X-CSRFToken': getCSRFToken() },
+          body: formData
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        const taskId = data.task_id;
+        if (!taskId) throw new Error('No campaign task id returned');
+        const campaignRunId = data.campaign_run_id;
+        if (campaignRunId) {
+          setCampaignStatus(`Campaign #${campaignRunId} started. Waiting for progress...`, 'info');
+        }
+        updateCampaignHistory();
+
+        pollTask({
+          statusUrl: `/scan/campaign/status/${encodeURIComponent(taskId)}/`,
+          intervalMs: 4000,
+          onTick: s => {
+            if (s.state === 'PROGRESS') {
+              const step = s.step ? `[${s.step}] ` : '';
+              const progress = (s.steps_completed != null && s.total_steps != null)
+                ? ` (${s.steps_completed}/${s.total_steps})`
+                : '';
+              setCampaignStatus(`${step}${s.message || 'Running...'}${progress}`, 'info');
+              return;
+            }
+            setCampaignStatus(`Campaign state: ${s.state}`, 'info');
+          },
+          onDone: s => {
+            const result = s.result || {};
+            if (s.state === 'SUCCESS') {
+              const found = Array.isArray(result.discovered_ips) ? result.discovered_ips.length : 0;
+              const vulnCount = result.openvas && typeof result.openvas.vulnerability_count === 'number'
+                ? result.openvas.vulnerability_count
+                : 0;
+              const errCount = Array.isArray(result.errors) ? result.errors.length : 0;
+              setCampaignStatus(
+                `Campaign complete: hosts=${found}, vulns=${vulnCount}, errors=${errCount}.`,
+                errCount ? 'warning' : 'success'
+              );
+            } else {
+              const msg = s.message || (result && result.error) || 'Campaign failed.';
+              setCampaignStatus(`Campaign failed: ${msg}`, 'danger');
+            }
+            updateScanHistory();
+            updateCampaignHistory();
+            renderGraph();
+            disableForm(campaignForm, false);
+          },
+          onError: err => {
+            setCampaignStatus(`Campaign status error: ${err.message}`, 'danger');
+            updateCampaignHistory();
+            disableForm(campaignForm, false);
+          }
+        });
+      } catch (err) {
+        setCampaignStatus(`Could not start campaign: ${err.message}`, 'danger');
+        disableForm(campaignForm, false);
+      }
+    });
+  }
+
     // --- PNG export: robust off-screen mirror ---
   function cloneElementsWithPositions(cy) {
     const els = cy.elements().map(ele => {
@@ -490,6 +612,13 @@ document.addEventListener('DOMContentLoaded', function () {
   // Init
   renderGraph();
   updateScanHistory();
+  updateCampaignHistory();
+
+  const refreshCampaignHistory = document.getElementById('refresh-campaign-history');
+  if (refreshCampaignHistory) {
+    refreshCampaignHistory.addEventListener('click', () => updateCampaignHistory());
+  }
+  setInterval(updateCampaignHistory, 10000);
 
   const refreshTopology = document.getElementById('refresh-topology');
   if (refreshTopology) {

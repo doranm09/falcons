@@ -1,6 +1,6 @@
 # dashboard/tasks.py
 from celery import shared_task
-from .models import Node, Link, ScanRun, Vulnerability, ScanVulnerability
+from .models import AgentCommand, CampaignRun, Link, Node, ScanRun, ScanVulnerability, Vulnerability
 from .openvas_client import (
     openvas_session,
     create_target,
@@ -16,9 +16,24 @@ import subprocess
 import ipaddress
 import requests
 import re
+import logging
 from datetime import datetime
-from .models import Vulnerability
 from django.utils.dateparse import parse_datetime
+
+logger = logging.getLogger(__name__)
+
+
+def _campaign_step_meta(step, message, steps_completed, total_steps, details=None):
+    meta = {
+        "step": step,
+        "message": message,
+        "steps_completed": steps_completed,
+        "total_steps": total_steps,
+    }
+    if details:
+        meta["details"] = details
+    return meta
+
 
 @shared_task(bind=True)
 def scan_network_task(self, cidr, scan_id=None):
@@ -315,3 +330,252 @@ def poll_openvas_results():
         except Exception as e:
             scan.result_summary = f"Polling error: {e}"
             scan.save()
+
+
+@shared_task(bind=True)
+def run_ot_campaign_task(
+    self,
+    cidr,
+    scan_method="nmap",
+    agent_id=None,
+    max_hosts=None,
+    run_openvas=True,
+    openvas_config="full_and_fast",
+    openvas_timeout_seconds=180,
+    sliver_session_id="",
+    sliver_command="whoami",
+    collect_loot=True,
+    campaign_run_id=None,
+):
+    """
+    End-to-end OT campaign orchestration:
+    1) Discovery scan
+    2) Optional agent scan queue
+    3) Optional OpenVAS vulnerability workflow
+    4) Optional Sliver command + loot collection
+    """
+    total_steps = 4
+    campaign_run = (
+        CampaignRun.objects.filter(id=campaign_run_id).first()
+        if campaign_run_id
+        else None
+    )
+    task_id = str(getattr(self.request, "id", "") or "")
+
+    result = {
+        "cidr": cidr,
+        "scan_method": scan_method,
+        "agent_id": agent_id or "",
+        "run_openvas": bool(run_openvas),
+        "openvas_config": openvas_config or "",
+        "sliver_session_id": sliver_session_id or "",
+        "sliver_command": sliver_command or "",
+        "collect_loot": bool(collect_loot),
+        "discovered_ips": [],
+        "openvas": {},
+        "sliver": {},
+        "agent_scan": {},
+        "errors": [],
+    }
+
+    def _persist_progress(step, message, steps_completed, details=None):
+        if campaign_run:
+            CampaignRun.objects.filter(id=campaign_run.id).update(
+                status=CampaignRun.Status.RUNNING,
+                celery_task_id=task_id or campaign_run.celery_task_id,
+                current_step=step,
+                step_message=(message or "")[:255],
+                steps_completed=steps_completed,
+                total_steps=total_steps,
+            )
+        self.update_state(
+            state="PROGRESS",
+            meta=_campaign_step_meta(step, message, steps_completed, total_steps, details=details),
+        )
+
+    def _record_error(step_name, exc):
+        message = f"{step_name}: {exc}"
+        result["errors"].append(message)
+        logger.exception("OT campaign step failed (%s): %s", step_name, exc)
+
+    if campaign_run:
+        CampaignRun.objects.filter(id=campaign_run.id).update(
+            status=CampaignRun.Status.RUNNING,
+            celery_task_id=task_id or campaign_run.celery_task_id,
+            current_step="queued",
+            step_message="Campaign task started.",
+            steps_completed=0,
+            total_steps=total_steps,
+        )
+
+    # Step 1: discovery
+    try:
+        _persist_progress("discovery", "Starting discovery scan...", 0)
+        discovery_scan = ScanRun.objects.create(cidr=cidr, status="RUNNING", scan_type=scan_method.lower())
+        if scan_method.lower() == "ping":
+            scan_network_task.apply(args=(cidr, discovery_scan.id))
+        else:
+            nmap_discovery_task.apply(args=(cidr, discovery_scan.id))
+
+        discovery_scan.refresh_from_db()
+        discovered_ips = list(
+            Node.objects.filter(scan_run=discovery_scan)
+            .order_by("ip_address")
+            .values_list("ip_address", flat=True)
+        )
+        result["discovered_ips"] = discovered_ips
+        result["discovery_scan_id"] = discovery_scan.id
+        result["discovery_summary"] = discovery_scan.result_summary or ""
+        _persist_progress(
+            "discovery",
+            f"Discovery completed ({len(discovered_ips)} hosts).",
+            1,
+            details={"scan_id": discovery_scan.id, "hosts_found": len(discovered_ips)},
+        )
+    except Exception as exc:
+        _record_error("discovery", exc)
+
+    # Step 2: optional agent scan queue
+    try:
+        if agent_id:
+            params = {"cidr": cidr}
+            if max_hosts:
+                params["max_hosts"] = max_hosts
+            command = AgentCommand.objects.create(agent_id=agent_id, action="scan", parameters=params)
+            result["agent_scan"] = {
+                "queued": True,
+                "command_id": command.id,
+                "parameters": params,
+            }
+        else:
+            result["agent_scan"] = {
+                "queued": False,
+                "reason": "No agent selected",
+            }
+        _persist_progress("agent_scan", "Agent scan step complete.", 2)
+    except Exception as exc:
+        _record_error("agent_scan", exc)
+
+    # Step 3: optional OpenVAS vulnerability pass
+    try:
+        if run_openvas:
+            _persist_progress("openvas", "Launching OpenVAS scan...", 2)
+            vuln_scan = ScanRun.objects.create(
+                cidr=cidr,
+                status=ScanRun.Status.IN_PROGRESS,
+                scan_type="openvas",
+            )
+            if campaign_run:
+                CampaignRun.objects.filter(id=campaign_run.id).update(openvas_scan_id=vuln_scan.id)
+            launch_openvas_scan_task.apply(args=(cidr, openvas_config, vuln_scan.id))
+            vuln_scan.refresh_from_db()
+            result["openvas"]["scan_id"] = vuln_scan.id
+            result["openvas"]["task_id"] = vuln_scan.openvas_task_id
+
+            if vuln_scan.openvas_task_id:
+                deadline = time.time() + max(15, int(openvas_timeout_seconds))
+                last_state = "LAUNCHING"
+                while time.time() < deadline:
+                    gmp = openvas_session()
+                    info = get_task_status(gmp, vuln_scan.openvas_task_id)
+                    state = info.get("status") or "UNKNOWN"
+                    progress = info.get("progress")
+                    if state != last_state:
+                        _persist_progress(
+                            "openvas",
+                            f"OpenVAS state: {state}",
+                            2,
+                            details={"progress": progress},
+                        )
+                        last_state = state
+                    if state == "Done":
+                        report_id = info.get("report_id") or get_report_id(gmp, vuln_scan.openvas_task_id)
+                        report_xml = download_report(gmp, report_id)
+                        parse_and_save_vulnerabilities(report_xml, vuln_scan)
+                        vuln_scan.status = "COMPLETE"
+                        vuln_scan.result_summary = f"Scan complete. Report ID: {report_id}"
+                        vuln_scan.save(update_fields=["status", "result_summary"])
+                        result["openvas"]["report_id"] = report_id
+                        if campaign_run:
+                            CampaignRun.objects.filter(id=campaign_run.id).update(openvas_report_id=report_id or "")
+                        break
+                    if state in {"Stopped", "ERROR", "Error"}:
+                        break
+                    time.sleep(5)
+                else:
+                    result["openvas"]["timeout"] = True
+
+            vuln_count = ScanVulnerability.objects.filter(scan_run=vuln_scan).count()
+            result["openvas"]["vulnerability_count"] = vuln_count
+            result["openvas"]["status"] = ScanRun.objects.get(id=vuln_scan.id).status
+        else:
+            result["openvas"] = {"skipped": True}
+
+        _persist_progress("openvas", "OpenVAS step complete.", 3)
+    except Exception as exc:
+        _record_error("openvas", exc)
+
+    # Step 4: optional Sliver automation
+    try:
+        target_session_id = (sliver_session_id or "").strip()
+        if not target_session_id and result["discovered_ips"]:
+            try:
+                from sliver.models import SliverSession
+                session = SliverSession.objects.filter(
+                    status=SliverSession.Status.ACTIVE,
+                    remote_address__in=result["discovered_ips"],
+                ).order_by("-last_checkin").first()
+                if session:
+                    target_session_id = session.session_id
+            except Exception:
+                target_session_id = ""
+
+        if target_session_id and (sliver_command or "").strip():
+            from sliver.tasks import collect_loot_task, execute_sliver_command_task
+
+            cmd_result = execute_sliver_command_task.apply(
+                kwargs={
+                    "session_id": target_session_id,
+                    "command": sliver_command.strip(),
+                    "user_id": None,
+                    "parameters": {},
+                }
+            ).result
+            result["sliver"]["session_id"] = target_session_id
+            result["sliver"]["command_result"] = cmd_result
+
+            if collect_loot:
+                loot_result = collect_loot_task.apply(
+                    kwargs={"session_id": target_session_id, "user_id": None}
+                ).result
+                result["sliver"]["loot_result"] = loot_result
+        else:
+            result["sliver"] = {
+                "skipped": True,
+                "reason": "No Sliver session/command provided or discoverable",
+            }
+
+        _persist_progress("sliver", "Sliver step complete.", 4)
+    except Exception as exc:
+        _record_error("sliver", exc)
+
+    result["status"] = "completed_with_errors" if result["errors"] else "completed"
+    if campaign_run:
+        campaign_run.refresh_from_db(fields=["started_at"])
+        completed_at = now()
+        duration = int(max(0, (completed_at - campaign_run.started_at).total_seconds()))
+        CampaignRun.objects.filter(id=campaign_run.id).update(
+            finished_at=completed_at,
+            duration_seconds=duration,
+            status=CampaignRun.Status.COMPLETED if not result["errors"] else CampaignRun.Status.FAILED,
+            current_step="complete",
+            step_message="Campaign completed." if not result["errors"] else "Campaign completed with errors.",
+            steps_completed=total_steps,
+            total_steps=total_steps,
+            discovered_hosts_count=len(result.get("discovered_ips") or []),
+            vulnerability_count=int(result.get("openvas", {}).get("vulnerability_count") or 0),
+            error_count=len(result.get("errors") or []),
+            error_details="\n".join(result.get("errors") or []),
+            result_payload=result,
+        )
+    return result

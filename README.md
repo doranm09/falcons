@@ -327,6 +327,16 @@ sudo chmod 777 /opt/gvm-run
 docker compose -f greenbone-community-container/docker-compose.yml up -d
 ```
 
+### OpenVAS OT Network Bridge (for full testbed scans)
+When scanning the OT sandbox from OpenVAS, attach the scanner to OT zone networks:
+```bash
+docker compose \
+  -f greenbone-community-container/docker-compose.yml \
+  -f greenbone-community-container/docker-compose.ot-networks.yml \
+  up -d
+```
+This makes OpenVAS reach L0/1, L2, L3, L3.5, L4, and L5 (`172.30.0.0/16`).
+
 ### Configure the Dashboard
 Set these in `.env` (defaults are shown):
 ```
@@ -353,14 +363,45 @@ network scans and agent-based discovery.
 docker compose -f docker-compose.yml -f docker-compose.testbed.yml up -d --build
 ```
 
+### Bring Up With Kali (Optional)
+```bash
+docker compose -f docker-compose.yml -f docker-compose.testbed.yml --profile kali up -d --build
+```
+
 ### Tear Down
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.testbed.yml down -v
 ```
 
 ### Example Scan Targets
-- **Ping/Nmap discovery**: `172.30.2.0/24` (L3 zone; web/celery attach here)
+- **Ping/Nmap discovery (single zone)**: `172.30.2.0/24`
+- **Ping/Nmap discovery (full OT testbed)**: `172.30.0.0/16`
 - **Agent scan**: choose the zone agent (e.g., `agent-l35`) and scan `172.30.3.0/24`
+- **Kali-driven enumeration** (optional):
+  - `docker compose -f docker-compose.yml -f docker-compose.testbed.yml exec kali-attacker nmap -sV 172.30.2.0/24`
+  - `docker compose -f docker-compose.yml -f docker-compose.testbed.yml exec kali-attacker nmap -sV --script vuln 172.30.3.0/24`
+
+### One-Click OT Campaign (UI)
+Open `Network Scans` and use **One-Click OT Campaign** to orchestrate:
+1. Discovery scan (ping or nmap)
+2. Optional agent scan queue
+3. Optional OpenVAS vulnerability stage
+4. Optional Sliver command + loot collection
+
+### OT Campaign Runner Script
+For headless labs:
+```bash
+./scripts/run_ot_campaign.sh 172.30.2.0/24
+```
+Environment overrides:
+- `BASE_URL` (default `http://localhost:8000`)
+- `SCAN_METHOD` (`nmap` or `ping`)
+- `AGENT_ID` (optional)
+- `RUN_OPENVAS` (`1`/`0`)
+- `GVMD_CONFIG` (e.g. `full_and_fast`)
+- `SLIVER_SESSION_ID` (optional)
+- `SLIVER_COMMAND` (default `whoami`)
+- `COLLECT_LOOT` (`1`/`0`)
 
 Details: `testbed/ot/README.md`
 

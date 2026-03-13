@@ -56,7 +56,6 @@ def sync_sessions_task(self, engagement_id, user_id):
 
     try:
         engagement = Engagement.objects.get(id=engagement_id)
-        user = get_user_model().objects.get(id=user_id)
         client = get_sliver_client(engagement.teamserver)
 
         # Get sessions from Sliver
@@ -316,7 +315,8 @@ def collect_loot_task(self, session_id, user_id, loot_type='ALL'):
 
     try:
         session = SliverSession.objects.get(session_id=session_id)
-        user = get_user_model().objects.get(id=user_id)
+        # System-triggered workflows (watchers/sync jobs) may run without a user.
+        user = get_user_model().objects.filter(id=user_id).first() if user_id else None
         client = get_sliver_client(session.engagement.teamserver)
 
         # Get loot from session

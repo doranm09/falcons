@@ -1,0 +1,42 @@
+services:
+  ospd-openvas:
+    networks:
+      default: {}
+      l01: {}
+      l2: {}
+      l3: {}
+      l35: {}
+      l4: {}
+      l5: {}
+
+  openvasd:
+    networks:
+      default:
+        aliases:
+          - openvasd
+      l01: {}
+      l2: {}
+      l3: {}
+      l35: {}
+      l4: {}
+      l5: {}
+
+networks:
+  l01:
+    external: true
+    name: ${OT_COMPOSE_PROJECT:-cyber_pen_test}_l01
+  l2:
+    external: true
+    name: ${OT_COMPOSE_PROJECT:-cyber_pen_test}_l2
+  l3:
+    external: true
+    name: ${OT_COMPOSE_PROJECT:-cyber_pen_test}_l3
+  l35:
+    external: true
+    name: ${OT_COMPOSE_PROJECT:-cyber_pen_test}_l35
+  l4:
+    external: true
+    name: ${OT_COMPOSE_PROJECT:-cyber_pen_test}_l4
+  l5:
+    external: true
+    name: ${OT_COMPOSE_PROJECT:-cyber_pen_test}_l5

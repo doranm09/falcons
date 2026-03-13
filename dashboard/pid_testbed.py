@@ -8,6 +8,24 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .pid_network import ExpectedNode, expected_cyber_nodes
 
+DEFAULT_PURDUE_SUBNETS = {
+    "L0/1": "172.30.0.0/24",
+    "L2": "172.30.1.0/24",
+    "L3": "172.30.2.0/24",
+    "L3.5": "172.30.3.0/24",
+    "L4": "172.30.4.0/24",
+    "L5": "172.30.5.0/24",
+}
+
+PURDUE_HINTS = [
+    ("L5", ["vendor", "portal", "enterprise", "business", "it", "office"]),
+    ("L4", ["enterprise-app", "erp", "mes", "corp"]),
+    ("L3.5", ["dmz", "remote", "broker", "update", "jump", "gateway", "proxy"]),
+    ("L3", ["hist", "historian", "server", "scada", "engineering", "ops"]),
+    ("L2", ["plc", "rtu", "controller", "ied", "dcs", "hmi"]),
+    ("L0/1", ["sensor", "actuator", "field", "valve", "pump", "motor", "transmitter"]),
+]
+
 
 @dataclass
 class TestbedFiles:
@@ -69,6 +87,23 @@ def _validate_cidr(cidr: Optional[str]) -> Optional[str]:
         return None
 
 
+def _infer_purdue(label: str, role: str) -> Optional[str]:
+    haystack = f"{label} {role}".lower()
+    for tier, hints in PURDUE_HINTS:
+        if any(hint in haystack for hint in hints):
+            return tier
+    return None
+
+
+def _assign_ip(subnet: str, counters: Dict[str, int]) -> str:
+    net = ipaddress.ip_network(subnet, strict=False)
+    offset = counters.get(subnet, 10)
+    counters[subnet] = offset + 1
+    hosts = list(net.hosts())
+    index = max(0, min(len(hosts) - 1, offset))
+    return str(hosts[index])
+
+
 def _next_conduit_ip(net: ipaddress._BaseNetwork, offset: int) -> Optional[str]:
     hosts = list(net.hosts())
     if not hosts:
@@ -101,15 +136,34 @@ def build_testbed_from_sim_system(
     conduit_ip_offsets: Dict[str, int] = {}
 
     node_by_id: Dict[str, ExpectedNode] = {node.node_id: node for node in expected_nodes}
+    ip_by_id: Dict[str, str] = {}
+
+    ip_counters: Dict[str, int] = {}
 
     for node in expected_nodes:
         info = variables.get(node.node_id, {}) if isinstance(variables, dict) else {}
-        if not node.ip:
+        role = (info.get("type") if isinstance(info, dict) else None) or "cyber"
+        inferred_purdue = node.purdue_level or _infer_purdue(node.label, str(role))
+        zone = inferred_purdue or _zone_label(node)
+        vlan_cidr = _validate_cidr(node.vlan_cidr) or _validate_cidr(DEFAULT_PURDUE_SUBNETS.get(zone))
+        ip_addr = node.ip or ( _assign_ip(vlan_cidr, ip_counters) if vlan_cidr else None )
+        if not ip_addr:
             continue
+        ip_by_id[node.node_id] = ip_addr
+
         service_name = _sanitize(node.label or node.node_id)
-        zone = _zone_label(node)
-        net_key = _network_key(node)
-        vlan_cidr = _validate_cidr(node.vlan_cidr)
+        net_key = _network_key(
+            ExpectedNode(
+                node_id=node.node_id,
+                label=node.label,
+                domain=node.domain,
+                ip=ip_addr,
+                vlan=node.vlan,
+                vlan_cidr=vlan_cidr,
+                purdue_level=zone,
+                redundancy_group=node.redundancy_group,
+            )
+        )
 
         if net_key not in networks:
             net_payload: Dict[str, Any] = {"internal": True}
@@ -120,7 +174,6 @@ def build_testbed_from_sim_system(
 
         port = _service_port(info if isinstance(info, dict) else {})
         protocol = _protocol(info if isinstance(info, dict) else {})
-        role = (info.get("type") if isinstance(info, dict) else None) or "cyber"
 
         services[service_name] = {
             "image": "python:3.11-slim",
@@ -138,16 +191,16 @@ def build_testbed_from_sim_system(
                 "./testbed/ot/services:/app",
                 "./testbed/ot/data:/data",
             ],
-                "networks": {
-                    net_key: {"ipv4_address": node.ip},
-                },
+            "networks": {
+                net_key: {"ipv4_address": ip_addr},
+            },
         }
 
         inventory_assets.append({
             "name": service_name,
             "role": str(role),
             "zone": zone,
-            "ip": node.ip,
+            "ip": ip_addr,
             "port": port,
             "protocol": protocol,
         })
@@ -188,7 +241,9 @@ def build_testbed_from_sim_system(
         tgt_node = node_by_id.get(tgt_id)
         if not src_node or not tgt_node:
             continue
-        if not src_node.ip or not tgt_node.ip:
+        src_ip = ip_by_id.get(src_id)
+        tgt_ip = ip_by_id.get(tgt_id)
+        if not src_ip or not tgt_ip:
             continue
 
         src_net = _network_key(src_node)
@@ -205,7 +260,7 @@ def build_testbed_from_sim_system(
         conduit_ports.setdefault(key, [])
         conduit_maps[key].append({
             "listen_port": target_port,
-            "target_host": tgt_node.ip,
+            "target_host": tgt_ip,
             "target_port": target_port,
         })
         if target_port not in conduit_ports[key]:

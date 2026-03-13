@@ -325,3 +325,62 @@ cp: cannot stat '/home/michaeldoran/git/cyber_pen_test/out/pid_drawio/risk_pid_d
 ## 2026-02-10 - risk_smoke_test execution
 - `python manage.py risk_smoke_test --sim-system out/pid_drawio/risk_sim_system.json` failed: `/bin/bash: line 1: python: command not found`.
 - `python3 manage.py risk_smoke_test --sim-system ../out/pid_drawio/risk_sim_system.json` from `/home/michaeldoran/git/cyber_pen_test/cyber_pen_test` failed: `ModuleNotFoundError: No module named 'django'`.
+## 2026-02-10 - pid_testbed_generate execution
+- `python3 manage.py pid_testbed_generate --source auto --output-dir ../out/pid_drawio` failed: `ModuleNotFoundError: No module named 'django'`.
+
+## 2026-02-11
+### docker compose exec -T web python manage.py pid_testbed_verify ...
+**Error**
+```
+PID testbed verification failed
+{
+  "assets": 5,
+  "missing": [
+    {"zone":"L0/1","name":"vc-pv455b","ip":"172.30.0.11","reason":"no_scan"},
+    {"zone":"L0/1","name":"vc-pv455c","ip":"172.30.0.12","reason":"no_scan"},
+    {"zone":"L0/1","name":"vc-hv455a","ip":"172.30.0.13","reason":"no_scan"},
+    {"zone":"L2","name":"plc-main","ip":"172.30.1.11","reason":"no_scan"},
+    {"zone":"L2","name":"plc-backup","ip":"172.30.1.12","reason":"no_scan"}
+  ],
+  "unreachable": []
+}
+```
+
+### docker compose exec -T web python manage.py risk_smoke_test --pid ...
+**Error**
+```
+manage.py risk_smoke_test: error: unrecognized arguments: --pid /code/out/pid_drawio/risk_sim_system.drawio
+```
+
+### docker compose exec -T web python manage.py pid_network_validate --source auto --openvas
+**Error**
+```
+No vlan_cidr entries found in PID; skipping OpenVAS scans.
+```
+
+### docker compose exec -T web python manage.py test dashboard.tests.VulnerabilityTests dashboard.tests.TaskTests
+**Error**
+```
+ValueError: task_id must not be empty. Got None instead.
+```
+
+### docker compose exec -T web python -m playwright install --with-deps chromium
+**Error**
+```
+su: Authentication failure
+Failed to install browsers
+```
+
+### docker compose exec -T -e RUN_E2E=1 -e PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright web /home/appuser/.local/bin/pytest tests/e2e/test_auth_flow_e2e.py
+**Error**
+```
+playwright._impl._errors.Error: BrowserType.launch: Executable doesn't exist at /root/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell
+```
+
+### docker compose exec -T -e RUN_E2E=1 -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright -e DJANGO_ALLOW_ASYNC_UNSAFE=1 web /home/appuser/.local/bin/pytest tests/e2e/test_auth_flow_e2e.py
+**Error**
+```
+4 failed, 2 passed
+- Missing <h1> on public pages (assertion failure)
+- /agent/download/ raises ModuleNotFoundError: No module named 'sbom'
+```

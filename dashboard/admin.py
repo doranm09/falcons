@@ -3,6 +3,7 @@ from .models import (
     Node,
     Link,
     ScanRun,
+    CampaignRun,
     Vulnerability,
     AgentCommand,
     CommandResult,
@@ -53,6 +54,23 @@ class LinkAdmin(admin.ModelAdmin):
 class ScanRunAdmin(admin.ModelAdmin):
     list_display = ("cidr", "timestamp", "status", "result_summary")
     readonly_fields = ("timestamp",)
+
+
+@admin.register(CampaignRun)
+class CampaignRunAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "started_at",
+        "cidr",
+        "status",
+        "scan_method",
+        "discovered_hosts_count",
+        "vulnerability_count",
+        "error_count",
+    )
+    search_fields = ("cidr", "celery_task_id", "sliver_session_id")
+    list_filter = ("status", "scan_method", "run_openvas")
+    readonly_fields = ("created_at", "updated_at")
 
 
 @admin.register(Vulnerability)

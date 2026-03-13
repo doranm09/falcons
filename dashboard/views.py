@@ -20,6 +20,7 @@ from .models import (
     Case,
     CaseNote,
     CaseEvidence,
+    CampaignRun,
     Hunt,
     HuntNote,
     HuntSearch,
@@ -40,6 +41,7 @@ from .tasks import (
     launch_openvas_scan_task,
     nmap_discovery_task,
     parse_and_save_vulnerabilities,
+    run_ot_campaign_task,
 )
 from .openvas_client import openvas_session, get_task_status, get_report_id, download_report
 from celery.result import AsyncResult
@@ -74,6 +76,7 @@ from pathlib import Path
 import time
 from datetime import timedelta
 from functools import wraps
+from typing import Optional
 from .siem import normalize_siem_event, parse_siem_search_params, SiemNormalizeError, SiemQueryError
 from .siem_adapters import (
     adapt_agent_status,
@@ -124,6 +127,7 @@ from .pid_network import (
     summarize_expected_nodes,
     validate_expected_nodes,
 )
+from .pid_testbed import build_testbed_from_sim_system
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 RISK_ASSESSMENT_TIMEOUT = 15
@@ -270,9 +274,11 @@ def home(request):
 
 def network_scans(request):
     scan_history = ScanRun.objects.all().order_by('-timestamp')[:20]
+    campaign_history = CampaignRun.objects.select_related("openvas_scan").all()[:20]
     agents = AgentStatus.objects.all().order_by("hostname")
     return render(request, 'dashboard/network_scans.html', {
         'scan_history': scan_history,
+        'campaign_history': campaign_history,
         'agents': agents,
     })
 
@@ -871,6 +877,53 @@ def get_scan_history(request):
     } for run in recent]
     return JsonResponse({"history": history})
 
+
+def _serialize_campaign_run(run):
+    openvas_task_id = ""
+    if run.openvas_scan_id and run.openvas_scan:
+        openvas_task_id = run.openvas_scan.openvas_task_id or ""
+
+    report_url = (
+        reverse("dashboard:vuln-detail", args=[run.openvas_scan_id])
+        if run.openvas_scan_id
+        else ""
+    )
+    openvas_ui_url = getattr(settings, "OPENVAS_UI_URL", "http://127.0.0.1:9392")
+    payload = run.result_payload if isinstance(run.result_payload, dict) else {}
+    log_lines = payload.get("log_lines") if isinstance(payload, dict) else []
+    if not isinstance(log_lines, list):
+        log_lines = []
+    return {
+        "id": run.id,
+        "started_at": run.started_at.strftime('%Y-%m-%d %H:%M:%S'),
+        "cidr": run.cidr,
+        "status": run.status,
+        "scan_method": run.scan_method,
+        "duration_seconds": run.duration_seconds,
+        "steps_completed": run.steps_completed,
+        "total_steps": run.total_steps,
+        "discovered_hosts_count": run.discovered_hosts_count,
+        "vulnerability_count": run.vulnerability_count,
+        "error_count": run.error_count,
+        "error_details": run.error_details or "",
+        "step": run.current_step or "",
+        "message": run.step_message or "",
+        "openvas_scan_id": run.openvas_scan_id,
+        "openvas_task_id": openvas_task_id,
+        "openvas_report_id": run.openvas_report_id or "",
+        "openvas_ui_url": openvas_ui_url,
+        "report_url": report_url,
+        "task_id": run.celery_task_id or "",
+        "log_lines": [str(line) for line in log_lines[-200:]],
+    }
+
+
+@require_GET
+def ot_campaign_history(request):
+    runs = CampaignRun.objects.select_related("openvas_scan").all()[:20]
+    return JsonResponse({"history": [_serialize_campaign_run(run) for run in runs]})
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def agent_report(request):
@@ -1108,6 +1161,14 @@ def _check_agent_token(request) -> bool:
     if header.startswith("Bearer "):
         header = header.split(" ", 1)[1].strip()
     return header == token
+
+
+def _parse_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _persist_normalized_events(normalized):
@@ -2443,6 +2504,138 @@ def vuln_scan_status(request, scan_id):
         })
     except Exception as exc:
         return JsonResponse({"state": "ERROR", "error": str(exc)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def start_ot_campaign(request):
+    """
+    Launch an orchestrated OT campaign:
+    discovery -> optional agent scan queue -> optional OpenVAS -> optional Sliver automation.
+    """
+    if request.content_type and "application/json" in request.content_type:
+        try:
+            payload = json.loads(request.body or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON payload"}, status=400)
+    else:
+        payload = request.POST
+
+    cidr = str(payload.get("cidr", "")).strip()
+    if not cidr:
+        return JsonResponse({"error": "cidr is required"}, status=400)
+    try:
+        ip_network(cidr, strict=False)
+    except ValueError:
+        return JsonResponse({"error": f"invalid CIDR: {cidr}"}, status=400)
+
+    scan_method = str(payload.get("scan_method", "nmap")).strip().lower() or "nmap"
+    if scan_method not in {"ping", "nmap"}:
+        return JsonResponse({"error": "scan_method must be one of: ping, nmap"}, status=400)
+
+    max_hosts = payload.get("max_hosts")
+    max_hosts = int(max_hosts) if str(max_hosts or "").strip().isdigit() else None
+
+    openvas_timeout = payload.get("openvas_timeout_seconds")
+    if str(openvas_timeout or "").strip().isdigit():
+        openvas_timeout = max(15, min(1800, int(openvas_timeout)))
+    else:
+        openvas_timeout = 180
+
+    run_openvas = _parse_bool(payload.get("run_openvas"), default=True)
+    collect_loot = _parse_bool(payload.get("collect_loot"), default=True)
+    openvas_config = str(payload.get("gvmd_config", "full_and_fast")).strip() or "full_and_fast"
+    selected_agent_id = str(payload.get("agent_id", "")).strip() or None
+    selected_sliver_session_id = str(payload.get("sliver_session_id", "")).strip()
+    selected_sliver_command = str(payload.get("sliver_command", "whoami")).strip() or "whoami"
+
+    campaign_run = CampaignRun.objects.create(
+        requested_by=request.user if getattr(request, "user", None) and request.user.is_authenticated else None,
+        cidr=cidr,
+        scan_method=scan_method,
+        run_openvas=run_openvas,
+        openvas_config=openvas_config,
+        collect_loot=collect_loot,
+        sliver_session_id=selected_sliver_session_id,
+        sliver_command=selected_sliver_command,
+        status=CampaignRun.Status.PENDING,
+        current_step="queued",
+        step_message="Queued for execution.",
+    )
+
+    try:
+        task = run_ot_campaign_task.delay(
+            cidr=cidr,
+            scan_method=scan_method,
+            agent_id=selected_agent_id,
+            max_hosts=max_hosts,
+            run_openvas=run_openvas,
+            openvas_config=openvas_config,
+            openvas_timeout_seconds=openvas_timeout,
+            sliver_session_id=selected_sliver_session_id,
+            sliver_command=selected_sliver_command,
+            collect_loot=collect_loot,
+            campaign_run_id=campaign_run.id,
+        )
+    except Exception as exc:
+        campaign_run.status = CampaignRun.Status.FAILED
+        campaign_run.step_message = f"Failed to queue campaign: {exc}"
+        campaign_run.error_count = 1
+        campaign_run.error_details = str(exc)
+        campaign_run.finished_at = now()
+        campaign_run.duration_seconds = 0
+        campaign_run.save(
+            update_fields=[
+                "status",
+                "step_message",
+                "error_count",
+                "error_details",
+                "finished_at",
+                "duration_seconds",
+                "updated_at",
+            ]
+        )
+        return JsonResponse({"error": f"failed to queue campaign: {exc}"}, status=500)
+
+    campaign_run.celery_task_id = task.id
+    campaign_run.status = CampaignRun.Status.RUNNING
+    campaign_run.step_message = "Task accepted by worker."
+    campaign_run.save(update_fields=["celery_task_id", "status", "step_message", "updated_at"])
+
+    return JsonResponse(
+        {
+            "task_id": task.id,
+            "campaign_run_id": campaign_run.id,
+            "cidr": cidr,
+            "scan_method": scan_method,
+        },
+        status=202,
+    )
+
+
+@require_GET
+def ot_campaign_status(request, task_id):
+    result = AsyncResult(str(task_id))
+    payload = {"state": result.state}
+    run = CampaignRun.objects.filter(celery_task_id=str(task_id)).order_by("-id").first()
+
+    if isinstance(result.info, dict):
+        payload.update(result.info)
+    elif result.info and result.state not in {"PENDING", "SUCCESS"}:
+        payload["message"] = str(result.info)
+
+    if result.ready():
+        if isinstance(result.result, Exception):
+            payload["result"] = {"status": "failed", "error": str(result.result)}
+        else:
+            payload["result"] = result.result
+
+    if run:
+        payload["campaign_run_id"] = run.id
+        payload["campaign_status"] = run.status
+        payload["campaign"] = _serialize_campaign_run(run)
+
+    return JsonResponse(payload)
 
 
 # -----------------------------
@@ -3998,6 +4191,40 @@ def risk_assessment_pid_validate(request):
         "discovery_scans": scan_results,
         "openvas_scans": openvas_results,
         "digital_twin": twin_result,
+    })
+
+
+@require_http_methods(["POST"])
+def risk_assessment_pid_testbed(request):
+    try:
+        payload = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON payload.'}, status=400)
+
+    source = payload.get("source", "auto")
+    output_dir = payload.get("output_dir")
+    output_dir = Path(output_dir) if output_dir else Path(settings.BASE_DIR) / "out" / "pid_drawio"
+
+    output_dir_value = getattr(settings, "PID_DRAWIO_OUTPUT_DIR", None)
+    default_output_dir = Path(output_dir_value) if output_dir_value else Path(settings.BASE_DIR) / "out" / "pid_drawio"
+    target_path_value = getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", "")
+    target_path = Path(target_path_value) if target_path_value else None
+
+    sim_path, resolved_source = resolve_sim_system_path(source, default_output_dir, target_path)
+    if not sim_path:
+        return JsonResponse({"error": "No sim_system.json found."}, status=404)
+
+    try:
+        sim_system = load_sim_system_file(sim_path)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+    files = build_testbed_from_sim_system(sim_system, output_dir)
+    return JsonResponse({
+        "source": resolved_source,
+        "sim_system_path": _relative_to_base(sim_path),
+        "compose_path": _relative_to_base(files.compose_path),
+        "inventory_path": _relative_to_base(files.inventory_path),
     })
 
 

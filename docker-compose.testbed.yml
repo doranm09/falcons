@@ -2,12 +2,22 @@ services:
   web:
     networks:
       - default
+      - l01
+      - l2
       - l3
+      - l35
+      - l4
+      - l5
 
   celery:
     networks:
       - default
+      - l01
+      - l2
       - l3
+      - l35
+      - l4
+      - l5
 
   field-sensor:
     image: python:3.11-slim
@@ -404,6 +414,24 @@ services:
     networks:
       l5:
         ipv4_address: 172.30.5.60
+
+  kali-attacker:
+    build:
+      context: .
+      dockerfile: testbed/ot/kali/Dockerfile
+    profiles: ["kali"]
+    tty: true
+    stdin_open: true
+    command: ["/bin/bash", "-lc", "sleep infinity"]
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    networks:
+      default: {}
+      l3:
+        ipv4_address: 172.30.2.250
+      l35:
+        ipv4_address: 172.30.3.250
 
   conduit-l01-l2:
     build: ./testbed/ot/conduit

@@ -103,6 +103,11 @@
               <div class="text-muted small mb-2">Convert, validate, scan, and generate a twin in one run.</div>
               <button type="button" class="btn btn-dark w-100" id="risk-workflow-run">Run Full Workflow</button>
             </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Emulation Testbed</div>
+              <div class="text-muted small mb-2">Generate docker-compose + inventory for PID cyber nodes.</div>
+              <button type="button" class="btn btn-outline-dark w-100" id="risk-workflow-testbed">Generate Testbed</button>
+            </div>
           </div>
           <div class="row g-3 mt-1">
             <div class="col-lg-4">
@@ -482,6 +487,7 @@
   const workflowRun = document.getElementById('risk-workflow-run');
   const workflowIncludeOpenvas = document.getElementById('risk-workflow-include-openvas');
   const workflowIncludeTwin = document.getElementById('risk-workflow-include-twin');
+  const workflowTestbed = document.getElementById('risk-workflow-testbed');
   const workflowScan = document.getElementById('risk-workflow-scan');
   const workflowSync = document.getElementById('risk-workflow-sync');
   const workflowScanrun = document.getElementById('risk-workflow-scanrun');
@@ -1038,6 +1044,33 @@
         }
       } catch (err) {
         setWorkflowStatus('Workflow unavailable.', true);
+      }
+    });
+  }
+  if (workflowTestbed) {
+    workflowTestbed.addEventListener('click', async () => {
+      setWorkflowStatus('Generating testbed compose…');
+      try {
+        const response = await fetch("{% url 'dashboard:risk_assessment_pid_testbed' %}", {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source: systemSource?.value || 'auto' }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          setWorkflowStatus(data.error || 'Testbed generation failed.', true);
+          return;
+        }
+        setWorkflowStatus(`Testbed generated: ${data.compose_path}`);
+        if (workflowReport) {
+          workflowReport.innerHTML = `
+            <div class="fw-semibold mb-2">Testbed Artifacts</div>
+            <div class="small text-muted">Compose: ${escapeHtml(data.compose_path)}</div>
+            <div class="small text-muted">Inventory: ${escapeHtml(data.inventory_path)}</div>
+          `;
+        }
+      } catch (err) {
+        setWorkflowStatus('Testbed generation unavailable.', true);
       }
     });
   }

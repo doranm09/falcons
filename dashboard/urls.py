@@ -10,6 +10,9 @@ urlpatterns = [
     path('scans/', views.network_scans, name='network_scans'),
     path('scan/start/', views.start_scan_ajax, name='start-scan'),
     path('scan/status/<uuid:task_id>/', views.check_scan_status, name='scan-status'),
+    path('scan/campaign/start/', views.start_ot_campaign, name='start-ot-campaign'),
+    path('scan/campaign/status/<str:task_id>/', views.ot_campaign_status, name='ot-campaign-status'),
+    path('scan/campaign/history/', views.ot_campaign_history, name='ot-campaign-history'),
     path('scan/agent/start/', views.start_agent_scan, name='start-agent-scan'),
     path('agent/scan_results/', views.agent_scan_results, name='agent_scan_results'),
     path('paths/', views.shortest_paths, name='shortest-paths'),
@@ -91,6 +94,7 @@ urlpatterns = [
     path('risk-assessment/pid/system/', views.risk_assessment_pid_system_api, name='risk_assessment_pid_system_api'),
     path('risk-assessment/pid/nodes/', views.risk_assessment_pid_nodes_api, name='risk_assessment_pid_nodes_api'),
     path('risk-assessment/pid/validate/', views.risk_assessment_pid_validate, name='risk_assessment_pid_validate'),
+    path('risk-assessment/pid/testbed/', views.risk_assessment_pid_testbed, name='risk_assessment_pid_testbed'),
 
     # Network monitoring and Security Onion-like features
     path('network/monitoring/', views.network_monitoring_dashboard, name='network_monitoring'),

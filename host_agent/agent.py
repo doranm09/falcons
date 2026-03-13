@@ -10,7 +10,10 @@ import threading
 import subprocess
 import argparse
 from datetime import datetime
-from sbom.os_sbom import collect_linux_packages, collect_packages, generate_cyclonedx_sbom
+try:
+    from host_agent.sbom.os_sbom import collect_linux_packages, collect_packages, generate_cyclonedx_sbom
+except ImportError:  # Fallback for legacy layout
+    from sbom.os_sbom import collect_linux_packages, collect_packages, generate_cyclonedx_sbom
 from scapy.all import sniff, IP, TCP, UDP, ICMP, Ether, ARP
 import heapq
 import netifaces

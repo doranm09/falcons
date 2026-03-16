@@ -1796,7 +1796,9 @@
         return;
       }
       tableBody.innerHTML = mapped.map(node => {
-        const score = node.risk_score !== null && node.risk_score !== undefined ? Number(node.risk_score).toFixed(3) : '—';
+        const score = node.risk_score !== null && node.risk_score !== undefined
+          ? Number(node.risk_score).toFixed(6).replace(/\.?0+$/, '')
+          : '—';
         const level = node.risk_level || 'unknown';
         const rowClass = level === 'high' ? 'table-danger' : (level === 'medium' ? 'table-warning' : '');
         return `

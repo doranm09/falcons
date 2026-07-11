@@ -160,3 +160,53 @@ def test_build_risk_service_compatible_sim_system_collapses_signal_relays():
     assert set(compatible["digital"]["Heat-Ctrl"]["networks"].keys()) == {"process_main_net", "process_backup_net"}
     assert compatible["digital"]["process_main_net"]["type"] == "network"
     assert compatible["digital"]["process_backup_firewall"]["type"] == "Firewall"
+
+
+def test_build_risk_service_compatible_sim_system_normalizes_generic_digital_types():
+    sectioned = {
+        "version": "1.0",
+        "digital": {
+            "PLC-Main": {
+                "type": "controller",
+                "source": {},
+                "target": {},
+            },
+            "edge-fw": {
+                "type": "firewall",
+                "source": {},
+                "target": {},
+            },
+            "ops-hmi": {
+                "type": "hmi",
+                "source": {},
+                "target": {},
+            },
+            "db-host": {
+                "type": "database",
+                "source": {},
+                "target": {},
+            },
+            "hist-1": {
+                "type": "historian",
+                "source": {},
+                "target": {},
+            },
+            "eng-ws": {
+                "type": "workstation",
+                "source": {},
+                "target": {},
+            },
+        },
+        "physical": {},
+        "flow": {},
+        "function": {},
+    }
+
+    compatible = build_risk_service_compatible_sim_system(sectioned)
+
+    assert compatible["digital"]["PLC-Main"]["type"] == "PLC"
+    assert compatible["digital"]["edge-fw"]["type"] == "Firewall"
+    assert compatible["digital"]["ops-hmi"]["type"] == "HMI"
+    assert compatible["digital"]["db-host"]["type"] == "Database"
+    assert compatible["digital"]["hist-1"]["type"] == "DataHistorian"
+    assert compatible["digital"]["eng-ws"]["type"] == "Computer"

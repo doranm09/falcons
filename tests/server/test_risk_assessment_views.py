@@ -6,7 +6,7 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 
-from dashboard.models import Node, RiskNodeMapping, ScanRun, ScanVulnerability, Vulnerability
+from dashboard.models import Node, NodeInterface, RiskNodeMapping, ScanRun, ScanVulnerability, Vulnerability
 from dashboard.risk_assessment import build_cyber_data_for_risk_nodes, summarize_risk_results
 
 
@@ -28,12 +28,25 @@ class MockResponse:
 def test_risk_assessment_page_access(user_client):
     response = user_client.get(reverse("dashboard:risk_assessment"))
     assert response.status_code == 200
+    assert b"Current workspace for the active" in response.content
+    assert b"risk-network-graph" in response.content
+    assert b"/risk-assessment/network/compute/" in response.content
+    assert b"PLC-Main" in response.content
+    assert b"Heat-Ctrl" not in response.content
+    assert b"Latest Conversion" not in response.content
+
+
+@pytest.mark.django_db
+def test_risk_assessment_console_page_access(user_client):
+    response = user_client.get(reverse("dashboard:risk_assessment_console"))
+    assert response.status_code == 200
     assert b"Risk Assessment Console" in response.content
     assert b"/upload_model" in response.content
     assert b"/post_detection" in response.content
     assert b"/get_probability" in response.content
     assert b"/risk-assessment/pid/upload/" not in response.content
-    assert b"/risk-assessment/network/compute/" not in response.content
+    assert b"PLC-Main" in response.content
+    assert b"Firewall-Main-Cell" not in response.content
 
 
 @pytest.mark.django_db
@@ -128,6 +141,7 @@ def test_risk_assessment_model_upload_from_raw_model_payload(user_client, monkey
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
     assert mock_post.call_args.args[0].endswith("/upload_model")
+    assert mock_post.call_args.kwargs["json"]["digital"]["PLC-1"]["type"] == "PLC"
 
 
 @pytest.mark.django_db
@@ -397,6 +411,44 @@ def test_build_cyber_data_for_risk_nodes_dedupes_and_maps():
     assert len(plc_vulns) == 1
     assert plc_vulns[0]["id"] == "CVE-2024-0001"
     assert plc_vulns[0]["epss"] > 0.8
+    assert plc_vulns[0]["sources"] == ["node", "scan"]
+    assert mapped_by_name["PLC-1"]["vulnerability_count"] == 1
+    assert mapped_by_name["PLC-1"]["vulnerabilities"][0]["id"] == "CVE-2024-0001"
+
+
+@pytest.mark.django_db
+def test_build_cyber_data_for_risk_nodes_filters_scan_vulnerabilities_by_scan_run():
+    scan_a = ScanRun.objects.create(cidr="10.0.0.0/24")
+    scan_b = ScanRun.objects.create(cidr="10.0.1.0/24")
+    node = Node.objects.create(name="PLC-2", ip_address="10.0.0.30", scan_run=scan_a)
+
+    RiskNodeMapping.objects.create(risk_node_id="PLC-2", node=node)
+
+    ScanVulnerability.objects.create(
+        scan_run=scan_a,
+        host_ip="10.0.0.30",
+        cve_id="CVE-2024-1000",
+        name="Scan A vuln",
+        severity="High",
+        cvss_score=7.2,
+    )
+    ScanVulnerability.objects.create(
+        scan_run=scan_b,
+        host_ip="10.0.0.30",
+        cve_id="CVE-2024-2000",
+        name="Scan B vuln",
+        severity="Critical",
+        cvss_score=9.4,
+    )
+
+    cyber_data, mapped = build_cyber_data_for_risk_nodes(["PLC-2"], scan_run_id=scan_a.id)
+
+    scanned_nodes = {entry["id"]: entry for entry in cyber_data["scanned_nodes"]}
+    assert scanned_nodes["PLC-2"]["vulnerability"] == [
+        {"id": "CVE-2024-1000", "epss": pytest.approx(0.72), "sources": ["scan"]}
+    ]
+    assert mapped[0]["vulnerability_count"] == 1
+    assert mapped[0]["vulnerabilities"][0]["id"] == "CVE-2024-1000"
 
 
 def test_summarize_risk_results_assigns_levels():
@@ -464,10 +516,72 @@ def test_risk_assessment_network_compute_proxy(user_client, monkeypatch):
     mapped = {entry["risk_node_id"]: entry for entry in body["mapped_nodes"]}
     assert mapped["PLC-1"]["risk_level"] == "high"
     assert mapped["10.0.0.20"]["risk_level"] == "low"
+    assert mapped["PLC-1"]["vulnerability_count"] == 1
+    assert mapped["PLC-1"]["vulnerabilities"][0]["id"] == "CVE-2024-0003"
 
     posted_payload = mock_post.call_args.kwargs["json"]
     assert mock_post.call_args.args[0].endswith("/post_vulnerability")
     assert "PLC-1" in posted_payload["nodes"]
+
+
+def test_risk_local_model_payload_auto_falls_back_to_latest_prefixed_file(tmp_path, settings):
+    from dashboard import views as dashboard_views
+
+    output_dir = tmp_path / "pid_out"
+    output_dir.mkdir()
+    (output_dir / "20240210_sim_system.json").write_text(
+        json.dumps({"version": "1.0", "digital": {}, "physical": {}, "flow": {}, "function": {}}),
+        encoding="utf-8",
+    )
+    settings.PID_DRAWIO_OUTPUT_DIR = str(output_dir)
+    settings.RISK_ASSESSMENT_SIM_SYSTEM_PATH = ""
+
+    payload, model_path = dashboard_views._risk_local_model_payload_for_source("auto")
+
+    assert payload == {"version": "1.0", "digital": {}, "physical": {}, "flow": {}, "function": {}}
+    assert model_path == output_dir / "20240210_sim_system.json"
+
+
+def test_risk_local_model_payload_auto_uses_active_fallback_output_dir(tmp_path, settings, monkeypatch):
+    from dashboard import views as dashboard_views
+
+    primary_output_dir = tmp_path / "primary"
+    fallback_output_dir = tmp_path / "fallback"
+    primary_output_dir.mkdir()
+    fallback_output_dir.mkdir()
+    (fallback_output_dir / "sim_system.json").write_text(
+        json.dumps({"version": "1.0", "digital": {}, "physical": {}, "flow": {}, "function": {}}),
+        encoding="utf-8",
+    )
+
+    settings.PID_DRAWIO_OUTPUT_DIR = str(primary_output_dir)
+    settings.RISK_ASSESSMENT_SIM_SYSTEM_PATH = ""
+    monkeypatch.setattr(
+        dashboard_views,
+        "_pid_drawio_output_dir_candidates",
+        lambda: [primary_output_dir, fallback_output_dir],
+    )
+
+    payload, model_path = dashboard_views._risk_local_model_payload_for_source("auto")
+
+    assert payload == {"version": "1.0", "digital": {}, "physical": {}, "flow": {}, "function": {}}
+    assert model_path == fallback_output_dir / "sim_system.json"
+
+
+def test_resolve_sim_system_path_auto_falls_back_to_prefixed_latest_file(tmp_path):
+    from dashboard.pid_system import resolve_sim_system_path
+
+    output_dir = tmp_path / "pid_out"
+    output_dir.mkdir()
+    (output_dir / "20240210_sim_system.json").write_text(
+        json.dumps({"version": "1.0", "digital": {}, "physical": {}, "flow": {}, "function": {}}),
+        encoding="utf-8",
+    )
+
+    resolved_path, resolved_source = resolve_sim_system_path("auto", output_dir, None)
+
+    assert resolved_path == output_dir / "20240210_sim_system.json"
+    assert resolved_source == "latest"
 
 
 @pytest.mark.django_db
@@ -511,6 +625,37 @@ def test_risk_assessment_mappings_get(user_client, monkeypatch):
     assert node_payload["memory_total"] == 8 * 1024 * 1024 * 1024
     assert node_payload["active_ports"] == [22, 443]
     assert node_payload["mac_addresses"] == ["aa:bb:cc:dd:ee:ff"]
+
+
+@pytest.mark.django_db
+def test_risk_assessment_mappings_get_auto_suggests_hybrid_assets_and_prefers_in_band_ip(user_client, monkeypatch):
+    from dashboard import views as dashboard_views
+
+    node = Node.objects.create(name="plc-main-agent", ip_address="172.31.250.14")
+    NodeInterface.objects.create(node=node, name="eth0", ip="10.1.1.14", mac="aa:bb:cc:dd:ee:14")
+    NodeInterface.objects.create(node=node, name="eth1", ip="10.1.2.14", mac="aa:bb:cc:dd:ee:15")
+
+    nodes_payload = {
+        "nodes": {
+            "PLC-Main": {"states": ["Nominal"], "type": "controller", "category": "digital"},
+        }
+    }
+    monkeypatch.setattr(dashboard_views.requests, "get", Mock(return_value=MockResponse(nodes_payload)))
+
+    response = user_client.get(reverse("dashboard:risk_assessment_mappings"))
+    assert response.status_code == 200
+
+    body = response.json()
+    node_payload = next(item for item in body["nodes"] if item["id"] == node.id)
+    assert node_payload["ip_address"] == "10.1.1.14"
+
+    suggestion = next(mapping for mapping in body["mappings"] if mapping["risk_node_id"] == "PLC-Main")
+    assert suggestion["node_id"] == node.id
+    assert suggestion["node_name"] == "plc-main-agent"
+    assert suggestion["ip_address"] == "10.1.1.14"
+    assert suggestion["notes"] == "Auto-suggested from validated hybrid topology"
+    assert suggestion["reason"] == "matched validated hybrid IP"
+    assert suggestion["updated_at"] is None
 
 
 @pytest.mark.django_db

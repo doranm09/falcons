@@ -5,9 +5,14 @@
   <form id="risk-csrf-form" class="d-none">{% csrf_token %}</form>
 
   <div class="row mb-4">
-    <div class="col-12">
+    <div class="col-12 d-flex justify-content-between align-items-start gap-3 flex-wrap">
+      <div>
       <h2><i class="bi bi-shield-exclamation"></i> Risk Assessment Console</h2>
-      <p class="text-muted mb-0">Console for the upstream risk assessment API contract defined in <code>src/api/README.md</code>.</p>
+      <p class="text-muted mb-0">Console for the currently supported upstream risk API. All example payloads are scoped to <code>{{ risk_primary_example_node }}</code>.</p>
+      </div>
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard:risk_assessment' %}">
+        <i class="bi bi-diagram-3"></i> Workspace
+      </a>
     </div>
   </div>
 
@@ -21,7 +26,7 @@
           <div class="small text-muted mb-2">Risk service base URL</div>
           <div class="mb-3"><code>{{ risk_service_url|default:"(unset)" }}</code></div>
 
-          <div class="small text-muted mb-2">Local model</div>
+          <div class="small text-muted mb-2">Current <code>sim_system.json</code></div>
           {% if risk_local_model.available %}
             <div class="mb-1"><code>{{ risk_local_model.path }}</code></div>
             <div class="small text-muted mb-3">
@@ -32,12 +37,12 @@
           {% elif risk_local_model.error %}
             <div class="text-danger small mb-3">{{ risk_local_model.error }}</div>
           {% else %}
-            <div class="text-muted small mb-3">No local model found for auto initialization.</div>
+            <div class="text-muted small mb-3">No current <code>sim_system.json</code> is available for initialization.</div>
           {% endif %}
 
           <div class="d-grid gap-2">
             <button type="button" class="btn btn-primary" id="risk-quick-status">Refresh Status</button>
-            <button type="button" class="btn btn-outline-primary" id="risk-quick-init">Initialize From Local Model</button>
+            <button type="button" class="btn btn-outline-primary" id="risk-quick-init">Initialize Current Model</button>
             <button type="button" class="btn btn-outline-secondary" id="risk-quick-nodes">Load Nodes</button>
           </div>
 
@@ -253,7 +258,7 @@
     if (!result) return null;
     if (serviceSummary) {
       serviceSummary.textContent = result.response.ok
-        ? `${autoTriggered ? 'Auto-' : ''}Initialized from local model.`
+        ? `${autoTriggered ? 'Auto-' : ''}Initialized from current sim_system.json.`
         : (result.data.error || 'Initialization failed.');
     }
     return result;
@@ -278,7 +283,7 @@
     serviceSummary.textContent = `dbn_loaded=${dbnLoaded} | nodes=${nodesCount} | arcs=${arcsCount}${message ? ` | ${message}` : ''}`;
 
     if (autoInitialize && localModelAvailable && !dbnLoaded) {
-      serviceSummary.textContent += ' | attempting auto-initialize from local model…';
+      serviceSummary.textContent += ' | attempting auto-initialize from current sim_system.json…';
       const initResult = await initializeRiskService(true);
       if (initResult && initResult.response.ok) {
         await refreshStatus(false);

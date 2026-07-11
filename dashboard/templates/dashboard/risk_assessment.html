@@ -5,9 +5,14 @@
 <div class="container-fluid p-4">
   <form id="risk-csrf-form" class="d-none">{% csrf_token %}</form>
   <div class="row mb-4">
-    <div class="col-12">
+    <div class="col-12 d-flex justify-content-between align-items-start gap-3 flex-wrap">
+      <div>
       <h2><i class="bi bi-shield-exclamation"></i> Risk Assessment</h2>
-      <p class="text-muted">ICS risk probability analysis powered by the risk assessment service.</p>
+      <p class="text-muted mb-0">Current workspace for the active <code>sim_system.json</code>, live risk-node mappings, and posterior queries.</p>
+      </div>
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard:risk_assessment_console' %}">
+        <i class="bi bi-terminal"></i> API Console
+      </a>
     </div>
   </div>
 
@@ -54,7 +59,7 @@
           <h5 class="mb-0">P&amp;ID Draw.io Import</h5>
         </div>
         <div class="card-body">
-          <p class="text-muted mb-3">Convert draw.io XML to <code>sim_system.json</code> and optionally upload it to the risk assessment workspace.</p>
+          <p class="text-muted mb-3">Convert draw.io XML into the current <code>sim_system.json</code> used by the workspace and, optionally, the upstream risk service.</p>
           <div class="row g-3 align-items-end">
             <div class="col-lg-6">
               <label class="form-label" for="risk-pid-file">Draw.io XML</label>
@@ -78,10 +83,10 @@
       </div>
       <div class="card shadow-sm mt-3">
         <div class="card-header">
-          <h5 class="mb-0">PID-Driven Workflow</h5>
+          <h5 class="mb-0">Current Model Workflow</h5>
         </div>
         <div class="card-body">
-          <p class="text-muted mb-3">Run the end-to-end pipeline from PID metadata to a digital twin.</p>
+          <p class="text-muted mb-3">Operate on the current model source, validate expected cyber nodes, and drive the active twin workflow.</p>
           <div class="row g-3">
             <div class="col-lg-4">
               <div class="fw-semibold mb-2">Step 1: Knowledge Extraction</div>
@@ -164,9 +169,8 @@
           <h5 class="mb-0">System View</h5>
           <div class="d-flex gap-2 align-items-center">
             <select class="form-select form-select-sm" id="risk-system-source">
-              <option value="auto">Auto (target or latest)</option>
-              <option value="target">Risk Assessment Target</option>
-              <option value="latest">Latest Conversion</option>
+              <option value="auto">Current sim_system.json</option>
+              <option value="target">Configured Target Path</option>
             </select>
             <select class="form-select form-select-sm" id="risk-system-layout">
               <option value="breadthfirst">Breadthfirst</option>
@@ -208,7 +212,7 @@
           <h5 class="mb-0">Available Nodes</h5>
           <div class="d-flex gap-2">
             <select class="form-select form-select-sm" id="risk-node-source">
-              <option value="pid">PID (sim_system)</option>
+              <option value="pid">Current sim_system.json</option>
               <option value="risk">Risk service</option>
             </select>
             <label class="visually-hidden" for="risk-node-filter">Filter nodes</label>
@@ -291,7 +295,7 @@
           <h5 class="mb-0">Risk Schema Testbed</h5>
         </div>
         <div class="card-body">
-          <p class="text-muted">Generate a synthetic network that matches the risk model nodes and feed it into the risk assessment service.</p>
+          <p class="text-muted">Generate a synthetic network from the current risk-node set and push it through the supported risk workflow.</p>
           <form id="risk-testbed-form" class="row g-3">
             <div class="col-md-4">
               <label class="form-label" for="risk-testbed-cidr">CIDR</label>
@@ -303,7 +307,7 @@
             </div>
             <div class="col-12">
               <label class="form-label" for="risk-testbed-cves">CVE List (comma or newline separated)</label>
-              <textarea class="form-control" id="risk-testbed-cves" rows="4" placeholder="CVE-2023-1234, CVE-2024-0001"></textarea>
+              <textarea class="form-control" id="risk-testbed-cves" rows="4" placeholder="CVE-TEST-0001, CVE-TEST-0002"></textarea>
             </div>
             <div class="col-12 d-flex gap-2">
               <button type="submit" class="btn btn-primary">
@@ -334,11 +338,11 @@
                 </div>
                 <div class="mb-3">
                   <label class="form-label" for="risk-nodes-input">Nodes (comma separated)</label>
-                  <input type="text" class="form-control" id="risk-nodes-input" placeholder="PLC-Main, Heat-Ctrl">
+                  <input type="text" class="form-control" id="risk-nodes-input" placeholder="{{ risk_primary_example_node }}">
                 </div>
                 <div class="mb-3">
                   <label class="form-label" for="risk-vulnerabilities">Vulnerability Updates (JSON)</label>
-                  <textarea class="form-control" id="risk-vulnerabilities" rows="4" placeholder='{"PLC-Main":{"CVE-2024-0001":{"epss":0.7}}}'></textarea>
+                  <textarea class="form-control" id="risk-vulnerabilities" rows="4" placeholder='{"{{ risk_primary_example_node }}":{"{{ risk_primary_example_cve }}":{"epss":0.7}}}'></textarea>
                   <div class="form-text">The current risk API supports <code>/post_vulnerability</code> and <code>/get_probability</code> for this workflow. <code>/post_detection</code> exists upstream, but it does not expose posterior probabilities for the dashboard to query afterward.</div>
                 </div>
                 <div class="d-flex gap-2">
@@ -400,13 +404,15 @@
                       <th>Node</th>
                       <th>IP</th>
                       <th>Risk Node ID</th>
+                      <th>CVEs</th>
+                      <th>Top CVEs</th>
                       <th>Risk Score</th>
                       <th>Risk Level</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td colspan="5" class="text-center text-muted">Compute to load risk results.</td>
+                      <td colspan="7" class="text-center text-muted">Compute to load mapped vulnerabilities and risk results.</td>
                     </tr>
                   </tbody>
                 </table>
@@ -1612,6 +1618,22 @@
     return `${baseLabel} (${pct}%)`;
   }
 
+  function summarizeRiskVulnerabilities(match) {
+    const vulnerabilities = Array.isArray(match?.vulnerabilities) ? match.vulnerabilities : [];
+    if (!vulnerabilities.length) {
+      return { countText: '0', topText: '—' };
+    }
+    const totalCount = Number.isFinite(Number(match?.vulnerability_count))
+      ? Number(match.vulnerability_count)
+      : vulnerabilities.length;
+    const topText = vulnerabilities.slice(0, 3).map(vuln => {
+      const epss = Number(vuln?.epss);
+      const suffix = Number.isFinite(epss) ? ` (${Math.round(epss * 100)}%)` : '';
+      return `${vuln.id}${suffix}`;
+    }).join(', ');
+    return { countText: String(totalCount), topText };
+  }
+
   function applyRiskOverlay(mappedNodes) {
     if (!riskCy || !mappedNodes) return;
     const byNodeId = new Map();
@@ -1643,8 +1665,12 @@
         (data.id && byRiskNodeId.get(String(data.id)));
 
       const riskLevel = match && match.risk_level ? match.risk_level : 'unknown';
+      const vulnCount = match && Number.isFinite(Number(match.vulnerability_count))
+        ? Number(match.vulnerability_count)
+        : 0;
       node.data('risk_level', riskLevel);
       node.data('risk_score', match ? match.risk_score : null);
+      node.data('vulnerability_count', vulnCount);
       node.data('risk_label', riskLabelFor(data, match));
     });
   }
@@ -1754,12 +1780,12 @@
 
   async function fetchNetworkRisk() {
     const tableBody = document.querySelector('#risk-network-table tbody');
-    tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Computing risk…</td></tr>';
+    tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Computing risk…</td></tr>';
     try {
       const response = await fetch(withScanRun("{% url 'dashboard:risk_assessment_network_compute' %}"));
       const data = await response.json();
       if (!response.ok) {
-        tableBody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">${data.error || 'Error computing risk'}</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">${data.error || 'Error computing risk'}</td></tr>`;
         return;
       }
       if (data.scan_run_id) {
@@ -1767,25 +1793,31 @@
       }
       const mapped = data.mapped_nodes || [];
       if (mapped.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No mapped nodes found.</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No mapped nodes found.</td></tr>';
+        setRiskGraphStatus('No mapped cyber nodes are currently linked to risk-model nodes.');
         return;
       }
+      const vulnerableCount = mapped.filter(node => Number(node.vulnerability_count || 0) > 0).length;
       tableBody.innerHTML = mapped.map(node => {
         const score = node.risk_score !== null && node.risk_score !== undefined
           ? Number(node.risk_score).toFixed(6).replace(/\.?0+$/, '')
           : '—';
         const level = node.risk_level || 'unknown';
+        const vulnSummary = summarizeRiskVulnerabilities(node);
         const rowClass = level === 'high' ? 'table-danger' : (level === 'medium' ? 'table-warning' : '');
         return `
           <tr class="${rowClass}">
             <td>${node.name || 'Unknown'}</td>
             <td>${node.ip_address || '—'}</td>
             <td>${node.risk_node_id || '—'}</td>
+            <td>${vulnSummary.countText}</td>
+            <td class="small">${escapeHtml(vulnSummary.topText)}</td>
             <td>${score}</td>
             <td class="text-capitalize">${level}</td>
           </tr>
         `;
       }).join('');
+      setRiskGraphStatus(`Mapped ${mapped.length} nodes to the Bayesian model. ${vulnerableCount} mapped nodes currently carry CVEs from discovered network evidence.`);
       if (!riskCy || (riskActiveScanId && riskGraphScanId !== riskActiveScanId)) {
         await loadRiskGraph();
       }

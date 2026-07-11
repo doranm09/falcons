@@ -79,7 +79,12 @@ from .tasks import (
 from .openvas_client import openvas_session, get_task_status, get_report_id, download_report
 from celery.result import AsyncResult
 from .models import Link
-from .risk_assessment import build_cyber_data_for_risk_nodes, summarize_risk_results
+from .risk_assessment import (
+    build_cyber_data_for_risk_nodes,
+    preferred_risk_node_ip,
+    summarize_risk_results,
+    suggest_risk_node_mappings,
+)
 from .utils import dijkstra, list_interfaces
 from .sbom import (
     detect_sbom_format,
@@ -107,6 +112,8 @@ import math
 import os
 import shutil
 from collections import defaultdict
+import tempfile
+from collections import Counter, defaultdict
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Count
@@ -155,52 +162,9 @@ from .pid_drawio import (
     store_drawio_upload,
     upload_sim_system,
 )
-<<<<<<< HEAD
-from .sim_system import (
-    SIM_SYSTEM_SECTION_KEYS,
-    build_risk_service_compatible_sim_system,
-    is_legacy_sim_system,
-    legacy_to_sectioned_sim_system,
-    load_sim_system_json,
-    write_sim_system_json,
-)
-from .gvmd import fetch_gvmd_findings_for_ips
-
-
-def _node_asset_ips(node: Node) -> set[str]:
-    ips = set()
-    primary_ip = str(getattr(node, "ip_address", "") or "").strip()
-    if primary_ip:
-        ips.add(primary_ip)
-    for iface in getattr(node, "interfaces", []).all():
-        iface_ip = str(getattr(iface, "ip", "") or "").strip()
-        if iface_ip:
-            ips.add(iface_ip)
-    return ips
-
-
-def _hostname_for_node(node: Optional[Node], fallback_ip: str = "") -> str:
-    if node:
-        hostname = str(getattr(node, "hostname", "") or "").strip()
-        if hostname:
-            return hostname
-        candidate = str(getattr(node, "name", "") or "").strip()
-        if candidate and candidate != str(fallback_ip or "").strip():
-            return candidate
-    return ""
-
-
-def _latest_nodes_by_asset_ip(nodes):
-    latest_node_by_ip = {}
-    for node in nodes:
-        for ip_text in _node_asset_ips(node):
-            if ip_text and ip_text not in latest_node_by_ip:
-                latest_node_by_ip[ip_text] = node
-    return latest_node_by_ip
-=======
->>>>>>> ac2ae04 (Add ids process live to web app, track models, remove management info)
 from knowledge_extraction.drawio import DrawioParseError
 from .pid_system import (
+    _latest_sim_system_file,
     build_system_elements,
     load_sim_system_file,
     resolve_sim_system_path,
@@ -214,6 +178,8 @@ from .pid_testbed import build_testbed_from_sim_system
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
 RISK_ASSESSMENT_TIMEOUT = 15
+RISK_ASSESSMENT_PRIMARY_NODE = "PLC-Main"
+RISK_ASSESSMENT_SAMPLE_CVE = "CVE-TEST-0001"
 SIEM_WRITE_ROLES = (SiemUserRole.Role.ADMIN, SiemUserRole.Role.ANALYST)
 
 
@@ -509,12 +475,82 @@ def _risk_local_model_payload() -> tuple[dict | None, Path | None]:
     return _risk_local_model_payload_for_source("auto")
 
 
-def _risk_local_model_payload_for_source(source: str = "auto") -> tuple[dict | None, Path | None]:
+def _pid_drawio_configured_output_dir() -> Path:
     output_dir_value = getattr(settings, "PID_DRAWIO_OUTPUT_DIR", None)
-    output_dir = Path(output_dir_value) if output_dir_value else Path(settings.BASE_DIR) / "out" / "pid_drawio"
+    return Path(output_dir_value) if output_dir_value else Path(settings.BASE_DIR) / "out" / "pid_drawio"
+
+
+def _pid_drawio_fallback_output_dir() -> Path:
+    return Path(tempfile.gettempdir()) / "cyber_pen_test" / "pid_drawio"
+
+
+def _pid_drawio_output_dir_candidates() -> list[Path]:
+    configured_output_dir = _pid_drawio_configured_output_dir()
+    fallback_output_dir = _pid_drawio_fallback_output_dir()
+    candidates = [configured_output_dir]
+    if fallback_output_dir != configured_output_dir:
+        candidates.append(fallback_output_dir)
+    return candidates
+
+
+def _pid_drawio_output_dir_is_writable(output_dir: Path) -> bool:
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=output_dir, prefix=".pid_drawio_write_test_", delete=True):
+            return True
+    except OSError:
+        return False
+
+
+def _pid_drawio_write_output_dir() -> Path:
+    for output_dir in _pid_drawio_output_dir_candidates():
+        if _pid_drawio_output_dir_is_writable(output_dir):
+            return output_dir
+    candidate_text = ", ".join(str(path) for path in _pid_drawio_output_dir_candidates())
+    raise PermissionError(f"PID draw.io output directories are not writable: {candidate_text}")
+
+
+def _pid_drawio_output_dir_mtime(output_dir: Path) -> float:
+    if not output_dir.exists():
+        return 0.0
+    candidate_paths: list[Path] = []
+    current_path = output_dir / "sim_system.json"
+    if current_path.exists():
+        candidate_paths.append(current_path)
+    latest_path = _latest_sim_system_file(output_dir)
+    if latest_path and latest_path.exists():
+        candidate_paths.append(latest_path)
+    if not candidate_paths:
+        return 0.0
+    return max(path.stat().st_mtime for path in candidate_paths)
+
+
+def _pid_drawio_active_output_dir() -> Path:
+    output_dirs = _pid_drawio_output_dir_candidates()
+    active_output_dir = max(output_dirs, key=_pid_drawio_output_dir_mtime)
+    if _pid_drawio_output_dir_mtime(active_output_dir) > 0:
+        return active_output_dir
+    return output_dirs[0]
+
+
+def _risk_canonical_local_model_path(output_dir: Path, target_path: Path | None) -> Path | None:
+    if target_path and target_path.exists():
+        return target_path
+    default_path = output_dir / "sim_system.json"
+    if default_path.exists():
+        return default_path
+    return _latest_sim_system_file(output_dir)
+
+
+def _risk_local_model_payload_for_source(source: str = "auto") -> tuple[dict | None, Path | None]:
+    output_dir = _pid_drawio_active_output_dir()
     target_path_value = getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", "")
     target_path = Path(target_path_value) if target_path_value else None
-    sim_path, _ = resolve_sim_system_path(source, output_dir, target_path)
+    source = str(source or "auto").strip().lower() or "auto"
+    if source in {"auto", "target"}:
+        sim_path = _risk_canonical_local_model_path(output_dir, target_path)
+    else:
+        sim_path, _ = resolve_sim_system_path(source, output_dir, target_path)
     if not sim_path or not sim_path.exists():
         return None, None
     try:
@@ -539,6 +575,27 @@ def _risk_payload_is_model_payload(payload: dict) -> bool:
     if not isinstance(payload, dict):
         return False
     return is_legacy_sim_system(payload) or any(key in payload for key in SIM_SYSTEM_SECTION_KEYS)
+
+
+def _risk_local_model_context() -> dict[str, object]:
+    local_model: dict[str, object] = {
+        "available": False,
+        "path": "",
+        "counts": {},
+        "error": "",
+    }
+    try:
+        payload, model_path = _risk_local_model_payload()
+        if payload is not None and model_path is not None:
+            local_model = {
+                "available": True,
+                "path": _relative_to_base(model_path),
+                "counts": _risk_model_counts(payload),
+                "error": "",
+            }
+    except Exception as exc:
+        local_model["error"] = str(exc)
+    return local_model
 
 
 def _risk_console_groups() -> list[dict]:
@@ -590,7 +647,13 @@ def _risk_console_groups() -> list[dict]:
                     "default_payload": json.dumps(
                         {
                             "version": "1.0",
-                            "digital": {},
+                            "digital": {
+                                RISK_ASSESSMENT_PRIMARY_NODE: {
+                                    "type": "PLC",
+                                    "source": {},
+                                    "target": {},
+                                }
+                            },
                             "physical": {},
                             "flow": {},
                             "function": {},
@@ -624,10 +687,10 @@ def _risk_console_groups() -> list[dict]:
                     "default_payload": json.dumps(
                         {
                             "nodes": {
-                                "Firewall-Main-Cell": {
-                                    "CVE-TEST-0001": {
+                                RISK_ASSESSMENT_PRIMARY_NODE: {
+                                    RISK_ASSESSMENT_SAMPLE_CVE: {
                                         "cvss": 7.5,
-                                        "epss": 0.004,
+                                        "epss": 0.7,
                                     }
                                 }
                             }
@@ -647,7 +710,7 @@ def _risk_console_groups() -> list[dict]:
                     "default_payload": json.dumps(
                         {
                             "nodes": {
-                                "Firewall-Main-Cell": {
+                                RISK_ASSESSMENT_PRIMARY_NODE: {
                                     "score": 0.8,
                                 }
                             }
@@ -664,7 +727,7 @@ def _risk_console_groups() -> list[dict]:
                     "description": "Query node probabilities with the service's documented query parameters.",
                     "payload_mode": "query",
                     "payload_label": "Query JSON",
-                    "default_payload": json.dumps({"T": 3, "nodes": ["Firewall-Main-Cell"]}, indent=2),
+                    "default_payload": json.dumps({"T": 3, "nodes": [RISK_ASSESSMENT_PRIMARY_NODE]}, indent=2),
                 },
             ],
         },
@@ -5379,32 +5442,27 @@ def network_topology_api(request):
 
 
 def risk_assessment_page(request):
-    local_model = {
-        "available": False,
-        "path": "",
-        "counts": {},
-        "error": "",
-    }
-    try:
-        payload, model_path = _risk_local_model_payload()
-        if payload is not None and model_path is not None:
-            local_model = {
-                "available": True,
-                "path": _relative_to_base(model_path),
-                "counts": _risk_model_counts(payload),
-                "error": "",
-            }
-    except Exception as exc:
-        local_model["error"] = str(exc)
+    return render(
+        request,
+        'dashboard/risk_assessment.html',
+        {
+            "risk_pid_target_path": getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", ""),
+            "risk_primary_example_node": RISK_ASSESSMENT_PRIMARY_NODE,
+            "risk_primary_example_cve": RISK_ASSESSMENT_SAMPLE_CVE,
+        },
+    )
 
+
+def risk_assessment_console_page(request):
     return render(
         request,
         'dashboard/risk_assessment_console.html',
         {
             "risk_pid_target_path": getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", ""),
             "risk_service_url": getattr(settings, "RISK_ASSESSMENT_API_URL", ""),
-            "risk_local_model": local_model,
+            "risk_local_model": _risk_local_model_context(),
             "risk_console_groups": _risk_console_groups(),
+            "risk_primary_example_node": RISK_ASSESSMENT_PRIMARY_NODE,
         },
     )
 
@@ -5540,13 +5598,13 @@ def risk_assessment_pid_upload(request):
     if upload is None:
         return JsonResponse({"error": "drawio_file is required."}, status=400)
 
-    output_dir_value = getattr(settings, "PID_DRAWIO_OUTPUT_DIR", None)
-    output_dir = Path(output_dir_value) if output_dir_value else Path(settings.BASE_DIR) / "out" / "pid_drawio"
+    output_dir = _pid_drawio_write_output_dir()
     prefix = build_timestamp_prefix()
 
     try:
         xml_path = store_drawio_upload(upload, output_dir, prefix)
         sim_system, sim_path = convert_drawio_to_sim_system(xml_path, output_dir, prefix)
+        current_sim_path = write_sim_system_json(output_dir / "sim_system.json", sim_system)
         risk_model = legacy_to_sectioned_sim_system(sim_system)
         risk_model_path = write_sim_system_json(output_dir / f"{prefix}_risk_upload_sim_system.json", risk_model)
         risk_service_model = build_risk_service_compatible_sim_system(risk_model)
@@ -5633,6 +5691,7 @@ def risk_assessment_pid_upload(request):
             "connections_count": len(connections),
             "drawio_path": _relative_to_base(xml_path),
             "sim_system_path": _relative_to_base(sim_path),
+            "current_sim_system_path": _relative_to_base(current_sim_path),
             "risk_model_path": _relative_to_base(risk_model_path),
             "risk_service_model_path": _relative_to_base(risk_service_model_path),
             "risk_model_nodes_count": sum(
@@ -5662,8 +5721,7 @@ def risk_assessment_pid_system_api(request):
     source = request.GET.get("source", "auto")
     include_network = request.GET.get("include_network", "1").lower() not in ("0", "false", "no")
 
-    output_dir_value = getattr(settings, "PID_DRAWIO_OUTPUT_DIR", None)
-    output_dir = Path(output_dir_value) if output_dir_value else Path(settings.BASE_DIR) / "out" / "pid_drawio"
+    output_dir = _pid_drawio_active_output_dir()
     target_path_value = getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", "")
     target_path = Path(target_path_value) if target_path_value else None
 
@@ -5691,8 +5749,7 @@ def risk_assessment_pid_system_api(request):
 @require_GET
 def risk_assessment_pid_nodes_api(request):
     source = request.GET.get("source", "auto")
-    output_dir_value = getattr(settings, "PID_DRAWIO_OUTPUT_DIR", None)
-    output_dir = Path(output_dir_value) if output_dir_value else Path(settings.BASE_DIR) / "out" / "pid_drawio"
+    output_dir = _pid_drawio_active_output_dir()
     target_path_value = getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", "")
     target_path = Path(target_path_value) if target_path_value else None
 
@@ -5739,8 +5796,7 @@ def risk_assessment_pid_validate(request):
         except (TypeError, ValueError):
             return JsonResponse({'error': 'scan_run_id must be an integer.'}, status=400)
 
-    output_dir_value = getattr(settings, "PID_DRAWIO_OUTPUT_DIR", None)
-    output_dir = Path(output_dir_value) if output_dir_value else Path(settings.BASE_DIR) / "out" / "pid_drawio"
+    output_dir = _pid_drawio_active_output_dir()
     target_path_value = getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", "")
     target_path = Path(target_path_value) if target_path_value else None
 
@@ -5782,10 +5838,9 @@ def risk_assessment_pid_testbed(request):
 
     source = payload.get("source", "auto")
     output_dir = payload.get("output_dir")
-    output_dir = Path(output_dir) if output_dir else Path(settings.BASE_DIR) / "out" / "pid_drawio"
+    output_dir = Path(output_dir) if output_dir else _pid_drawio_write_output_dir()
 
-    output_dir_value = getattr(settings, "PID_DRAWIO_OUTPUT_DIR", None)
-    default_output_dir = Path(output_dir_value) if output_dir_value else Path(settings.BASE_DIR) / "out" / "pid_drawio"
+    default_output_dir = _pid_drawio_active_output_dir()
     target_path_value = getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", "")
     target_path = Path(target_path_value) if target_path_value else None
 
@@ -5995,12 +6050,13 @@ def risk_assessment_mappings_api(request):
         merged_ids.update(mapping_ids)
         risk_nodes = sorted(merged_ids)
 
+        candidate_nodes = list(Node.objects.prefetch_related("interfaces").order_by("name", "ip_address"))
         nodes = []
-        for node in Node.objects.order_by("name", "ip_address"):
+        for node in candidate_nodes:
             nodes.append({
                 "id": node.id,
                 "name": node.name,
-                "ip_address": node.ip_address,
+                "ip_address": preferred_risk_node_ip(node),
                 "os_info": node.os_info,
                 "platform_info": node.platform_info,
                 "cpu_count": node.cpu_count,
@@ -6025,6 +6081,28 @@ def risk_assessment_mappings_api(request):
                 "active": mapping.active,
                 "updated_at": mapping.updated_at.isoformat(),
             })
+
+        existing_mapping_ids = {str(mapping["risk_node_id"]) for mapping in mapping_payload if mapping.get("risk_node_id")}
+        suggested_mappings = suggest_risk_node_mappings(risk_nodes, candidate_nodes)
+        for risk_node_id in risk_nodes:
+            if risk_node_id in existing_mapping_ids:
+                continue
+            suggestion = suggested_mappings.get(str(risk_node_id))
+            if not suggestion:
+                continue
+            mapping_payload.append({
+                "risk_node_id": suggestion["risk_node_id"],
+                "node_id": suggestion["node_id"],
+                "node_name": suggestion["node_name"],
+                "ip_address": suggestion["ip_address"],
+                "label": suggestion["label"],
+                "notes": suggestion["notes"],
+                "active": suggestion["active"],
+                "reason": suggestion["reason"],
+                "updated_at": None,
+            })
+
+        mapping_payload.sort(key=lambda mapping: str(mapping.get("risk_node_id") or ""))
 
         response_payload = {
             "risk_nodes": risk_nodes,

@@ -72,3 +72,47 @@ def test_pid_drawio_upload_endpoint(client, tmp_path: Path, settings):
 
     xml_path = Path(data["drawio_path"])
     assert xml_path.exists()
+
+    current_sim_path = Path(data["current_sim_system_path"])
+    assert current_sim_path.exists()
+
+
+@override_settings(PID_DRAWIO_OUTPUT_DIR=None, RISK_ASSESSMENT_SIM_SYSTEM_PATH="")
+def test_pid_drawio_upload_endpoint_falls_back_to_writable_output_dir(client, tmp_path: Path, settings, monkeypatch):
+    from dashboard import views as dashboard_views
+
+    primary_output_dir = tmp_path / "primary"
+    fallback_output_dir = tmp_path / "fallback"
+    settings.PID_DRAWIO_OUTPUT_DIR = str(primary_output_dir)
+
+    monkeypatch.setattr(
+        dashboard_views,
+        "_pid_drawio_output_dir_candidates",
+        lambda: [primary_output_dir, fallback_output_dir],
+    )
+    monkeypatch.setattr(
+        dashboard_views,
+        "_pid_drawio_output_dir_is_writable",
+        lambda path: path == fallback_output_dir,
+    )
+
+    upload = SimpleUploadedFile("diagram.xml", DRAWIO_XML.encode("utf-8"), content_type="text/xml")
+
+    response = client.post(
+        reverse("dashboard:risk_assessment_pid_upload"),
+        {"drawio_file": upload},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert Path(data["drawio_path"]).parent == fallback_output_dir
+    assert Path(data["sim_system_path"]).parent == fallback_output_dir
+    assert Path(data["current_sim_system_path"]) == fallback_output_dir / "sim_system.json"
+
+    system_response = client.get(
+        reverse("dashboard:risk_assessment_pid_system_api"),
+        {"source": "auto", "include_network": "0"},
+    )
+
+    assert system_response.status_code == 200
+    assert system_response.json()["meta"]["source"] == "current"

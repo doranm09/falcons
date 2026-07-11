@@ -45,6 +45,7 @@ def resolve_sim_system_path(
     target_path: Optional[Path],
 ) -> Tuple[Optional[Path], str]:
     source = (source or "").lower()
+    current_path = output_dir / "sim_system.json"
     if source == "target":
         if target_path and target_path.exists():
             return target_path, "target"
@@ -57,8 +58,11 @@ def resolve_sim_system_path(
     if target_path and target_path.exists():
         return target_path, "target"
 
+    if current_path.exists():
+        return current_path, "current"
+
     latest = _latest_sim_system_file(output_dir)
-    return (latest, "latest") if latest else (None, "latest")
+    return (latest, "latest") if latest else (None, "current")
 
 
 def load_sim_system_file(path: Path) -> Dict[str, Any]:

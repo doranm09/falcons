@@ -52,6 +52,34 @@ CYBER_HINTS = (
     "computer",
 )
 
+RISK_SERVICE_DIGITAL_TYPE_ALIASES = {
+    "plc": "PLC",
+    "controller": "PLC",
+    "rtu": "PLC",
+    "ied": "PLC",
+    "dcs": "PLC",
+    "firewall": "Firewall",
+    "hmi": "HMI",
+    "scada": "HMI",
+    "computer": "Computer",
+    "desktop": "Computer",
+    "workstation": "Computer",
+    "server": "Computer",
+    "host": "Computer",
+    "client": "Computer",
+    "database": "Database",
+    "db": "Database",
+    "historian": "DataHistorian",
+    "datahistorian": "DataHistorian",
+    "data_historian": "DataHistorian",
+    "data-historian": "DataHistorian",
+    "network": "network",
+    "net": "network",
+    "tr_press": "tr_press",
+    "valve_ctrl": "valve_ctrl",
+    "heater_ctrl": "heater_ctrl",
+}
+
 
 def load_sim_system_json(path: str | Path) -> Dict[str, Any]:
     with open(Path(path), "r", encoding="utf-8") as handle:
@@ -146,15 +174,14 @@ def build_risk_service_compatible_sim_system(data: Dict[str, Any]) -> Dict[str, 
     sectioned = legacy_to_sectioned_sim_system(data)
     compatible = copy.deepcopy(sectioned)
     signal_ids = _sectioned_node_ids_by_type(compatible, "signal")
-    if not signal_ids:
-        return compatible
 
-    for section in SIM_SYSTEM_SECTION_KEYS:
-        section_payload = compatible.get(section)
-        if not isinstance(section_payload, dict):
-            continue
-        for node_id in signal_ids:
-            section_payload.pop(node_id, None)
+    if signal_ids:
+        for section in SIM_SYSTEM_SECTION_KEYS:
+            section_payload = compatible.get(section)
+            if not isinstance(section_payload, dict):
+                continue
+            for node_id in signal_ids:
+                section_payload.pop(node_id, None)
 
     for section in SIM_SYSTEM_SECTION_KEYS:
         section_payload = compatible.get(section)
@@ -174,9 +201,10 @@ def build_risk_service_compatible_sim_system(data: Dict[str, Any]) -> Dict[str, 
                 continue
             _apply_risk_service_digital_compat(node_id, raw_record, record)
 
-    digital = compatible.setdefault("digital", {})
-    for node_id, placeholder in RISK_SERVICE_PLACEHOLDER_DIGITAL.items():
-        digital.setdefault(node_id, copy.deepcopy(placeholder))
+    if signal_ids:
+        digital = compatible.setdefault("digital", {})
+        for node_id, placeholder in RISK_SERVICE_PLACEHOLDER_DIGITAL.items():
+            digital.setdefault(node_id, copy.deepcopy(placeholder))
     return compatible
 
 
@@ -309,7 +337,8 @@ def _record_signal_sides(record: Dict[str, Any]) -> set[str]:
 
 
 def _apply_risk_service_digital_compat(node_id: str, raw_record: Dict[str, Any], record: Dict[str, Any]) -> None:
-    node_type = str(record.get("type") or "")
+    node_type = _normalize_risk_service_digital_type(node_id, raw_record, record)
+    record["type"] = node_type
     networks = dict(record.get("networks") or {})
     sides = _record_signal_sides(raw_record)
 
@@ -342,3 +371,48 @@ def _apply_risk_service_digital_compat(node_id: str, raw_record: Dict[str, Any],
 
     if networks:
         record["networks"] = networks
+
+
+def _normalize_risk_service_digital_type(node_id: str, raw_record: Dict[str, Any], record: Dict[str, Any]) -> str:
+    raw_type = str(record.get("type") or raw_record.get("type") or "").strip()
+    normalized_type = raw_type.lower().replace("-", "_").replace(" ", "_")
+    mapped_type = RISK_SERVICE_DIGITAL_TYPE_ALIASES.get(normalized_type)
+    if mapped_type:
+        return mapped_type
+
+    environment = raw_record.get("environment")
+    haystack_parts = [
+        node_id,
+        raw_type,
+        raw_record.get("name"),
+        raw_record.get("label"),
+        raw_record.get("role"),
+        raw_record.get("module"),
+        raw_record.get("description"),
+    ]
+    if isinstance(environment, dict):
+        haystack_parts.extend(
+            [
+                environment.get("DEVICE_NAME"),
+                environment.get("DEVICE_ROLE"),
+                environment.get("DEVICE_DESC"),
+            ]
+        )
+    haystack = " ".join(str(value).lower() for value in haystack_parts if value)
+
+    if "firewall" in haystack:
+        return "Firewall"
+    if any(token in haystack for token in ("historian", "data historian", "data-historian")):
+        return "DataHistorian"
+    if any(token in haystack for token in ("database", "postgres", "mysql")):
+        return "Database"
+    if any(token in haystack for token in ("hmi", "scada")):
+        return "HMI"
+    if any(token in haystack for token in ("plc", "controller", "rtu", "ied", "dcs")):
+        return "PLC"
+    if any(token in haystack for token in ("network", " subnet", " vlan")) or node_id.lower().endswith("_net"):
+        return "network"
+    if any(token in haystack for token in ("computer", "desktop", "workstation", "server", "host", "engineer", "jump")):
+        return "Computer"
+
+    return raw_type

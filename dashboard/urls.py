@@ -97,6 +97,7 @@ urlpatterns = [
 
     # Risk assessment (ICS)
     path('risk-assessment/', views.risk_assessment_page, name='risk_assessment'),
+    path('risk-assessment/console/', views.risk_assessment_console_page, name='risk_assessment_console'),
     path('risk-assessment/service/info/', views.risk_assessment_service_info_api, name='risk_assessment_service_info'),
     path('risk-assessment/service/status/', views.risk_assessment_service_status_api, name='risk_assessment_service_status'),
     path('risk-assessment/service/nodes/', views.risk_assessment_service_nodes_api, name='risk_assessment_service_nodes'),

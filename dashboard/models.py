@@ -541,12 +541,21 @@ class Node(models.Model):
 
     def get_cyber_template_data(self):
         """Get cyber template data in the format expected by the frontend."""
-        return {
+        payload = {
             "OS": self.os_info or "Unknown",
             "lib": self.installed_libraries or [],
             "MAC": self.mac_addresses or [],
-            "port": self.active_ports or []
+            "port": self.active_ports or [],
         }
+        payload["has_cyber_data"] = any(
+            [
+                bool(self.os_info),
+                bool(self.installed_libraries),
+                bool(self.mac_addresses),
+                bool(self.active_ports),
+            ]
+        )
+        return payload
 
     def update_cyber_data(self, cyber_data):
         """Update node with cyber template data from agent."""

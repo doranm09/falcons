@@ -170,6 +170,32 @@ Expected result:
 
 The next requested task is to refactor the Purdue topology shown on the `cyber_pen_test` web dashboard so it reflects the validated hybrid topology above instead of the older layout.
 
+## ICS risk repo integration
+
+Date: 2026-04-23
+Working area: `cyber_pen_test/settings.py`, `dashboard/ics_risk_integration.py`, `dashboard/views.py`, `dashboard/urls.py`, `dashboard/templates/dashboard/risk_assessment.html`
+
+- Django now treats the sibling `ics-risk-assessment` repo as a first-class local integration target.
+- New setting:
+  - `ICS_RISK_ASSESSMENT_REPO_PATH`
+- If `RISK_ASSESSMENT_SIM_SYSTEM_PATH` is unset and the sibling repo exists, it now defaults to:
+  - `<ics-risk-assessment>/upload/sim_system.json`
+- Compose-local runtime wiring now matters:
+  - `web` and `celery` mount the sibling repo at `/opt/ics-risk-assessment`
+  - `risk-assessment` mounts the sibling repo at `/app` so uploaded models and generated `outputs/*` stay visible on the host and in Django
+- Repo model discovery now prefers:
+  - `upload/sim_system.json`
+  - fallback: `db/sim_system.json`
+- Repo-backed dashboard APIs now expose:
+  - summary / artifact presence
+  - repo `sim_system.json` system graph
+  - preferred repo model payload for direct upload into the live risk service
+  - repo `outputs/dbn.bifxml` Bayesian graph
+  - Bayesian node detail from `dbn_2_with_cpt.json` plus BIF CPT rows
+  - repo `pipeline_log.json`
+- The Risk Assessment dashboard now includes an `ICS Visuals` tab that renders those repo artifacts directly in Django without depending on the upstream Node/Fastify UI.
+- The `/dashboard/risk-assessment/` page now exposes an `Upload Repo Model` action that uploads the preferred repo model directly into the live Python risk service.
+
 ## Dashboard Purdue refactor
 
 Date: 2026-04-16

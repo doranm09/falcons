@@ -88,6 +88,7 @@ from .models import (
     Node,
     NodeInterface,
     RiskNodeMapping,
+    ScanVulnerability,
     SbomReport,
     ScanRun,
     SiemEvent,
@@ -107,7 +108,6 @@ from .models import (
     SiemAuditLog,
     ResearchProfile,
     ThreatIntelIndicator,
-    ThreatIntelMatch,
 )
 import ipaddress
 import socket
@@ -123,13 +123,25 @@ from .tasks import (
     run_ot_campaign_task,
 )
 from .openvas_client import openvas_session, get_task_status, get_report_id, download_report
+from .opensearch_client import get_opensearch_overview
 from celery.result import AsyncResult
 from .models import Link
+from .gvmd import fetch_gvmd_findings_for_ips
 from .risk_assessment import (
     build_cyber_data_for_risk_nodes,
     preferred_risk_node_ip,
     summarize_risk_results,
     suggest_risk_node_mappings,
+)
+from .ics_risk_integration import (
+    risk_repo_bayesian_graph,
+    risk_repo_bayesian_node_detail,
+    risk_repo_fault_tree_detail,
+    risk_repo_fault_tree_summary,
+    risk_repo_model_payload,
+    risk_repo_pipeline_log,
+    risk_repo_summary,
+    risk_repo_system_graph,
 )
 from .utils import dijkstra, list_interfaces
 from .sbom import (
@@ -145,21 +157,15 @@ from .sbom import (
 )
 from .minimega import build_minimega_script, build_digital_twin_manifest
 from django.views.decorators.http import require_GET
-from django.core.exceptions import ObjectDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils.timezone import now
 from django.utils import timezone
 from typing import Optional
-from django.utils.dateparse import parse_datetime
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods
 import json
 import math
-import os
 import shutil
 from collections import defaultdict
 import tempfile
-from collections import Counter, defaultdict
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, Q
@@ -168,9 +174,8 @@ from pathlib import Path
 import time
 from datetime import timedelta
 from functools import wraps
-from typing import Optional
 from urllib.parse import urlencode
-from .siem import normalize_siem_event, parse_siem_search_params, SiemNormalizeError, SiemQueryError
+from .siem import normalize_siem_event, SiemNormalizeError
 from .siem_adapters import (
     adapt_agent_status,
     adapt_scan_run,
@@ -198,7 +203,7 @@ from .siem_export import (
     export_parquet_bytes,
     ndjson_stream,
 )
-from .siem_research import apply_profile_max_batch, activate_profile, get_active_profile
+from .siem_research import apply_profile_max_batch, activate_profile
 from .siem_rbac import get_siem_role, require_siem_role
 from .siem_audit import record_siem_audit
 from .siem_threat_intel import ingest_indicators, match_indicators, persist_ioc_matches
@@ -213,8 +218,10 @@ from .pid_drawio import (
 )
 from .sim_system import (
     build_risk_service_compatible_sim_system,
+    is_legacy_sim_system,
     legacy_to_sectioned_sim_system,
     load_sim_system_json,
+    SIM_SYSTEM_SECTION_KEYS,
     write_sim_system_json,
 )
 from knowledge_extraction.drawio import DrawioParseError
@@ -236,6 +243,430 @@ RISK_ASSESSMENT_TIMEOUT = 15
 RISK_ASSESSMENT_PRIMARY_NODE = "PLC-Main"
 RISK_ASSESSMENT_SAMPLE_CVE = "CVE-TEST-0001"
 SIEM_WRITE_ROLES = (SiemUserRole.Role.ADMIN, SiemUserRole.Role.ANALYST)
+TOPOLOGY_METADATA_LOOKBACK = timedelta(minutes=15)
+TOPOLOGY_CONNECTION_LOOKBACK = timedelta(hours=1)
+
+PURDUE_TOPOLOGY_LAYERS = [
+    {"slug": "L4", "label": "Level 4 / Enterprise IT", "accent": "primary"},
+    {"slug": "L3.5", "label": "Level 3.5 / DMZ & Firewalls", "accent": "warning"},
+    {"slug": "L3", "label": "Level 3 / Operations", "accent": "info"},
+    {"slug": "L2", "label": "Level 2 / Supervisory", "accent": "success"},
+    {"slug": "L1", "label": "Level 1 / Control Network", "accent": "secondary"},
+    {"slug": "L0", "label": "Level 0 / Field & Process", "accent": "dark"},
+]
+
+IAEA_TESTBED_STATIC_TOPOLOGY = [
+    {"hostname": "metasploit", "label": "metasploit", "ip_address": "10.4.50.10", "ip_addresses": ["10.4.50.10"], "aliases": ["ws4a"], "layer": "L4", "role_slug": "offensive", "role_label": "Offensive Host", "icon": "bi-bug-fill", "segment_label": "Enterprise LAN"},
+    {"hostname": "postgres", "label": "postgres", "ip_address": "10.4.50.20", "ip_addresses": ["10.4.50.20"], "aliases": ["pg"], "layer": "L4", "role_slug": "database", "role_label": "Database", "icon": "bi-database-fill", "segment_label": "Enterprise LAN"},
+    {"hostname": "firewall-2", "label": "firewall-2", "ip_address": "10.3.50.254", "ip_addresses": ["10.3.50.254", "10.4.50.254"], "aliases": ["firewall-2-agent", "firewall 2 agent"], "layer": "L3.5", "role_slug": "firewall", "role_label": "Firewall", "icon": "bi-shield-lock-fill", "segment_label": "Operations LAN"},
+    {"hostname": "firewall-1", "label": "firewall-1", "ip_address": "10.2.50.254", "ip_addresses": ["10.2.50.254", "10.3.50.253"], "aliases": ["firewall-1-agent", "firewall 1 agent"], "layer": "L3.5", "role_slug": "firewall", "role_label": "Firewall", "icon": "bi-shield-lock-fill", "segment_label": "Supervisory LAN"},
+    {"hostname": "historian", "label": "historian", "ip_address": "10.3.50.10", "ip_addresses": ["10.3.50.10"], "aliases": [], "layer": "L3", "role_slug": "server", "role_label": "Server", "icon": "bi-server", "segment_label": "Operations LAN"},
+    {"hostname": "hmi", "label": "hmi", "ip_address": "10.2.50.10", "ip_addresses": ["10.2.50.10"], "aliases": [], "layer": "L2", "role_slug": "supervisory", "role_label": "Supervisory", "icon": "bi-display-fill", "segment_label": "Supervisory LAN"},
+    {"hostname": "engineer-ws", "label": "engineer-ws", "ip_address": "10.2.50.20", "ip_addresses": ["10.2.50.20"], "aliases": ["ws2"], "layer": "L2", "role_slug": "workstation", "role_label": "Workstation", "icon": "bi-laptop-fill", "segment_label": "Supervisory LAN"},
+    {"hostname": "firewall-0", "label": "firewall-0", "ip_address": "10.2.50.253", "ip_addresses": ["10.2.50.253", "10.1.1.253", "10.1.2.253"], "aliases": ["firewall-0-agent", "firewall 0 agent"], "layer": "L1", "role_slug": "firewall", "role_label": "Firewall", "icon": "bi-shield-lock-fill", "segment_label": "Supervisory / Control Boundary"},
+    {"hostname": "plc-main", "label": "plc-main", "ip_address": "10.1.1.14", "ip_addresses": ["10.1.1.14", "10.1.2.14"], "aliases": ["plcm", "plc main"], "layer": "L1", "role_slug": "controller", "role_label": "Controller", "icon": "bi-cpu-fill", "segment_label": "Redundant Control Network"},
+    {"hostname": "plc-backup", "label": "plc-backup", "ip_address": "10.1.1.15", "ip_addresses": ["10.1.1.15", "10.1.2.15"], "aliases": ["plcb", "plc backup"], "layer": "L1", "role_slug": "controller", "role_label": "Controller", "icon": "bi-cpu-fill", "segment_label": "Redundant Control Network"},
+    {"hostname": "channel-a", "label": "channel-a", "ip_address": "10.1.1.10", "ip_addresses": ["10.1.1.10", "10.1.2.10"], "aliases": ["cha", "channel a"], "layer": "L1", "role_slug": "controller", "role_label": "Channel", "icon": "bi-bezier2", "segment_label": "Redundant Control Network"},
+    {"hostname": "channel-b", "label": "channel-b", "ip_address": "10.1.1.11", "ip_addresses": ["10.1.1.11", "10.1.2.11"], "aliases": ["chb", "channel b"], "layer": "L1", "role_slug": "controller", "role_label": "Channel", "icon": "bi-bezier2", "segment_label": "Redundant Control Network"},
+    {"hostname": "channel-c", "label": "channel-c", "ip_address": "10.1.1.12", "ip_addresses": ["10.1.1.12", "10.1.2.12"], "aliases": ["chc", "channel c"], "layer": "L1", "role_slug": "controller", "role_label": "Channel", "icon": "bi-bezier2", "segment_label": "Redundant Control Network"},
+    {"hostname": "channel-d", "label": "channel-d", "ip_address": "10.1.1.13", "ip_addresses": ["10.1.1.13", "10.1.2.13"], "aliases": ["chd", "channel d"], "layer": "L1", "role_slug": "controller", "role_label": "Channel", "icon": "bi-bezier2", "segment_label": "Redundant Control Network"},
+    {"hostname": "pt-455", "label": "pt-455", "ip_address": "10.1.1.9", "ip_addresses": ["10.1.1.9", "10.1.2.9"], "aliases": [], "layer": "L0", "role_slug": "sensor", "role_label": "Sensor", "icon": "bi-speedometer2", "segment_label": "Redundant Field Network"},
+    {"hostname": "pt-456", "label": "pt-456", "ip_address": "10.1.1.8", "ip_addresses": ["10.1.1.8", "10.1.2.8"], "aliases": [], "layer": "L0", "role_slug": "sensor", "role_label": "Sensor", "icon": "bi-speedometer2", "segment_label": "Redundant Field Network"},
+    {"hostname": "pt-457", "label": "pt-457", "ip_address": "", "ip_addresses": [], "aliases": ["analog sensor pt-457"], "layer": "L0", "role_slug": "sensor", "role_label": "Analog Sensor", "icon": "bi-speedometer2", "segment_label": "Channel C Analog Path"},
+    {"hostname": "pt-458", "label": "pt-458", "ip_address": "", "ip_addresses": [], "aliases": ["analog sensor pt-458"], "layer": "L0", "role_slug": "sensor", "role_label": "Analog Sensor", "icon": "bi-speedometer2", "segment_label": "Channel D Analog Path"},
+]
+
+RISK_HYBRID_VALIDATED_PATHS = [
+    {"source": "metasploit", "target": "historian", "service": "HTTPS / OPC UA", "ports": "443, 4840", "layer_path": "L4 -> L3"},
+    {"source": "metasploit", "target": "postgres", "service": "PostgreSQL", "ports": "5432", "layer_path": "L4 -> L4"},
+    {"source": "historian", "target": "postgres", "service": "PostgreSQL", "ports": "5432", "layer_path": "L3 -> L4"},
+    {"source": "historian", "target": "plc-main", "service": "OPC UA", "ports": "4840", "layer_path": "L3 -> L1"},
+    {"source": "historian", "target": "plc-backup", "service": "OPC UA", "ports": "4840", "layer_path": "L3 -> L1"},
+    {"source": "engineer-ws", "target": "historian", "service": "HTTPS / OPC UA", "ports": "443, 4840", "layer_path": "L2 -> L3"},
+    {"source": "engineer-ws", "target": "plc-main", "service": "EtherNet/IP", "ports": "44818", "layer_path": "L2 -> L1"},
+    {"source": "engineer-ws", "target": "plc-backup", "service": "EtherNet/IP", "ports": "44818", "layer_path": "L2 -> L1"},
+    {"source": "hmi", "target": "plc-main", "service": "Modbus", "ports": "502", "layer_path": "L2 -> L1"},
+    {"source": "hmi", "target": "plc-backup", "service": "Modbus", "ports": "502", "layer_path": "L2 -> L1"},
+    {"source": "plc-main", "target": "channel-a / b / c / d", "service": "Modbus", "ports": "502", "layer_path": "L1 -> L1"},
+    {"source": "channel-a", "target": "pt-455", "service": "Modbus", "ports": "502", "layer_path": "L1 -> L0"},
+    {"source": "channel-b", "target": "pt-456", "service": "Modbus", "ports": "502", "layer_path": "L1 -> L0"},
+    {"source": "channel-c", "target": "pt-457", "service": "Analog signal path", "ports": "Analog", "layer_path": "L1 -> L0"},
+    {"source": "channel-d", "target": "pt-458", "service": "Analog signal path", "ports": "Analog", "layer_path": "L1 -> L0"},
+]
+
+RISK_HYBRID_FOCUS_NODES = [
+    "metasploit",
+    "historian",
+    "engineer-ws",
+    "hmi",
+    "plc-main",
+    "plc-backup",
+    "postgres",
+]
+
+
+def _topology_identity_text(*parts) -> str:
+    for part in parts:
+        text = str(part or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _risk_hybrid_layers_context() -> list[dict]:
+    grouped = []
+    for layer in PURDUE_TOPOLOGY_LAYERS:
+        assets = []
+        for item in IAEA_TESTBED_STATIC_TOPOLOGY:
+            if item.get("layer") != layer["slug"]:
+                continue
+            ip_addresses = [str(ip).strip() for ip in item.get("ip_addresses", []) if str(ip).strip()]
+            assets.append(
+                {
+                    "label": item.get("label") or item.get("hostname"),
+                    "role_label": item.get("role_label") or "Asset",
+                    "segment_label": item.get("segment_label") or "",
+                    "ip_display": ", ".join(ip_addresses) if ip_addresses else "Non-IP / analog path",
+                }
+            )
+        if not assets:
+            continue
+        grouped.append(
+            {
+                "slug": layer["slug"],
+                "label": layer["label"],
+                "accent": layer["accent"],
+                "count": len(assets),
+                "assets": assets,
+            }
+        )
+    return grouped
+
+
+def _risk_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_endpoint_address(value: str = "") -> tuple[str, int | None]:
+    text = str(value or "").strip()
+    if not text:
+        return "", None
+    if text.startswith("[") and "]:" in text:
+        host, _, port_text = text[1:].partition("]:")
+        try:
+            return host, int(port_text)
+        except ValueError:
+            return host, None
+    if text.count(":") == 1:
+        host, port_text = text.rsplit(":", 1)
+        try:
+            return host, int(port_text)
+        except ValueError:
+            return text, None
+    return text, None
+
+
+def _node_interface_ips(node_obj=None) -> list[str]:
+    if not node_obj:
+        return []
+    ips = []
+    primary = str(getattr(node_obj, "ip_address", "") or "").strip()
+    if primary:
+        ips.append(primary)
+    for iface in getattr(node_obj, "interfaces", []).all():
+        iface_ip = str(getattr(iface, "ip", "") or "").strip()
+        if iface_ip and iface_ip not in ips:
+            ips.append(iface_ip)
+    return ips
+
+
+def _agent_interface_ips(agent_obj=None) -> list[str]:
+    if not agent_obj:
+        return []
+    ips = []
+    primary = str(getattr(agent_obj, "ip_address", "") or "").strip()
+    if primary:
+        ips.append(primary)
+    for iface in getattr(agent_obj, "interfaces", []) or []:
+        iface_ip = str(iface.get("ip", "") or "").strip()
+        if iface_ip and iface_ip not in ips and not iface_ip.startswith("127.") and iface_ip != "::1":
+            ips.append(iface_ip)
+    return ips
+
+
+def _metadata_interface_ips(metadata_obj=None) -> list[str]:
+    if not metadata_obj:
+        return []
+    ips = []
+    for iface in getattr(metadata_obj, "interfaces", []) or []:
+        iface_ip = str(iface.get("ip", "") or "").strip()
+        if iface_ip and iface_ip not in ips and not iface_ip.startswith("127.") and iface_ip != "::1":
+            ips.append(iface_ip)
+    return ips
+
+
+def _resolve_iaea_override(hostname: str = "", name: str = "", ip_addresses=None) -> dict | None:
+    ip_addresses = ip_addresses or []
+    for ip_text in ip_addresses:
+        override = _iaea_topology_override(hostname, name, ip_text)
+        if override:
+            return override
+    return _iaea_topology_override(hostname, name, "")
+
+
+def _infer_topology_role(name: str = "", hostname: str = "", ip_address: str = "", description: str = "") -> tuple[str, str, str]:
+    text = " ".join([str(name or ""), str(hostname or ""), str(description or "")]).lower()
+    if any(token in text for token in ["firewall", "gateway"]):
+        return "firewall", "Firewall", "bi-shield-lock-fill"
+    if any(token in text for token in ["metasploit", "attacker", "kali", "red-team"]):
+        return "offensive", "Offensive Host", "bi-bug-fill"
+    if any(token in text for token in ["database", "postgres", "db", "historian-db", "influx"]):
+        return "database", "Database", "bi-database-fill"
+    if any(token in text for token in ["historian", "opc", "collector", "server"]):
+        return "server", "Server", "bi-server"
+    if any(token in text for token in ["engineer", "eng-ws", "workstation", "jump", "desktop", "laptop"]):
+        return "workstation", "Workstation", "bi-laptop-fill"
+    if any(token in text for token in ["hmi", "ignition", "scada", "supervisory"]):
+        return "supervisory", "Supervisory", "bi-display-fill"
+    if any(token in text for token in ["plc", "controller", "rtu", "ied", "dcs"]):
+        return "controller", "Controller", "bi-cpu-fill"
+    if any(token in text for token in ["valve", "vc-", "hv", "pv", "cv"]):
+        return "actuator", "Actuator", "bi-sliders"
+    if any(token in text for token in ["pt-", "lt-", "tt-", "ft-", "sensor", "transmitter"]):
+        return "sensor", "Sensor", "bi-speedometer2"
+    if "10.4.50." in ip_address:
+        return "enterprise", "Enterprise", "bi-building"
+    return "asset", "Asset", "bi-hdd-network-fill"
+
+
+def _infer_purdue_layer(name: str = "", hostname: str = "", ip_address: str = "", description: str = "") -> str:
+    text = " ".join([str(name or ""), str(hostname or ""), str(description or "")]).upper()
+    ip_text = str(ip_address or "").strip()
+    if any(token in text for token in ["PT-455", "PT-456", "PT-457", "PT-458", "SENSOR", "TRANSMITTER", "VALVE", "HEAT", "SPRAY", "PRESSURE RELIEF"]):
+        return "L0"
+    if "HISTORIAN" in text and "DB" not in text and "DATABASE" not in text:
+        return "L3"
+    if any(token in text for token in ["FIREWALL", "DMZ", "GATEWAY"]):
+        return "L3.5"
+    if ip_text.startswith("10.4.50."):
+        return "L4"
+    if ip_text.startswith("10.3.50."):
+        return "L3"
+    if ip_text.startswith("10.2.50."):
+        return "L2"
+    if any(ip_text.startswith(prefix) for prefix in ["10.1.1.", "10.1.2.", "10.1.13.", "10.2.23.", "10.0.13.", "10.0.23."]):
+        return "L1"
+    if any(ip_text.startswith(prefix) for prefix in ["10.3.13.", "10.4.23."]):
+        return "L0"
+    if any(token in text for token in ["ERP", "MES", "CORP", "ENTERPRISE", "BUSINESS", "IT", "OFFICE", "METASPLOIT", "DATABASE", "POSTGRES"]):
+        return "L4"
+    if any(token in text for token in ["HISTORIAN", "OPC"]):
+        return "L3"
+    if any(token in text for token in ["HMI", "IGNITION", "ENGINEER", "JUMP", "SCADA", "SUPERVISOR"]):
+        return "L2"
+    if any(token in text for token in ["PLC", "RTU", "IED", "DCS", "CONTROLLER", "CTRL"]):
+        return "L1"
+    if any(token in text for token in ["SENSOR", "VALVE", "PUMP", "MOTOR", "HEATER", "HV", "PV", "CV", "PT", "LT", "TT", "FT", "PORV"]):
+        return "L0"
+    return "L2"
+
+
+def _topology_segment_label(ip_address: str = "") -> str:
+    ip_text = str(ip_address or "").strip()
+    segment_map = {
+        "10.4.50.": "Enterprise LAN",
+        "10.3.50.": "Operations LAN",
+        "10.2.50.": "Supervisory LAN",
+        "10.1.1.": "Redundant Control Network",
+        "10.1.2.": "Redundant Control Network",
+        "10.1.13.": "Main Control Cell",
+        "10.2.23.": "Backup Control Cell",
+        "10.3.13.": "Main Process Cell",
+        "10.4.23.": "Backup Process Cell",
+        "10.0.13.": "Main Management",
+        "10.0.23.": "Backup Management",
+    }
+    for prefix, label in segment_map.items():
+        if ip_text.startswith(prefix):
+            return label
+    return "Observed Network"
+
+
+def _topology_layer_meta(slug: str) -> dict:
+    for layer in PURDUE_TOPOLOGY_LAYERS:
+        if layer["slug"] == slug:
+            return layer
+    return {"slug": slug, "label": slug, "accent": "secondary"}
+
+
+def _iaea_identity_tokens(item: dict) -> list[str]:
+    tokens = [str(item.get("hostname", "")).strip().lower(), str(item.get("label", "")).strip().lower()]
+    for alias in item.get("aliases", []):
+        tokens.append(str(alias).strip().lower())
+    return [token for token in tokens if token]
+
+
+IAEA_TOPOLOGY_BY_IP = {
+    ip_text: item
+    for item in IAEA_TESTBED_STATIC_TOPOLOGY
+    for ip_text in item.get("ip_addresses", ([item["ip_address"]] if item.get("ip_address") else []))
+    if ip_text
+}
+IAEA_TOPOLOGY_BY_HOSTNAME = {
+    token: item
+    for item in IAEA_TESTBED_STATIC_TOPOLOGY
+    for token in _iaea_identity_tokens(item)
+}
+
+
+def _iaea_topology_override(hostname: str = "", name: str = "", ip_address: str = "") -> dict | None:
+    hostname = str(hostname or "").strip().lower()
+    name = str(name or "").strip().lower()
+    ip_address = str(ip_address or "").strip()
+    if ip_address and ip_address in IAEA_TOPOLOGY_BY_IP:
+        return IAEA_TOPOLOGY_BY_IP[ip_address]
+    if hostname and hostname in IAEA_TOPOLOGY_BY_HOSTNAME:
+        return IAEA_TOPOLOGY_BY_HOSTNAME[hostname]
+    if name and name in IAEA_TOPOLOGY_BY_HOSTNAME:
+        return IAEA_TOPOLOGY_BY_HOSTNAME[name]
+    return None
+
+
+def _should_render_modeled_static_node(item: dict) -> bool:
+    layer = str(item.get("layer") or "").strip()
+    hostname = str(item.get("hostname") or "").strip().lower()
+    return layer == "L0" or hostname == "engineer-ws"
+
+
+MEANINGFUL_PASSIVE_PORTS = {443, 4840, 502, 5432, 44818}
+NOISY_PASSIVE_PROTOCOLS = {"ARP", "ICMP"}
+TOPOLOGY_SCANNER_PROCESS_TOKENS = (
+    "openvas",
+    "ospd-openvas",
+    "gvmd",
+    "greenbone",
+    "gvm",
+    "nmap",
+    "masscan",
+)
+
+
+def _is_likely_docker_gateway(ip_text: str) -> bool:
+    text = str(ip_text or "").strip()
+    if not text:
+        return False
+    gateway_candidates = {
+        "10.1.1.1",
+        "10.1.2.1",
+        "10.2.50.1",
+        "10.3.50.1",
+        "10.4.50.1",
+        "172.17.0.1",
+        "172.31.250.1",
+    }
+    return text in gateway_candidates
+
+
+def _should_surface_inferred_flow_endpoint(
+    *,
+    host: str,
+    port: int | None,
+    protocol: str = "",
+    process_name: str = "",
+    process_cmdline: str = "",
+    override: dict | None = None,
+    known_node=None,
+) -> bool:
+    host = str(host or "").strip()
+    protocol = str(protocol or "").strip().upper()
+    process_name = str(process_name or "").strip().lower()
+    process_cmdline = str(process_cmdline or "").strip().lower()
+    if not host:
+        return False
+    if override or known_node is not None:
+        return True
+    if host in {"127.0.0.1", "::1", "localhost"} or _is_likely_docker_gateway(host):
+        return False
+    if any(token in f"{process_name} {process_cmdline}" for token in TOPOLOGY_SCANNER_PROCESS_TOKENS):
+        return False
+    if process_name == "passive-sniffer":
+        if protocol in NOISY_PASSIVE_PROTOCOLS:
+            return False
+        if protocol == "UDP" and port not in MEANINGFUL_PASSIVE_PORTS:
+            return False
+        if port is None:
+            return False
+        return port in MEANINGFUL_PASSIVE_PORTS
+    return True
+
+
+def _is_topology_noise_flow(
+    *,
+    protocol: str = "",
+    process_name: str = "",
+    process_cmdline: str = "",
+) -> bool:
+    protocol = str(protocol or "").strip().upper()
+    process_name = str(process_name or "").strip().lower()
+    process_cmdline = str(process_cmdline or "").strip().lower()
+    process_text = f"{process_name} {process_cmdline}"
+
+    if any(token in process_text for token in TOPOLOGY_SCANNER_PROCESS_TOKENS):
+        return True
+
+    if process_name == "passive-sniffer" and protocol in NOISY_PASSIVE_PROTOCOLS:
+        return True
+
+    return False
+
+
+def _promote_static_l0_from_passive_observation(conn, *, iaea_testbed_active: bool) -> list[str]:
+    if not iaea_testbed_active:
+        return []
+    if str(getattr(conn, "process_name", "") or "").strip().lower() != "passive-sniffer":
+        return []
+    if str(getattr(conn, "protocol", "") or "").strip().upper() != "ARP":
+        return []
+
+    promoted_ids = []
+    for candidate in (
+        _parse_endpoint_address(getattr(conn, "local_address", ""))[0],
+        _parse_endpoint_address(getattr(conn, "remote_address", ""))[0],
+    ):
+        override = _resolve_iaea_override("", "", [candidate]) if candidate else None
+        if not override:
+            continue
+        if str(override.get("layer") or "").strip() != "L0":
+            continue
+        promoted_ids.append(f"static:{override['hostname']}")
+    return promoted_ids
+
+
+def _is_iaea_testbed_active(node_candidates, agents) -> bool:
+    known_ranges = (
+        "10.4.50.",
+        "10.3.50.",
+        "10.2.50.",
+        "10.1.1.",
+        "10.1.2.",
+        "10.1.13.",
+        "10.2.23.",
+        "10.3.13.",
+        "10.4.23.",
+        "10.0.13.",
+        "10.0.23.",
+    )
+    for obj in list(node_candidates) + list(agents):
+        ip_text = str(getattr(obj, "ip_address", "") or "").strip()
+        hostname = str(getattr(obj, "hostname", "") or "").strip().lower()
+        name = str(getattr(obj, "name", "") or "").strip().lower()
+        if any(ip_text.startswith(prefix) for prefix in known_ranges):
+            return True
+        if hostname in IAEA_TOPOLOGY_BY_HOSTNAME or name in IAEA_TOPOLOGY_BY_HOSTNAME:
+            return True
+    return False
 
 
 def _sbom_severity_rank(value: str) -> int:
@@ -474,20 +905,51 @@ def _normalize_risk_results_payload(payload):
     if not isinstance(payload, dict):
         return payload
     results = payload.get("results")
-    if not isinstance(results, dict):
-        return payload
-    normalized = {}
-    for node_name, state_map in results.items():
-        normalized_name = _normalize_risk_node_name(node_name)
-        if isinstance(state_map, dict):
-            normalized[normalized_name] = {
-                ("normal" if str(state).strip().lower() == "nominal" else str(state).strip().lower()): probability
-                for state, probability in state_map.items()
+    out = dict(payload)
+    if isinstance(results, dict):
+        timeline_results = all(str(key).strip().isdigit() and isinstance(value, dict) for key, value in results.items())
+        normalized_results = {}
+        if timeline_results:
+            for time_key, slice_map in results.items():
+                normalized_slice = {}
+                for node_name, state_map in slice_map.items():
+                    normalized_name = _normalize_risk_node_name(node_name)
+                    if isinstance(state_map, dict):
+                        normalized_slice[normalized_name] = {
+                            ("normal" if str(state).strip().lower() == "nominal" else str(state).strip().lower()): probability
+                            for state, probability in state_map.items()
+                        }
+                    else:
+                        normalized_slice[normalized_name] = state_map
+                normalized_results[str(time_key)] = normalized_slice
+        else:
+            for node_name, state_map in results.items():
+                normalized_name = _normalize_risk_node_name(node_name)
+                if isinstance(state_map, dict):
+                    normalized_results[normalized_name] = {
+                        ("normal" if str(state).strip().lower() == "nominal" else str(state).strip().lower()): probability
+                        for state, probability in state_map.items()
+                    }
+                else:
+                    normalized_results[normalized_name] = state_map
+        out["results"] = normalized_results
+
+    risk_scores = payload.get("risk_scores")
+    if isinstance(risk_scores, dict):
+        timeline_scores = all(str(key).strip().isdigit() and isinstance(value, dict) for key, value in risk_scores.items())
+        if timeline_scores:
+            out["risk_scores"] = {
+                str(time_key): {
+                    _normalize_risk_node_name(node_name): score
+                    for node_name, score in slice_map.items()
+                }
+                for time_key, slice_map in risk_scores.items()
             }
         else:
-            normalized[normalized_name] = state_map
-    out = dict(payload)
-    out["results"] = normalized
+            out["risk_scores"] = {
+                _normalize_risk_node_name(node_name): score
+                for node_name, score in risk_scores.items()
+            }
     return out
 
 
@@ -806,17 +1268,35 @@ def _risk_upload_local_model_if_available() -> bool:
     return True
 
 
-def _risk_get_probability(t_value: int | None = None, nodes: list[str] | None = None):
+def _risk_get_probability(
+    t_value: int | None = None,
+    nodes: list[str] | None = None,
+    return_all: bool = False,
+):
     params = {}
     if t_value is not None:
         params["T"] = t_value
     if nodes:
         params["nodes"] = ",".join(str(node).strip() for node in nodes if str(node).strip())
+    if return_all:
+        params["returnAll"] = "true"
     response = _risk_raw_call(requests.get, "/get_probability", params=params or None)
     if _risk_missing_model_response(response) and _risk_upload_local_model_if_available():
         response = _risk_raw_call(requests.get, "/get_probability", params=params or None)
     _risk_raise_for_status(response, "/get_probability")
     return _normalize_risk_results_payload(response.json())
+
+
+def _risk_get_nodes_payload() -> dict:
+    response = _risk_raw_call(requests.get, "/nodes")
+    if _risk_missing_model_response(response) and _risk_upload_local_model_if_available():
+        response = _risk_raw_call(requests.get, "/nodes")
+    _risk_raise_for_status(response, "/nodes")
+    try:
+        payload = response.json()
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _risk_query_nodes_from_cyber_data(cyber_data: dict) -> list[str]:
@@ -830,9 +1310,8 @@ def _risk_query_nodes_from_cyber_data(cyber_data: dict) -> list[str]:
     return nodes
 
 
-def _risk_extract_mutation_updates_from_cyber_data(cyber_data: dict) -> tuple[dict, dict]:
+def _risk_extract_vulnerability_updates_from_cyber_data(cyber_data: dict) -> dict:
     vulnerability_nodes = {}
-    detection_nodes = {}
     for entry in cyber_data.get("scanned_nodes", []) if isinstance(cyber_data, dict) else []:
         if not isinstance(entry, dict):
             continue
@@ -864,29 +1343,7 @@ def _risk_extract_mutation_updates_from_cyber_data(cyber_data: dict) -> tuple[di
                 if payload:
                     vulnerability_nodes.setdefault(node_id, {})[cve_id] = payload
 
-        score_value = None
-        for detection_key in ("detection", "detections"):
-            detection_payload = entry.get(detection_key)
-            if isinstance(detection_payload, dict):
-                for value in detection_payload.values():
-                    if isinstance(value, (int, float)):
-                        score_value = float(value)
-                        break
-                    if isinstance(value, dict):
-                        for nested in value.values():
-                            if isinstance(nested, (int, float)):
-                                score_value = float(nested)
-                                break
-                    if score_value is not None:
-                        break
-            if score_value is not None:
-                break
-        if score_value is None and isinstance(entry.get("score"), (int, float)):
-            score_value = float(entry.get("score"))
-        if score_value is not None:
-            detection_nodes[node_id] = {"score": max(0.0, min(score_value, 1.0))}
-
-    return vulnerability_nodes, detection_nodes
+    return vulnerability_nodes
 
 
 def _risk_post_mutation(path: str, payload: dict) -> dict:
@@ -900,56 +1357,41 @@ def _risk_post_mutation(path: str, payload: dict) -> dict:
         return {}
 
 
-def _risk_probability_from_updates(
+def _risk_post_cyberpen(payload: dict) -> dict:
+    response = _risk_raw_call(requests.post, "/post_cyberpen", json=payload, retry=False)
+    if _risk_missing_model_response(response) and _risk_upload_local_model_if_available():
+        response = _risk_raw_call(requests.post, "/post_cyberpen", json=payload, retry=False)
+    _risk_raise_for_status(response, "/post_cyberpen")
+    try:
+        return _normalize_risk_results_payload(response.json())
+    except Exception:
+        return {}
+
+
+def _risk_post_cyberpen_assessment(
     vulnerabilities: dict | None = None,
-    detections: dict | None = None,
     t_value: int | None = None,
     nodes: list[str] | None = None,
+    return_all: bool = False,
 ):
-    if detections:
-        raise ValueError(
-            "The current ICS risk assessment API exposes /post_detection, "
-            "but it does not return posterior probabilities that Django can query afterward."
-        )
-
-    if vulnerabilities:
-        _risk_post_mutation(
-            "/post_vulnerability",
-            {"T": t_value if t_value is not None else 3, "nodes": vulnerabilities},
-        )
-
-    if detections:
-        _risk_post_mutation(
-            "/post_detection",
-            {"T": t_value if t_value is not None else 0, "nodes": detections},
-        )
-
-    query_nodes = nodes or sorted(set((vulnerabilities or {}).keys()) | set((detections or {}).keys()))
-    return _risk_get_probability(t_value=t_value, nodes=query_nodes or None)
-
-
-def _risk_probability_from_cyber_data(
-    cyber_data: dict,
-    t_value: int | None = None,
-    nodes: list[str] | None = None,
-):
-    vulnerabilities, detections = _risk_extract_mutation_updates_from_cyber_data(cyber_data)
-    query_nodes = nodes or _risk_query_nodes_from_cyber_data(cyber_data)
-    return _risk_probability_from_updates(
-        vulnerabilities=vulnerabilities,
-        detections=detections,
-        t_value=t_value,
-        nodes=query_nodes or None,
-    )
+    payload = {"T": t_value if t_value is not None else 3}
+    if nodes:
+        payload["nodes"] = [str(node).strip() for node in nodes if str(node).strip()]
+    if vulnerabilities is not None:
+        payload["vulnerabilities"] = vulnerabilities
+    if return_all:
+        payload["returnAll"] = True
+    return _risk_post_cyberpen(payload)
 
 
 def _risk_probability_from_evidence(
     evidence: dict,
     t_value: int | None = None,
     nodes: list[str] | None = None,
+    return_all: bool = False,
 ):
     if not evidence:
-        return _risk_get_probability(t_value=t_value, nodes=nodes)
+        return _risk_get_probability(t_value=t_value, nodes=nodes, return_all=return_all)
     raise RuntimeError(
         "The current ICS risk assessment API does not support ad hoc evidence queries. "
         "Use vulnerability updates, detection updates, or a direct probability query instead."
@@ -1846,11 +2288,19 @@ def node_details(request, node_id):
         except AgentStatus.DoesNotExist:
             pass
 
+    asset_ips = _node_asset_ips(node)
+    role_slug, role_label, _ = _node_role(node, asset_ips)
+    purdue_level = _node_purdue_level(node, asset_ips)
+
     node_data = {
         "id": node.id,
         "name": node.name,
         "ip_address": node.ip_address,
         "status": node.status,
+        "purdue_level": purdue_level,
+        "role": role_label,
+        "role_slug": role_slug,
+        "linked_ips": asset_ips,
         "description": node.description,
         "last_heartbeat": node.last_heartbeat.strftime('%Y-%m-%d %H:%M:%S') if node.last_heartbeat else "Never",
         "agent_id": node.agent_id,
@@ -1879,6 +2329,108 @@ def node_details(request, node_id):
     return JsonResponse(node_data)
 
 
+def _node_asset_ips(node: Node) -> list[str]:
+    asset_ips: list[str] = []
+    for ip_text in [node.ip_address, *node.interfaces.values_list("ip", flat=True)]:
+        value = str(ip_text or "").strip()
+        if value and value not in asset_ips:
+            asset_ips.append(value)
+    return asset_ips
+
+
+def _node_topology_override(node: Node, asset_ips: list[str]) -> dict | None:
+    return _resolve_iaea_override(node.hostname, node.name, asset_ips)
+
+
+def _node_role(node: Node, asset_ips: list[str]) -> tuple[str, str, str]:
+    override = _node_topology_override(node, asset_ips)
+    if override:
+        return (
+            str(override.get("role_slug") or override.get("role") or "asset"),
+            str(override.get("role") or "Asset"),
+            str(override.get("icon") or "bi-hdd-network-fill"),
+        )
+    return _infer_topology_role(node.name, node.hostname, asset_ips[0] if asset_ips else node.ip_address, node.description)
+
+
+def _node_purdue_level(node: Node, asset_ips: list[str]) -> str:
+    override = _node_topology_override(node, asset_ips)
+    if override and override.get("purdue_level"):
+        return str(override["purdue_level"])
+    return _infer_purdue_layer(node.name, node.hostname, asset_ips[0] if asset_ips else node.ip_address, node.description)
+
+
+def _node_detail_rollup(node: Node) -> dict:
+    asset_ips = _node_asset_ips(node)
+    role_slug, role_label, role_icon = _node_role(node, asset_ips)
+    purdue_level = _node_purdue_level(node, asset_ips)
+    segment_label = _topology_segment_label(asset_ips[0] if asset_ips else node.ip_address)
+    recent_report_ids = list(
+        ScanVulnerability.objects.filter(host_ip__in=asset_ips)
+        .order_by("-timestamp")
+        .values_list("scan_run_id", flat=True)
+        .distinct()
+    )
+    if node.scan_run_id and node.scan_run_id not in recent_report_ids:
+        recent_report_ids.append(node.scan_run_id)
+    recent_reports = list(ScanRun.objects.filter(id__in=recent_report_ids).order_by("-timestamp")[:5]) if recent_report_ids else []
+    return {
+        "display_name": node.name or node.hostname or (asset_ips[0] if asset_ips else f"Node {node.id}"),
+        "purdue_level": purdue_level,
+        "role_slug": role_slug,
+        "role_label": role_label,
+        "role_icon": role_icon,
+        "segment_label": segment_label,
+        "scan_finding_count": ScanVulnerability.objects.filter(host_ip__in=asset_ips).count(),
+        "sbom_finding_count": Vulnerability.objects.filter(nodes=node).count(),
+        "library_count": len(node.installed_libraries or []),
+        "active_port_count": len(node.active_ports or []),
+        "interface_count": node.interfaces.count(),
+        "recent_reports": recent_reports,
+    }
+
+
+def _node_network_findings(node: Node) -> list[dict]:
+    asset_ips = _node_asset_ips(node)
+    findings: list[dict] = []
+
+    scan_vulns = list(
+        ScanVulnerability.objects.select_related("scan_run")
+        .filter(host_ip__in=asset_ips)
+        .order_by("-cvss_score", "-timestamp", "host_ip", "cve_id")
+    )
+    for vuln in scan_vulns:
+        findings.append(
+            {
+                "cve_id": vuln.cve_id or vuln.name or "OpenVAS finding",
+                "name": vuln.name or "",
+                "host_ip": vuln.host_ip,
+                "severity": vuln.severity,
+                "cvss_score": vuln.cvss_score,
+                "description": vuln.description,
+                "source_label": "OpenVAS",
+                "report_url": reverse("dashboard:vuln-detail", args=[vuln.scan_run_id]) if vuln.scan_run_id else "",
+                "report_label": str(vuln.scan_run) if vuln.scan_run_id else "",
+                "report_uuid": "",
+                "nvt_oid": "",
+                "link_url": "",
+            }
+        )
+
+    try:
+        gvmd_findings = fetch_gvmd_findings_for_ips(asset_ips)
+    except Exception:
+        gvmd_findings = []
+    for finding in gvmd_findings:
+        entry = dict(finding)
+        entry.setdefault("source_label", "GVMD")
+        entry.setdefault("report_url", "")
+        entry.setdefault("report_label", entry.get("task_name") or "GVMD")
+        findings.append(entry)
+
+    return findings
+
+
 @require_GET
 def node_detail_page(request, node_id):
     """HTML page for node characteristics and composition."""
@@ -1899,11 +2451,16 @@ def node_detail_page(request, node_id):
     if agent_status:
         network_metadata = NetworkMetadata.objects.filter(agent=agent_status).order_by('-timestamp').first()
 
+    rollup = _node_detail_rollup(node)
+    network_findings = _node_network_findings(node)
+
     return render(request, 'dashboard/node_detail.html', {
         'node': node,
         'interfaces': node.interfaces.all(),
         'agent_status': agent_status,
         'network_metadata': network_metadata,
+        'rollup': rollup,
+        'network_findings': network_findings,
     })
 
 def get_interfaces(request):
@@ -2855,18 +3412,7 @@ def siem_ids_live_updates(request):
     return siem_ids_network_live_updates(request)
 
 
-@require_http_methods(["GET"])
-def siem_ids_network_live_page(request):
-    context = _build_ids_live_context(source="ids-network")
-    context.update(
-        {
-            "page_title": "IDS Network Live Monitor",
-            "page_subtitle": "Real-time anomaly stream from the network IDS pipeline.",
-            "live_kind": "network",
-            "updates_url_name": "dashboard:siem_ids_network_live_updates",
-        }
-    )
-    return render(request, "dashboard/siem_ids_live.html", context)
+siem_ids_network_live_page = siem_ids_live_page
 
 
 @require_http_methods(["GET"])
@@ -4739,13 +5285,36 @@ def agent_network_metadata(request):
 @require_GET
 def network_monitoring_dashboard(request):
     """Security Onion-like network monitoring dashboard."""
-    agents = AgentStatus.objects.filter(status='online').order_by('-last_heartbeat')
+    now_ts = now()
+    all_agents = list(AgentStatus.objects.order_by('-last_heartbeat'))
 
-    # Get recent network metadata
-    recent_metadata = NetworkMetadata.objects.all().order_by('-timestamp')[:20]
+    recent_metadata_qs = NetworkMetadata.objects.select_related("agent").filter(
+        timestamp__gte=now_ts - TOPOLOGY_METADATA_LOOKBACK
+    ).order_by('-timestamp')
 
-    # Get active connections across all agents
-    recent_connections = NetworkConnection.objects.all().order_by('-last_seen')[:50]
+    recent_connections_qs = NetworkConnection.objects.select_related("agent").filter(
+        last_seen__gte=now_ts - TOPOLOGY_CONNECTION_LOOKBACK
+    ).order_by('-last_seen')
+
+    active_agent_ids = {
+        str(agent.agent_id)
+        for agent in all_agents
+        if agent.is_online()
+    }
+    active_agent_ids.update(
+        str(agent_id)
+        for agent_id in recent_metadata_qs.values_list("agent__agent_id", flat=True).distinct()
+        if agent_id
+    )
+    active_agent_ids.update(
+        str(agent_id)
+        for agent_id in recent_connections_qs.values_list("agent__agent_id", flat=True).distinct()
+        if agent_id
+    )
+
+    agents = [agent for agent in all_agents if str(agent.agent_id) in active_agent_ids]
+    recent_metadata = list(recent_metadata_qs[:20])
+    recent_connections = list(recent_connections_qs[:50])
 
     # Get interface statistics
     interface_stats = []
@@ -4767,9 +5336,9 @@ def network_monitoring_dashboard(request):
         'recent_metadata': recent_metadata,
         'recent_connections': recent_connections,
         'interface_stats': interface_stats[:20],  # Limit to 20 for display
-        'total_agents': agents.count(),
-        'total_connections': recent_connections.count(),
-        'total_metadata_records': recent_metadata.count()
+        'total_agents': len(agents),
+        'total_connections': recent_connections_qs.count(),
+        'total_metadata_records': recent_metadata_qs.count()
     })
 
 
@@ -5612,9 +6181,7 @@ def stream_minimega_execution(request):
     return JsonResponse({"error": "streaming_not_configured"}, status=501)
 
 
-@require_GET
-def stream_minimega_execution_async(request):
-    return JsonResponse({"error": "streaming_not_configured"}, status=501)
+stream_minimega_execution_async = stream_minimega_execution
 
 
 @require_http_methods(["POST"])
@@ -5731,13 +6298,17 @@ def network_metadata_api(request):
     """API endpoint for real-time network metadata."""
     agent_id = request.GET.get('agent_id')
     limit = int(request.GET.get('limit', 20))
+    now_ts = now()
 
     if agent_id:
-        # Get metadata for specific agent
-        metadata = NetworkMetadata.objects.filter(agent__agent_id=agent_id).order_by('-timestamp')[:limit]
+        metadata = NetworkMetadata.objects.filter(
+            agent__agent_id=agent_id,
+            timestamp__gte=now_ts - TOPOLOGY_METADATA_LOOKBACK,
+        ).order_by('-timestamp')[:limit]
     else:
-        # Get recent metadata from all agents
-        metadata = NetworkMetadata.objects.all().order_by('-timestamp')[:limit]
+        metadata = NetworkMetadata.objects.filter(
+            timestamp__gte=now_ts - TOPOLOGY_METADATA_LOOKBACK
+        ).order_by('-timestamp')[:limit]
 
     metadata_list = []
     for record in metadata:
@@ -5764,13 +6335,17 @@ def network_connections_api(request):
     """API endpoint for network connections data."""
     agent_id = request.GET.get('agent_id')
     limit = int(request.GET.get('limit', 50))
+    now_ts = now()
 
     if agent_id:
-        # Get connections for specific agent
-        connections = NetworkConnection.objects.filter(agent__agent_id=agent_id).order_by('-last_seen')[:limit]
+        connections = NetworkConnection.objects.filter(
+            agent__agent_id=agent_id,
+            last_seen__gte=now_ts - TOPOLOGY_CONNECTION_LOOKBACK,
+        ).order_by('-last_seen')[:limit]
     else:
-        # Get recent connections from all agents
-        connections = NetworkConnection.objects.all().order_by('-last_seen')[:limit]
+        connections = NetworkConnection.objects.filter(
+            last_seen__gte=now_ts - TOPOLOGY_CONNECTION_LOOKBACK
+        ).order_by('-last_seen')[:limit]
 
     connections_list = []
     for conn in connections:
@@ -5799,59 +6374,351 @@ def network_connections_api(request):
 @require_GET
 def network_topology_api(request):
     """API endpoint for network topology visualization."""
-    # Get all agents and their recent connections
-    agents = AgentStatus.objects.filter(status='online')
+    all_agents = list(AgentStatus.objects.order_by('-last_heartbeat'))
+    now_ts = now()
+    recent_metadata = list(
+        NetworkMetadata.objects.select_related("agent").filter(
+            timestamp__gte=now_ts - TOPOLOGY_METADATA_LOOKBACK
+        ).order_by("-timestamp")[:200]
+    )
+    recent_connections = list(
+        NetworkConnection.objects.filter(
+            last_seen__gte=now_ts - TOPOLOGY_CONNECTION_LOOKBACK
+        ).select_related('agent')
+    )
+    latest_metadata_by_agent_id = {}
+    for metadata in recent_metadata:
+        if metadata.agent_id not in latest_metadata_by_agent_id:
+            latest_metadata_by_agent_id[metadata.agent_id] = metadata
+    current_agent_ids = {
+        str(agent.agent_id)
+        for agent in all_agents
+        if agent.is_online() or str(agent.agent_id) in latest_metadata_by_agent_id
+    }
+    recent_observed_ips = set()
+    for metadata in recent_metadata:
+        recent_observed_ips.update(_metadata_interface_ips(metadata))
+    for conn in recent_connections:
+        local_host, _ = _parse_endpoint_address(conn.local_address)
+        remote_host, _ = _parse_endpoint_address(conn.remote_address)
+        if local_host:
+            recent_observed_ips.add(local_host)
+        if remote_host:
+            recent_observed_ips.add(remote_host)
+    agents = [agent for agent in all_agents if str(agent.agent_id) in current_agent_ids]
+    node_candidates = []
+    for node in Node.objects.exclude(ip_address__isnull=True).order_by('-id'):
+        node_ips = set(_node_interface_ips(node))
+        if str(getattr(node, "agent_id", "") or "") in current_agent_ids or node_ips.intersection(recent_observed_ips):
+            node_candidates.append(node)
+    iaea_testbed_active = _is_iaea_testbed_active(node_candidates, agents)
 
-    nodes = []
+    topology_nodes = {}
     edges = []
+    node_by_agent_id = {str(node.agent_id): node for node in node_candidates if node.agent_id}
+    node_by_ip = {}
+    for node in node_candidates:
+        for ip_text in _node_interface_ips(node):
+            if ip_text and ip_text not in node_by_ip:
+                node_by_ip[ip_text] = node
+    layer_map = {layer["slug"]: {"slug": layer["slug"], "label": layer["label"], "accent": layer["accent"], "nodes": []} for layer in PURDUE_TOPOLOGY_LAYERS}
+    layer_order = {layer["slug"]: index for index, layer in enumerate(PURDUE_TOPOLOGY_LAYERS)}
+    topology_id_by_agent_id = {}
+    topology_id_by_ip = {}
 
-    # Add agent nodes
+    def _payload_identity(override, node_obj, agent_obj, ip_text):
+        if override:
+            return f"static:{override['hostname']}"
+        return str(getattr(node_obj, "id", "") or getattr(agent_obj, "agent_id", "") or ip_text)
+
+    def _merge_ip_addresses(existing_payload, new_ips):
+        ip_values = [ip for ip in existing_payload.get("ip_addresses", []) if ip]
+        for ip in new_ips:
+            if ip and ip not in ip_values:
+                ip_values.append(ip)
+        existing_payload["ip_addresses"] = ip_values
+        if not existing_payload.get("ip_address") and ip_values:
+            existing_payload["ip_address"] = ip_values[0]
+
+    def _upsert_topology_payload(payload):
+        payload_id = payload["id"]
+        existing = topology_nodes.get(payload_id)
+        if not existing:
+            topology_nodes[payload_id] = payload
+            for ip_text in payload.get("ip_addresses", []):
+                if ip_text:
+                    topology_id_by_ip[ip_text] = payload_id
+            if payload.get("agent_id"):
+                topology_id_by_agent_id[str(payload["agent_id"])] = payload_id
+            layer_map.setdefault(payload["purdue_level"], {
+                "slug": payload["purdue_level"],
+                "label": _topology_layer_meta(payload["purdue_level"])["label"],
+                "accent": _topology_layer_meta(payload["purdue_level"])["accent"],
+                "nodes": [],
+            })
+            layer_map[payload["purdue_level"]]["nodes"].append(payload)
+            return
+
+        _merge_ip_addresses(existing, payload.get("ip_addresses", []))
+        for ip_text in existing.get("ip_addresses", []):
+            if ip_text:
+                topology_id_by_ip[ip_text] = payload_id
+        existing["status"] = "online" if "online" in {existing.get("status"), payload.get("status")} else (existing.get("status") or payload.get("status"))
+        existing["vulnerability_count"] = max(existing.get("vulnerability_count", 0), payload.get("vulnerability_count", 0))
+        existing["node_id"] = existing.get("node_id") or payload.get("node_id")
+        existing["node_url"] = existing.get("node_url") or payload.get("node_url")
+        existing["agent_id"] = existing.get("agent_id") or payload.get("agent_id")
+        if existing.get("agent_id"):
+            topology_id_by_agent_id[str(existing["agent_id"])] = payload_id
+        existing["os_type"] = existing.get("os_type") or payload.get("os_type")
+        existing["last_heartbeat"] = payload.get("last_heartbeat") if payload.get("last_heartbeat") not in ("", "Never", "N/A") else existing.get("last_heartbeat")
+        if existing.get("type") == "static" and payload.get("type") != "static":
+            existing["type"] = payload["type"]
+
+    def _mark_topology_node_online(payload_id: str):
+        payload = topology_nodes.get(str(payload_id or ""))
+        if not payload:
+            return
+        payload["status"] = "online"
+        if payload.get("type") == "static":
+            payload["type"] = "inferred"
+
+    def _append_topology_node(node_obj=None, agent_obj=None, metadata_obj=None, inferred_ip="", inferred_port=None, inferred_protocol=""):
+        observed_ips = []
+        observed_ips.extend(_node_interface_ips(node_obj))
+        for ip_text in _agent_interface_ips(agent_obj):
+            if ip_text not in observed_ips:
+                observed_ips.append(ip_text)
+        for ip_text in _metadata_interface_ips(metadata_obj):
+            if ip_text not in observed_ips:
+                observed_ips.append(ip_text)
+        if inferred_ip and inferred_ip not in observed_ips:
+            observed_ips.append(inferred_ip)
+        ip_text = observed_ips[0] if observed_ips else ""
+        agent_id_text = _topology_identity_text(getattr(agent_obj, "agent_id", ""), getattr(node_obj, "agent_id", ""))
+        name = _topology_identity_text(getattr(node_obj, "name", ""), getattr(agent_obj, "hostname", ""), agent_id_text)
+        hostname = _topology_identity_text(getattr(node_obj, "hostname", ""), getattr(agent_obj, "hostname", ""), agent_id_text, name, inferred_ip)
+        override = _resolve_iaea_override(hostname, name, observed_ips) if iaea_testbed_active else None
+        if override:
+            layer = override["layer"]
+            role_slug = override["role_slug"]
+            role_label = override["role_label"]
+            role_icon = override["icon"]
+            label = override["label"]
+            segment_label = override["segment_label"]
+        else:
+            layer = _infer_purdue_layer(name, hostname, ip_text, getattr(node_obj, "description", ""))
+            role_slug, role_label, role_icon = _infer_topology_role(name, hostname, ip_text, getattr(node_obj, "description", ""))
+            label = _topology_identity_text(hostname, name, ip_text)
+            segment_label = _topology_segment_label(ip_text)
+            if inferred_port and role_slug == "asset":
+                if inferred_port in (443, 4840):
+                    role_slug, role_label, role_icon = ("server", "Server", "bi-server")
+                    layer = "L3" if inferred_port == 4840 else layer
+                elif inferred_port in (502, 44818):
+                    role_slug, role_label, role_icon = ("controller", "Controller", "bi-cpu-fill")
+                    layer = "L1"
+        node_url = reverse("dashboard:node_detail_page", args=[node_obj.id]) if node_obj else ""
+        merged_ips = []
+        if override:
+            merged_ips.extend(override.get("ip_addresses", []))
+        merged_ips.extend(observed_ips)
+        payload = {
+            "id": _payload_identity(override, node_obj, agent_obj, ip_text),
+            "node_id": getattr(node_obj, "id", None),
+            "label": label,
+            "hostname": override["hostname"] if override else hostname,
+            "name": name,
+            "ip_address": (override.get("ip_address") if override else ip_text) or ip_text,
+            "ip_addresses": [],
+            "type": "node" if node_obj else ("agent" if agent_obj else "inferred"),
+            "status": getattr(agent_obj, "status", getattr(node_obj, "status", "online" if inferred_ip else "unknown")) or ("online" if inferred_ip else "unknown"),
+            "os_type": getattr(agent_obj, "os_type", ""),
+            "last_heartbeat": (
+                getattr(agent_obj, "last_heartbeat", None).strftime('%Y-%m-%d %H:%M:%S')
+                if getattr(agent_obj, "last_heartbeat", None) else
+                (getattr(node_obj, "last_heartbeat", None).strftime('%Y-%m-%d %H:%M:%S') if getattr(node_obj, "last_heartbeat", None) else 'Never')
+            ),
+            "purdue_level": layer,
+            "purdue_label": _topology_layer_meta(layer)["label"],
+            "segment_label": segment_label,
+            "role": role_slug,
+            "role_label": role_label,
+            "icon": role_icon,
+            "node_url": node_url,
+            "agent_id": getattr(agent_obj, "agent_id", getattr(node_obj, "agent_id", "")),
+            "vulnerability_count": (
+                ScanVulnerability.objects.filter(host_ip=ip_text).count() if ip_text else 0
+            ) + (node_obj.vulnerability_set.count() if node_obj else 0),
+        }
+        _merge_ip_addresses(payload, merged_ips)
+        _upsert_topology_payload(payload)
+        return payload["id"]
+
+    for node in node_candidates:
+        _append_topology_node(
+            node_obj=node,
+            agent_obj=None,
+            metadata_obj=latest_metadata_by_agent_id.get(str(node.agent_id or "")),
+        )
     for agent in agents:
-        nodes.append({
-            'id': agent.agent_id,
-            'label': agent.hostname,
-            'ip_address': agent.ip_address,
-            'type': 'agent',
-            'status': agent.status,
-            'os_type': agent.os_type,
-            'last_heartbeat': agent.last_heartbeat.strftime('%Y-%m-%d %H:%M:%S') if agent.last_heartbeat else 'Never'
-        })
+        _append_topology_node(
+            node_obj=node_by_agent_id.get(str(agent.agent_id)) or node_by_ip.get(str(agent.ip_address)),
+            agent_obj=agent,
+            metadata_obj=latest_metadata_by_agent_id.get(str(agent.agent_id)),
+        )
 
-    # Get recent connections to build edges
-    recent_connections = NetworkConnection.objects.filter(
-        agent__status='online',
-        last_seen__gte=now() - timedelta(hours=1)  # Last hour
-    ).select_related('agent')
+    if iaea_testbed_active:
+        for static_node in IAEA_TESTBED_STATIC_TOPOLOGY:
+            if not _should_render_modeled_static_node(static_node):
+                continue
+            static_id = f"static:{static_node['hostname']}"
+            if static_id in topology_nodes:
+                continue
+            layer = static_node["layer"]
+            payload = {
+                "id": static_id,
+                "node_id": None,
+                "label": static_node["label"],
+                "hostname": static_node["hostname"],
+                "name": static_node["label"],
+                "ip_address": static_node.get("ip_address", ""),
+                "ip_addresses": list(static_node.get("ip_addresses", [])),
+                "type": "static",
+                "status": "modeled",
+                "os_type": "",
+                "last_heartbeat": "N/A",
+                "purdue_level": layer,
+                "purdue_label": _topology_layer_meta(layer)["label"],
+                "segment_label": static_node["segment_label"],
+                "role": static_node["role_slug"],
+                "role_label": static_node["role_label"],
+                "icon": static_node["icon"],
+                "node_url": "",
+                "agent_id": "",
+                "vulnerability_count": 0,
+            }
+            _upsert_topology_payload(payload)
 
-    # Group connections by source/destination to create flows
+    nodes = sorted(topology_nodes.values(), key=lambda item: (layer_order.get(item["purdue_level"], 99), item["label"]))
+
     flows = {}
     for conn in recent_connections:
+        if _is_topology_noise_flow(
+            protocol=conn.protocol,
+            process_name=conn.process_name,
+            process_cmdline=conn.process_cmdline,
+        ):
+            continue
         if conn.remote_address and conn.remote_address != '127.0.0.1' and conn.remote_address != 'localhost':
-            flow_key = (conn.agent.agent_id, conn.remote_address, conn.protocol)
+            flow_key = (
+                conn.agent.agent_id,
+                conn.local_address,
+                conn.remote_address,
+                conn.remote_port,
+                conn.protocol,
+                conn.process_name,
+                conn.process_cmdline,
+            )
             if flow_key not in flows:
                 flows[flow_key] = {
                     'source': conn.agent.agent_id,
+                    'local_address': conn.local_address,
                     'target': conn.remote_address,
+                    'remote_port': conn.remote_port,
                     'protocol': conn.protocol,
+                    'process_name': conn.process_name,
+                    'process_cmdline': conn.process_cmdline,
                     'connection_count': 0,
-                    'total_bytes': 0
                 }
             flows[flow_key]['connection_count'] += 1
 
-    # Convert flows to edges
     for flow in flows.values():
+        local_host, _ = _parse_endpoint_address(flow.get("local_address"))
+        local_override = _resolve_iaea_override(local_host, "", [local_host]) if iaea_testbed_active and local_host else None
+        if (
+            local_host
+            and local_host not in topology_id_by_ip
+            and _should_surface_inferred_flow_endpoint(
+                host=local_host,
+                port=None,
+                protocol=flow.get("protocol", ""),
+                process_name=flow.get("process_name", ""),
+                process_cmdline=flow.get("process_cmdline", ""),
+                override=local_override,
+                known_node=node_by_ip.get(local_host),
+            )
+        ):
+            source_id = _append_topology_node(
+                node_obj=node_by_ip.get(local_host),
+                agent_obj=None,
+                metadata_obj=None,
+                inferred_ip=local_host,
+                inferred_protocol=flow.get("protocol", ""),
+            )
+        else:
+            source_id = topology_id_by_ip.get(local_host) or topology_id_by_agent_id.get(str(flow["source"]))
+        remote_host, _ = _parse_endpoint_address(flow["target"])
+        remote_override = _resolve_iaea_override(remote_host, "", [remote_host]) if iaea_testbed_active and remote_host else None
+        if (
+            remote_host
+            and remote_host not in topology_id_by_ip
+            and _should_surface_inferred_flow_endpoint(
+                host=remote_host,
+                port=flow.get("remote_port"),
+                protocol=flow.get("protocol", ""),
+                process_name=flow.get("process_name", ""),
+                process_cmdline=flow.get("process_cmdline", ""),
+                override=remote_override,
+                known_node=node_by_ip.get(remote_host),
+            )
+        ):
+            target_id = _append_topology_node(
+                node_obj=node_by_ip.get(remote_host),
+                agent_obj=None,
+                metadata_obj=None,
+                inferred_ip=remote_host,
+                inferred_port=flow.get("remote_port"),
+                inferred_protocol=flow.get("protocol", ""),
+            )
+        else:
+            target_id = topology_id_by_ip.get(remote_host)
+        if not source_id or not target_id or source_id == target_id:
+            continue
+        _mark_topology_node_online(source_id)
+        _mark_topology_node_online(target_id)
         edges.append({
-            'from': flow['source'],
-            'to': flow['target'],
+            'from': source_id,
+            'to': target_id,
             'label': f"{flow['protocol']} ({flow['connection_count']} conn)",
             'protocol': flow['protocol'],
-            'connection_count': flow['connection_count']
+            'connection_count': flow['connection_count'],
+            'target_ip': remote_host or flow['target'],
+        })
+
+    for conn in recent_connections:
+        for payload_id in _promote_static_l0_from_passive_observation(
+            conn,
+            iaea_testbed_active=iaea_testbed_active,
+        ):
+            _mark_topology_node_online(payload_id)
+
+    nodes = sorted(topology_nodes.values(), key=lambda item: (layer_order.get(item["purdue_level"], 99), item["label"]))
+    layers = []
+    for layer in PURDUE_TOPOLOGY_LAYERS:
+        layer_payload = layer_map.get(layer["slug"], {"nodes": []})
+        layers.append({
+            "slug": layer["slug"],
+            "label": layer["label"],
+            "accent": layer["accent"],
+            "nodes": sorted(layer_payload.get("nodes", []), key=lambda item: item["label"]),
         })
 
     return JsonResponse({
         'nodes': nodes,
         'edges': edges,
-        'timestamp': now().strftime('%Y-%m-%d %H:%M:%S')
+        'layers': layers,
+        'timestamp': now_ts.strftime('%Y-%m-%d %H:%M:%S')
     })
 
 
@@ -5860,9 +6727,12 @@ def risk_assessment_page(request):
         request,
         'dashboard/risk_assessment.html',
         {
+            "risk_ics_repo_path": getattr(settings, "ICS_RISK_ASSESSMENT_REPO_PATH", ""),
             "risk_pid_target_path": getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", ""),
+            "risk_service_url": getattr(settings, "RISK_ASSESSMENT_API_URL", ""),
             "risk_primary_example_node": RISK_ASSESSMENT_PRIMARY_NODE,
             "risk_primary_example_cve": RISK_ASSESSMENT_SAMPLE_CVE,
+            "risk_hybrid_focus_nodes": RISK_HYBRID_FOCUS_NODES,
         },
     )
 
@@ -5872,6 +6742,7 @@ def risk_assessment_console_page(request):
         request,
         'dashboard/risk_assessment_console.html',
         {
+            "risk_ics_repo_path": getattr(settings, "ICS_RISK_ASSESSMENT_REPO_PATH", ""),
             "risk_pid_target_path": getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", ""),
             "risk_service_url": getattr(settings, "RISK_ASSESSMENT_API_URL", ""),
             "risk_local_model": _risk_local_model_context(),
@@ -5879,6 +6750,84 @@ def risk_assessment_console_page(request):
             "risk_primary_example_node": RISK_ASSESSMENT_PRIMARY_NODE,
         },
     )
+
+
+def _risk_json_get_response(path: str, *, params: dict | None = None) -> JsonResponse:
+    try:
+        response = _risk_call(requests.get, path, params=params or None)
+        return JsonResponse(response.json(), safe=False)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=502)
+
+
+@require_GET
+def risk_assessment_ics_summary_api(request):
+    try:
+        return JsonResponse(risk_repo_summary())
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+
+@require_GET
+def risk_assessment_ics_system_graph_api(request):
+    try:
+        return JsonResponse(risk_repo_system_graph())
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+
+@require_GET
+def risk_assessment_ics_model_api(request):
+    try:
+        return JsonResponse(risk_repo_model_payload())
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+
+@require_GET
+def risk_assessment_ics_bayesian_graph_api(request):
+    try:
+        return JsonResponse(risk_repo_bayesian_graph())
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+
+@require_GET
+def risk_assessment_ics_bayesian_node_detail_api(request):
+    node_id = str(request.GET.get("id") or "").strip()
+    if not node_id:
+        return JsonResponse({"error": "id is required."}, status=400)
+    try:
+        return JsonResponse(risk_repo_bayesian_node_detail(node_id))
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+
+@require_GET
+def risk_assessment_ics_pipeline_log_api(request):
+    try:
+        return JsonResponse(risk_repo_pipeline_log())
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+
+@require_GET
+def risk_assessment_ics_fault_trees_api(request):
+    try:
+        return JsonResponse(risk_repo_fault_tree_summary())
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+
+@require_GET
+def risk_assessment_ics_fault_tree_detail_api(request):
+    node_id = str(request.GET.get("id") or "").strip()
+    if not node_id:
+        return JsonResponse({"error": "id is required."}, status=400)
+    try:
+        return JsonResponse(risk_repo_fault_tree_detail(node_id))
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
 
 
 @require_http_methods(["POST"])
@@ -5915,29 +6864,17 @@ def risk_assessment_model_upload_api(request):
 
 @require_GET
 def risk_assessment_service_info_api(request):
-    try:
-        response = _risk_call(requests.get, "/")
-        return JsonResponse(response.json(), safe=False)
-    except Exception as exc:
-        return JsonResponse({"error": str(exc)}, status=502)
+    return _risk_json_get_response("/")
 
 
 @require_GET
 def risk_assessment_service_status_api(request):
-    try:
-        response = _risk_call(requests.get, "/status")
-        return JsonResponse(response.json(), safe=False)
-    except Exception as exc:
-        return JsonResponse({"error": str(exc)}, status=502)
+    return _risk_json_get_response("/status")
 
 
 @require_GET
 def risk_assessment_service_nodes_api(request):
-    try:
-        response = _risk_call(requests.get, "/nodes")
-        return JsonResponse(response.json(), safe=False)
-    except Exception as exc:
-        return JsonResponse({"error": str(exc)}, status=502)
+    return _risk_json_get_response("/nodes")
 
 
 @require_http_methods(["POST"])
@@ -5998,6 +6935,8 @@ def risk_assessment_service_probability_api(request):
     nodes = [node.strip() for node in str(nodes_value).split(",") if node.strip()]
     if nodes:
         params["nodes"] = ",".join(nodes)
+    if _risk_bool(request.GET.get("returnAll")):
+        params["returnAll"] = "true"
 
     try:
         response = _risk_call(requests.get, "/get_probability", params=params or None)
@@ -6276,20 +7215,13 @@ def risk_assessment_pid_testbed(request):
     })
 
 
-@require_GET
-def risk_assessment_status_api(request):
-    try:
-        response = _risk_call(requests.get, '/status')
-        return JsonResponse(response.json())
-    except Exception as exc:
-        return JsonResponse({'error': str(exc)}, status=502)
+risk_assessment_status_api = risk_assessment_service_status_api
 
 
 @require_GET
 def risk_assessment_nodes_api(request):
     try:
-        response = _risk_call(requests.get, '/nodes')
-        nodes = _risk_nodes_from_payload(response.json())
+        nodes = _risk_nodes_from_payload(_risk_get_nodes_payload())
         return JsonResponse({"nodes": nodes, "total_count": len(nodes)})
     except Exception as exc:
         return JsonResponse({'error': str(exc)}, status=502)
@@ -6353,6 +7285,7 @@ def risk_assessment_probability_api(request):
     nodes = payload.get("nodes")
     if nodes is not None and not isinstance(nodes, list):
         return JsonResponse({'error': 'nodes must be a list of node names.'}, status=400)
+    return_all = _risk_bool(payload.get("return_all", payload.get("returnAll")))
 
     evidence = payload.get("evidence")
     if evidence is not None and not isinstance(evidence, dict):
@@ -6392,17 +7325,22 @@ def risk_assessment_probability_api(request):
 
     try:
         if isinstance(cyber_data, dict):
-            result = _risk_probability_from_cyber_data(cyber_data=cyber_data, t_value=t_value, nodes=nodes)
-            return JsonResponse(result)
-        if vulnerabilities or detections:
-            result = _risk_probability_from_updates(
-                vulnerabilities=vulnerabilities or {},
-                detections=detections or {},
+            result = _risk_post_cyberpen_assessment(
+                vulnerabilities=_risk_extract_vulnerability_updates_from_cyber_data(cyber_data),
                 t_value=t_value,
-                nodes=nodes,
+                nodes=nodes or _risk_query_nodes_from_cyber_data(cyber_data),
+                return_all=return_all,
             )
             return JsonResponse(result)
-        result = _risk_get_probability(t_value=t_value, nodes=nodes)
+        if vulnerabilities is not None:
+            result = _risk_post_cyberpen_assessment(
+                vulnerabilities=vulnerabilities,
+                t_value=t_value,
+                nodes=nodes,
+                return_all=return_all,
+            )
+            return JsonResponse(result)
+        result = _risk_get_probability(t_value=t_value, nodes=nodes, return_all=return_all)
         return JsonResponse(result)
     except ValueError as exc:
         return JsonResponse({'error': str(exc)}, status=400)
@@ -6422,14 +7360,13 @@ def risk_assessment_network_compute_api(request):
         else:
             scan_run_id = None
 
-        nodes_response = _risk_call(requests.get, '/nodes')
-        payload = nodes_response.json()
+        payload = _risk_get_nodes_payload()
         risk_nodes = _risk_node_ids_from_payload(payload)
 
         cyber_data, mapped_nodes = build_cyber_data_for_risk_nodes(risk_nodes, scan_run_id=scan_run_id)
 
-        result_payload = _risk_probability_from_cyber_data(
-            cyber_data=cyber_data,
+        result_payload = _risk_post_cyberpen_assessment(
+            vulnerabilities=_risk_extract_vulnerability_updates_from_cyber_data(cyber_data),
             nodes=risk_nodes,
         )
         results = result_payload.get("results", {})
@@ -6437,8 +7374,14 @@ def risk_assessment_network_compute_api(request):
         summary = summarize_risk_results(mapped_nodes, results)
 
         return JsonResponse({
+            "status": result_payload.get("status", "ok"),
+            "message": result_payload.get("message", ""),
             "risk_nodes_count": len(risk_nodes),
             "scan_run_id": scan_run_id,
+            "updated_nodes": result_payload.get("updated_nodes", []),
+            "warnings": result_payload.get("warnings", []),
+            "request": result_payload.get("request", {}),
+            "risk_scores": result_payload.get("risk_scores", {}),
             "mapped_nodes": summary,
             "results": results,
         })
@@ -6452,8 +7395,7 @@ def risk_assessment_mappings_api(request):
         risk_nodes = []
         risk_error = None
         try:
-            response = _risk_call(requests.get, '/nodes')
-            risk_nodes = _risk_node_ids_from_payload(response.json())
+            risk_nodes = _risk_node_ids_from_payload(_risk_get_nodes_payload())
         except Exception as exc:
             risk_error = str(exc)
 
@@ -6648,184 +7590,6 @@ def risk_assessment_mappings_api(request):
             "active": mapping.active,
             "updated_at": mapping.updated_at.isoformat(),
         }
-    })
-
-
-@require_http_methods(["POST"])
-def risk_assessment_testbed_generate(request):
-    try:
-        payload = json.loads(request.body or '{}')
-    except json.JSONDecodeError:
-        return JsonResponse({'error': 'Invalid JSON payload.'}, status=400)
-
-    cidr = str(payload.get("cidr") or "192.168.236.0/24").strip()
-    cve_input = payload.get("cves") or []
-    max_cves = payload.get("max_cves_per_node", 10)
-
-    try:
-        max_cves = int(max_cves)
-    except (TypeError, ValueError):
-        max_cves = 10
-    max_cves = max(0, min(max_cves, 50))
-
-    try:
-        network = ip_network(cidr, strict=False)
-    except ValueError:
-        return JsonResponse({'error': 'Invalid CIDR.'}, status=400)
-
-    if isinstance(cve_input, str):
-        raw = cve_input.replace("\r", "\n").replace(",", "\n")
-        cve_list = [entry.strip().upper() for entry in raw.split("\n") if entry.strip()]
-    elif isinstance(cve_input, list):
-        cve_list = [str(entry).strip().upper() for entry in cve_input if str(entry).strip()]
-    else:
-        cve_list = []
-
-    cve_list = list(dict.fromkeys(cve_list))
-
-    try:
-        response = _risk_call(requests.get, '/nodes')
-        payload = response.json()
-    except Exception as exc:
-        return JsonResponse({'error': f'Risk service unavailable: {exc}'}, status=502)
-
-    risk_nodes = _risk_node_ids_from_payload(payload)
-
-    if not risk_nodes:
-        return JsonResponse({'error': 'No risk nodes returned from risk service.'}, status=400)
-
-    host_iter = network.hosts()
-    assigned_hosts = []
-    for _ in range(len(risk_nodes)):
-        try:
-            assigned_hosts.append(str(next(host_iter)))
-        except StopIteration:
-            break
-
-    if len(assigned_hosts) < len(risk_nodes):
-        return JsonResponse({
-            'error': 'CIDR does not have enough usable addresses for the risk nodes.',
-            'risk_nodes': len(risk_nodes),
-            'available_hosts': len(assigned_hosts),
-        }, status=400)
-
-    scan_run = ScanRun.objects.create(
-        cidr=str(network),
-        status="COMPLETE",
-        scan_type="agent",
-        result_summary=f"Risk testbed generated ({len(risk_nodes)} nodes).",
-    )
-
-    now_ts = timezone.now()
-    vuln_objects = {}
-    if cve_list:
-        for cve in cve_list[:max_cves]:
-            vuln, _ = Vulnerability.objects.update_or_create(
-                cve_id=cve,
-                defaults={
-                    "description": "Synthetic risk testbed vulnerability.",
-                    "severity": "High",
-                    "score": 7.5,
-                    "published": now_ts,
-                    "last_modified": now_ts,
-                },
-            )
-            vuln_objects[cve] = vuln
-
-    created_nodes = 0
-    mappings_updated = 0
-    created_links = 0
-
-    def purdue_tier(risk_node_id: str) -> str:
-        name = risk_node_id.upper()
-        if any(token in name for token in ["ERP", "MES", "CORP", "ENTERPRISE", "BUSINESS", "IT", "OFFICE"]):
-            return "L4-L5"
-        if any(token in name for token in ["DMZ", "FIREWALL", "PROXY", "JUMP", "GATEWAY", "HISTORIAN", "OPC"]):
-            return "L3.5"
-        if any(token in name for token in ["SCADA", "HMI", "SERVER", "OPS", "ENGINEER", "SUPERVISOR"]):
-            return "L3"
-        if any(token in name for token in ["PLC", "RTU", "IED", "DCS", "CONTROLLER", "CTRL"]):
-            return "L2"
-        if any(token in name for token in ["SENSOR", "VALVE", "PUMP", "MOTOR", "HEATER", "PRESSURIZER", "SPRAY", "HV", "PV", "CV", "PT", "LT", "TT", "FT", "PORV"]):
-            return "L0-L1"
-        return "L2"
-
-    with transaction.atomic():
-        created_node_objects = []
-        tiered = []
-        for risk_node_id, ip_addr in zip(risk_nodes, assigned_hosts):
-            tier = purdue_tier(risk_node_id)
-            tiered.append((risk_node_id, ip_addr, tier))
-
-        for risk_node_id, ip_addr, tier in tiered:
-            node = Node.objects.create(
-                scan_run=scan_run,
-                name=risk_node_id,
-                ip_address=ip_addr,
-                status="online",
-                description=f"Generated from risk assessment schema. Purdue tier: {tier}.",
-            )
-            created_nodes += 1
-            created_node_objects.append(node)
-
-            RiskNodeMapping.objects.update_or_create(
-                risk_node_id=risk_node_id,
-                defaults={
-                    "node": node,
-                    "ip_address": ip_addr,
-                    "label": risk_node_id,
-                    "active": True,
-                },
-            )
-            mappings_updated += 1
-
-            if vuln_objects:
-                node.vulnerability_set.add(*vuln_objects.values())
-
-        if created_node_objects:
-            tiers = {"L0-L1": [], "L2": [], "L3": [], "L3.5": [], "L4-L5": []}
-            for (risk_node_id, _ip_addr, tier), node in zip(tiered, created_node_objects):
-                tiers.setdefault(tier, []).append(node)
-
-            tier_order = ["L0-L1", "L2", "L3", "L3.5", "L4-L5"]
-            # Intra-tier ring to show local segmentation
-            for tier_key in tier_order:
-                tier_nodes = tiers.get(tier_key, [])
-                if len(tier_nodes) > 1:
-                    for idx, node in enumerate(tier_nodes):
-                        next_node = tier_nodes[(idx + 1) % len(tier_nodes)]
-                        Link.objects.create(
-                            scan_run=scan_run,
-                            source=node,
-                            destination=next_node,
-                            weight=1.0,
-                        )
-                        created_links += 1
-
-            # Inter-tier north-south links
-            for lower_key, upper_key in zip(tier_order, tier_order[1:]):
-                lower_nodes = tiers.get(lower_key, [])
-                upper_nodes = tiers.get(upper_key, [])
-                if not lower_nodes or not upper_nodes:
-                    continue
-                for idx, node in enumerate(lower_nodes):
-                    target = upper_nodes[idx % len(upper_nodes)]
-                    Link.objects.create(
-                        scan_run=scan_run,
-                        source=node,
-                        destination=target,
-                        weight=1.0,
-                    )
-                    created_links += 1
-
-    return JsonResponse({
-        "scan_run_id": scan_run.id,
-        "cidr": str(network),
-        "risk_nodes": len(risk_nodes),
-        "nodes_created": created_nodes,
-        "mappings_updated": mappings_updated,
-        "links_created": created_links,
-        "cves_applied": list(vuln_objects.keys()),
     })
 
 

@@ -21,7 +21,7 @@ services:
     command: /code/docker/entrypoint-web.sh
     # When using the bind mount (.:/code), match the container UID/GID to the host
     # so Django collectstatic can write into /code/staticfiles.
-    user: "${LOCAL_UID:-1028}:${LOCAL_GID:-1028}"
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     env_file: .env
     environment:
       POSTGRES_NAME: ${POSTGRES_NAME:-postgres}
@@ -45,6 +45,7 @@ services:
       GVMD_POSTGRES_USER: ${GVMD_POSTGRES_USER:-gvmd}
       GVMD_POSTGRES_PASSWORD: ${GVMD_POSTGRES_PASSWORD:-}
       RISK_ASSESSMENT_API_URL: ${RISK_ASSESSMENT_API_URL:-http://risk-assessment:7890}
+      ICS_RISK_ASSESSMENT_REPO_PATH: ${ICS_RISK_ASSESSMENT_REPO_PATH:-/opt/ics-risk-assessment}
       TRIVY_CACHE_DIR: /tmp/cyber-sbom-cache/trivy
       GRYPE_DB_CACHE_DIR: /tmp/cyber-sbom-cache/grype/db
     extra_hosts:
@@ -60,6 +61,7 @@ services:
     ports: ["8000:8000"]
     volumes:
       - .:/code
+      - ../ics-risk-assessment:/opt/ics-risk-assessment
       - /opt/gvm-run:/opt/gvm-run
       - psql_socket_vol:/var/run/postgresql
     healthcheck:
@@ -84,7 +86,7 @@ services:
   celery:
     build: .
     command: celery -A cyber_pen_test worker --loglevel=info
-    user: "${LOCAL_UID:-1028}:${LOCAL_GID:-1028}"
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     env_file: .env
     environment:
       POSTGRES_NAME: ${POSTGRES_NAME:-postgres}
@@ -109,6 +111,7 @@ services:
       GVMD_POSTGRES_USER: ${GVMD_POSTGRES_USER:-gvmd}
       GVMD_POSTGRES_PASSWORD: ${GVMD_POSTGRES_PASSWORD:-}
       RISK_ASSESSMENT_API_URL: ${RISK_ASSESSMENT_API_URL:-http://risk-assessment:7890}
+      ICS_RISK_ASSESSMENT_REPO_PATH: ${ICS_RISK_ASSESSMENT_REPO_PATH:-/opt/ics-risk-assessment}
       TRIVY_CACHE_DIR: /tmp/cyber-sbom-cache/trivy
       GRYPE_DB_CACHE_DIR: /tmp/cyber-sbom-cache/grype/db
     depends_on:
@@ -121,6 +124,7 @@ services:
     networks: [appnet, greenbone_net]
     volumes:
       - .:/code
+      - ../ics-risk-assessment:/opt/ics-risk-assessment
       - /opt/gvm-run:/opt/gvm-run
       - psql_socket_vol:/var/run/postgresql
     healthcheck:
@@ -149,8 +153,15 @@ services:
     build:
       context: ../ics-risk-assessment
     command: python -m uvicorn src.api.main:app --host 0.0.0.0 --port 7890
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    environment:
+      HOME: /tmp
+      MPLCONFIGDIR: /tmp/matplotlib
+      XDG_CACHE_HOME: /tmp/.cache
     networks: [appnet]
     ports: ["7890:7890"]
+    volumes:
+      - ../ics-risk-assessment:/app
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:7890/status')\" || exit 1"]
       interval: 20s

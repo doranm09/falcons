@@ -139,13 +139,23 @@ CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
 CELERY_TASK_STORE_EAGER_RESULT = True
 
-STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / "dashboard/static"]
 # Where collectstatic will put the static files for production
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# ICS Risk Assessment API
+# ICS Risk Assessment API / repo integration
+_DEFAULT_ICS_RISK_REPO_PATH = BASE_DIR.parent / "ics-risk-assessment"
+ICS_RISK_ASSESSMENT_REPO_PATH = os.environ.get(
+    'ICS_RISK_ASSESSMENT_REPO_PATH',
+    str(_DEFAULT_ICS_RISK_REPO_PATH) if _DEFAULT_ICS_RISK_REPO_PATH.exists() else '',
+)
+_DEFAULT_RISK_SIM_SYSTEM_PATH = (
+    str(Path(ICS_RISK_ASSESSMENT_REPO_PATH) / 'upload' / 'sim_system.json')
+    if ICS_RISK_ASSESSMENT_REPO_PATH
+    else ''
+)
 RISK_ASSESSMENT_API_URL = os.environ.get('RISK_ASSESSMENT_API_URL', 'http://127.0.0.1:7890')
+RISK_ASSESSMENT_SIM_SYSTEM_PATH = os.environ.get('RISK_ASSESSMENT_SIM_SYSTEM_PATH', _DEFAULT_RISK_SIM_SYSTEM_PATH)
 
 # SIEM ingest settings
 SIEM_INGEST_TOKEN = os.environ.get("SIEM_INGEST_TOKEN", "")

@@ -28,10 +28,12 @@ class MockResponse:
 def test_risk_assessment_page_access(user_client):
     response = user_client.get(reverse("dashboard:risk_assessment"))
     assert response.status_code == 200
-    assert b"Current workspace for the active" in response.content
-    assert b"risk-network-graph" in response.content
-    assert b"/risk-assessment/network/compute/" in response.content
-    assert b"PLC-Main" in response.content
+    assert b"Risk Assessment Integration" in response.content
+    assert b"Direct view of the integrated" in response.content
+    assert b"risk-system-graph" in response.content
+    assert b"/risk-assessment/ics/system-graph/" in response.content
+    assert b"Upload Repo Model" in response.content
+    assert b"plc-main" in response.content
     assert b"Heat-Ctrl" not in response.content
     assert b"Latest Conversion" not in response.content
 
@@ -272,10 +274,17 @@ def test_risk_assessment_probability_proxy(user_client, monkeypatch):
 def test_risk_assessment_probability_proxy_current_mutations(user_client, monkeypatch):
     from dashboard import views as dashboard_views
 
-    mock_post = Mock(return_value=MockResponse({"status": "ok"}))
-    mock_get = Mock(return_value=MockResponse({"results": {"PLC-1Nt": {"Compromised": 0.42, "Nominal": 0.58}}}))
+    mock_post = Mock(
+        return_value=MockResponse(
+            {
+                "status": "ok",
+                "updated_nodes": ["PLC-1"],
+                "results": {"PLC-1Nt": {"Compromised": 0.42, "Nominal": 0.58}},
+                "risk_scores": {"PLC-1Nt": {"risk_score": 0.42, "basis": "Compromised"}},
+            }
+        )
+    )
     monkeypatch.setattr(dashboard_views.requests, "post", mock_post)
-    monkeypatch.setattr(dashboard_views.requests, "get", mock_get)
 
     payload = {
         "T": 3,
@@ -294,19 +303,27 @@ def test_risk_assessment_probability_proxy_current_mutations(user_client, monkey
 
     assert response.status_code == 200
     assert response.json()["results"]["PLC-1"]["compromised"] == 0.42
-    assert mock_post.call_args.args[0].endswith("/post_vulnerability")
-    assert mock_post.call_args.kwargs["json"]["nodes"]["PLC-1"]["CVE-2024-0001"]["epss"] == 0.7
-    assert mock_get.call_args.args[0].endswith("/get_probability")
+    assert response.json()["risk_scores"]["PLC-1"]["risk_score"] == 0.42
+    assert response.json()["updated_nodes"] == ["PLC-1"]
+    assert mock_post.call_args.args[0].endswith("/post_cyberpen")
+    assert mock_post.call_args.kwargs["json"]["nodes"] == ["PLC-1"]
+    assert mock_post.call_args.kwargs["json"]["vulnerabilities"]["PLC-1"]["CVE-2024-0001"]["epss"] == 0.7
 
 
 @pytest.mark.django_db
 def test_risk_assessment_probability_proxy_cyber_data(user_client, monkeypatch):
     from dashboard import views as dashboard_views
 
-    mock_post = Mock(return_value=MockResponse({"status": "ok", "updated_nodes": ["PLC-1"]}))
-    mock_get = Mock(return_value=MockResponse({"results": {"PLC-1Nt": {"Compromised": 0.42, "Nominal": 0.58}}}))
+    mock_post = Mock(
+        return_value=MockResponse(
+            {
+                "status": "ok",
+                "updated_nodes": ["PLC-1"],
+                "results": {"PLC-1Nt": {"Compromised": 0.42, "Nominal": 0.58}},
+            }
+        )
+    )
     monkeypatch.setattr(dashboard_views.requests, "post", mock_post)
-    monkeypatch.setattr(dashboard_views.requests, "get", mock_get)
 
     payload = {
         "T": 3,
@@ -328,10 +345,10 @@ def test_risk_assessment_probability_proxy_cyber_data(user_client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["results"]["PLC-1"]["compromised"] == 0.42
-    assert mock_post.call_args.args[0].endswith("/post_vulnerability")
-    assert mock_post.call_args.kwargs["json"]["nodes"]["PLC-1"]["CVE-2024-0001"]["epss"] == 0.7
-    assert mock_get.call_args.args[0].endswith("/get_probability")
-    assert mock_get.call_args.kwargs["params"]["nodes"] == "PLC-1"
+    assert response.json()["updated_nodes"] == ["PLC-1"]
+    assert mock_post.call_args.args[0].endswith("/post_cyberpen")
+    assert mock_post.call_args.kwargs["json"]["nodes"] == ["PLC-1"]
+    assert mock_post.call_args.kwargs["json"]["vulnerabilities"]["PLC-1"]["CVE-2024-0001"]["epss"] == 0.7
 
 
 @pytest.mark.django_db
@@ -451,6 +468,33 @@ def test_build_cyber_data_for_risk_nodes_filters_scan_vulnerabilities_by_scan_ru
     assert mapped[0]["vulnerabilities"][0]["id"] == "CVE-2024-1000"
 
 
+@pytest.mark.django_db
+def test_build_cyber_data_for_risk_nodes_includes_secondary_interface_scan_vulnerabilities():
+    node = Node.objects.create(name="plc-main-agent", ip_address="172.31.250.14")
+    NodeInterface.objects.create(node=node, name="eth0", ip="10.1.1.14", mac="aa:bb:cc:dd:ee:14")
+    NodeInterface.objects.create(node=node, name="eth1", ip="10.1.2.14", mac="aa:bb:cc:dd:ee:15")
+
+    ScanVulnerability.objects.create(
+        scan_run=ScanRun.objects.create(cidr="10.1.2.0/24"),
+        host_ip="10.1.2.14",
+        cve_id="CVE-2024-3000",
+        name="Secondary interface vuln",
+        severity="High",
+        cvss_score=7.6,
+    )
+
+    cyber_data, mapped = build_cyber_data_for_risk_nodes(["plc-main"])
+
+    scanned_nodes = {entry["id"]: entry for entry in cyber_data["scanned_nodes"]}
+    assert scanned_nodes["plc-main"]["vulnerability"] == [
+        {"id": "CVE-2024-3000", "epss": pytest.approx(0.76), "sources": ["scan"]}
+    ]
+    assert mapped[0]["risk_node_id"] == "plc-main"
+    assert mapped[0]["ip_address"] == "10.1.1.14"
+    assert mapped[0]["vulnerability_count"] == 1
+    assert mapped[0]["vulnerabilities"][0]["id"] == "CVE-2024-3000"
+
+
 def test_summarize_risk_results_assigns_levels():
     mapped_nodes = [
         {"node_id": 1, "name": "PLC-1", "ip_address": "10.0.0.10", "risk_node_id": "PLC-1"},
@@ -491,20 +535,24 @@ def test_risk_assessment_network_compute_proxy(user_client, monkeypatch):
             "10.0.0.20": {"states": ["Nominal", "Faulty"], "type": "host", "category": "digital"},
         }
     }
-    mock_get = Mock(
-        side_effect=[
-            MockResponse(nodes_payload),
-            MockResponse(
-                {
-                    "results": {
-                        "PLC-1Nt": {"Compromised": 0.83, "Nominal": 0.17},
-                        "10.0.0.20Nt": {"Faulty": 0.22, "Nominal": 0.78},
-                    }
-                }
-            ),
-        ]
+    mock_get = Mock(return_value=MockResponse(nodes_payload))
+    mock_post = Mock(
+        return_value=MockResponse(
+            {
+                "status": "ok",
+                "updated_nodes": ["PLC-1"],
+                "warnings": [],
+                "results": {
+                    "PLC-1Nt": {"Compromised": 0.83, "Nominal": 0.17},
+                    "10.0.0.20Nt": {"Faulty": 0.22, "Nominal": 0.78},
+                },
+                "risk_scores": {
+                    "PLC-1Nt": {"risk_score": 0.83, "basis": "Compromised"},
+                    "10.0.0.20Nt": {"risk_score": 0.22, "basis": "non-normal states"},
+                },
+            }
+        )
     )
-    mock_post = Mock(return_value=MockResponse({"status": "ok", "updated_nodes": ["PLC-1"]}))
     monkeypatch.setattr(dashboard_views.requests, "get", mock_get)
     monkeypatch.setattr(dashboard_views.requests, "post", mock_post)
 
@@ -512,7 +560,10 @@ def test_risk_assessment_network_compute_proxy(user_client, monkeypatch):
     assert response.status_code == 200
 
     body = response.json()
+    assert body["status"] == "ok"
     assert body["risk_nodes_count"] == 2
+    assert body["updated_nodes"] == ["PLC-1"]
+    assert body["risk_scores"]["PLC-1"]["risk_score"] == 0.83
     mapped = {entry["risk_node_id"]: entry for entry in body["mapped_nodes"]}
     assert mapped["PLC-1"]["risk_level"] == "high"
     assert mapped["10.0.0.20"]["risk_level"] == "low"
@@ -520,8 +571,9 @@ def test_risk_assessment_network_compute_proxy(user_client, monkeypatch):
     assert mapped["PLC-1"]["vulnerabilities"][0]["id"] == "CVE-2024-0003"
 
     posted_payload = mock_post.call_args.kwargs["json"]
-    assert mock_post.call_args.args[0].endswith("/post_vulnerability")
-    assert "PLC-1" in posted_payload["nodes"]
+    assert mock_post.call_args.args[0].endswith("/post_cyberpen")
+    assert posted_payload["nodes"] == ["10.0.0.20", "PLC-1"]
+    assert posted_payload["vulnerabilities"]["PLC-1"]["CVE-2024-0003"]["epss"] == 0.7
 
 
 def test_risk_local_model_payload_auto_falls_back_to_latest_prefixed_file(tmp_path, settings):
@@ -702,39 +754,3 @@ def test_risk_assessment_mappings_post_bulk(user_client):
     mapping = RiskNodeMapping.objects.get(risk_node_id="PLC-4")
     assert mapping.ip_address == "10.3.0.20"
     assert mapping.active is False
-
-
-@pytest.mark.django_db
-def test_risk_assessment_testbed_generate(user_client, monkeypatch):
-    from dashboard import views as dashboard_views
-
-    payload = {
-        "nodes": {
-            "PLC-Main": {"states": ["Nominal"], "type": "controller", "category": "digital"},
-            "Heat-Ctrl": {"states": ["Nominal"], "type": "controller", "category": "digital"},
-        }
-    }
-    monkeypatch.setattr(dashboard_views.requests, "get", Mock(return_value=MockResponse(payload)))
-
-    response = user_client.post(
-        reverse("dashboard:risk_assessment_testbed_generate"),
-        data=json.dumps({
-            "cidr": "192.168.10.0/30",
-            "cves": "CVE-2024-0001\nCVE-2024-0002",
-            "max_cves_per_node": 2,
-        }),
-        content_type="application/json",
-    )
-    assert response.status_code == 200
-
-    body = response.json()
-    assert body["nodes_created"] == 2
-    assert body["mappings_updated"] == 2
-    assert body["links_created"] >= 1
-    assert RiskNodeMapping.objects.filter(risk_node_id="PLC-Main").exists()
-    assert RiskNodeMapping.objects.filter(risk_node_id="Heat-Ctrl").exists()
-
-    nodes = Node.objects.filter(name__in=["PLC-Main", "Heat-Ctrl"])
-    assert nodes.count() == 2
-    for node in nodes:
-        assert node.vulnerability_set.count() == 2

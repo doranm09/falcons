@@ -2,417 +2,352 @@
 {% load static %}
 
 {% block content %}
-<div class="container-fluid p-4">
+<div class="container-fluid p-4 risk-page">
   <form id="risk-csrf-form" class="d-none">{% csrf_token %}</form>
-  <div class="row mb-4">
-    <div class="col-12 d-flex justify-content-between align-items-start gap-3 flex-wrap">
-      <div>
-      <h2><i class="bi bi-shield-exclamation"></i> Risk Assessment</h2>
-      <p class="text-muted mb-0">Current workspace for the active <code>sim_system.json</code>, live risk-node mappings, and posterior queries.</p>
-      </div>
-      <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard:risk_assessment_console' %}">
-        <i class="bi bi-terminal"></i> API Console
-      </a>
+
+  <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4">
+    <div>
+      <h2 class="mb-1"><i class="bi bi-shield-exclamation"></i> Risk Assessment Integration</h2>
+      <p class="text-muted mb-0">
+        Direct view of the integrated <code>ics-risk-assessment</code> repo model, its generated Bayesian outputs, and the live risk service.
+      </p>
     </div>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard:risk_assessment_console' %}">
+      <i class="bi bi-terminal"></i> API Console
+    </a>
   </div>
 
   <ul class="nav nav-pills mb-3" id="riskTabs" role="tablist">
     <li class="nav-item" role="presentation">
-      <button class="nav-link active" id="risk-overview-tab" data-bs-toggle="tab" data-bs-target="#risk-overview" type="button" role="tab">Overview</button>
+      <button class="nav-link active" id="risk-system-tab" data-bs-toggle="tab" data-bs-target="#risk-system" type="button" role="tab">ICS Visuals</button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="risk-system-tab" data-bs-toggle="tab" data-bs-target="#risk-system" type="button" role="tab">System</button>
+      <button class="nav-link" id="risk-bayesian-tab" data-bs-toggle="tab" data-bs-target="#risk-bayesian" type="button" role="tab">Bayesian Network</button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="risk-nodes-tab" data-bs-toggle="tab" data-bs-target="#risk-nodes" type="button" role="tab">Nodes</button>
+      <button class="nav-link" id="risk-fault-tree-tab" data-bs-toggle="tab" data-bs-target="#risk-fault-tree" type="button" role="tab">Fault Trees</button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="risk-mappings-tab" data-bs-toggle="tab" data-bs-target="#risk-mappings" type="button" role="tab">Mappings</button>
+      <button class="nav-link" id="risk-prediction-tab" data-bs-toggle="tab" data-bs-target="#risk-prediction" type="button" role="tab">Prediction</button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="risk-testbed-tab" data-bs-toggle="tab" data-bs-target="#risk-testbed" type="button" role="tab">Testbed</button>
+      <button class="nav-link" id="risk-history-tab" data-bs-toggle="tab" data-bs-target="#risk-history" type="button" role="tab">History</button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="risk-probability-tab" data-bs-toggle="tab" data-bs-target="#risk-probability" type="button" role="tab">Probability</button>
-    </li>
-    <li class="nav-item" role="presentation">
-      <button class="nav-link" id="risk-network-tab" data-bs-toggle="tab" data-bs-target="#risk-network" type="button" role="tab">Network View</button>
+      <button class="nav-link" id="risk-logs-tab" data-bs-toggle="tab" data-bs-target="#risk-logs" type="button" role="tab">Logs</button>
     </li>
   </ul>
 
   <div class="tab-content">
-    <div class="tab-pane fade show active" id="risk-overview" role="tabpanel">
+    <div class="tab-pane fade show active" id="risk-system" role="tabpanel">
+      <div class="row g-3">
+        <div class="col-xl-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <h5 class="mb-0">Integrated Module Artifacts</h5>
+              <button class="btn btn-sm btn-outline-primary" id="risk-ics-refresh">
+                <i class="bi bi-arrow-clockwise"></i> Refresh
+              </button>
+            </div>
+            <div class="card-body">
+              <div id="risk-ics-summary-status" class="text-muted mb-3">Inspecting repository artifacts…</div>
+              <div id="risk-ics-summary-grid" class="risk-summary-grid"></div>
+              <div class="small text-muted mt-3">
+                Repo path:
+                <code>{{ risk_ics_repo_path|default:"(unset)" }}</code>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-xl-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-header">
+              <h5 class="mb-0">Integration Surface</h5>
+            </div>
+            <div class="card-body">
+              <p class="text-muted mb-3">
+                This page reflects the integrated module directly rather than a dashboard-owned workflow layer.
+                The visuals and queries below come from the repo-backed model files and the live risk service.
+              </p>
+              <div class="risk-summary-grid">
+                <div class="risk-summary-card">
+                  <div class="risk-summary-label">Repo Model</div>
+                  <div class="fw-semibold mt-1">sim_system.json</div>
+                  <div class="small text-muted mt-2"><code>{{ risk_pid_target_path|default:"(unset)" }}</code></div>
+                </div>
+                <div class="risk-summary-card">
+                  <div class="risk-summary-label">Live Service</div>
+                  <div class="fw-semibold mt-1">Risk API</div>
+                  <div class="small text-muted mt-2"><code>{{ risk_service_url|default:"(unset)" }}</code></div>
+                </div>
+                <div class="risk-summary-card">
+                  <div class="risk-summary-label">Repo Outputs</div>
+                  <div class="fw-semibold mt-1">BIF + CPT + Fault Trees</div>
+                  <div class="small text-muted mt-2">Generated outputs are rendered directly from the integrated module repo.</div>
+                </div>
+                <div class="risk-summary-card">
+                  <div class="risk-summary-label">Live Query</div>
+                  <div class="fw-semibold mt-1">Prediction + History</div>
+                  <div class="small text-muted mt-2">Probability results come from the live integrated risk service.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12">
+          <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <h5 class="mb-0">Repo System Graph</h5>
+              <button class="btn btn-sm btn-outline-primary" id="risk-system-refresh">
+                <i class="bi bi-diagram-3"></i> Refresh
+              </button>
+            </div>
+            <div class="card-body">
+              <div id="risk-system-status" class="text-muted mb-3">No repo system graph loaded.</div>
+              <div id="risk-system-workspace" class="risk-graph-workspace">
+                <div class="risk-graph-toolbar">
+                  <div class="risk-graph-toolbar-group">
+                    <label class="small text-muted mb-0" for="risk-system-layout">Layout</label>
+                    <select id="risk-system-layout" class="form-select form-select-sm">
+                      <option value="sectioned" selected>Sectioned</option>
+                      <option value="breadthfirst">Layered</option>
+                      <option value="cose">Force</option>
+                      <option value="concentric">Radial</option>
+                    </select>
+                    <label class="small text-muted mb-0" for="risk-system-label-mode">Labels</label>
+                    <select id="risk-system-label-mode" class="form-select form-select-sm">
+                      <option value="compact" selected>Compact</option>
+                      <option value="full">Always On</option>
+                      <option value="focus">Selection Only</option>
+                    </select>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="risk-system-relayout">
+                      <i class="bi bi-distribute-vertical"></i> Re-layout
+                    </button>
+                  </div>
+                  <div class="risk-graph-toolbar-group">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="risk-system-fit">
+                      <i class="bi bi-bounding-box"></i> Fit
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="risk-system-focus">
+                      <i class="bi bi-crosshair"></i> Focus Selection
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="risk-system-zoom-out" aria-label="Zoom out">
+                      <i class="bi bi-zoom-out"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="risk-system-zoom-in" aria-label="Zoom in">
+                      <i class="bi bi-zoom-in"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="risk-system-fullscreen">
+                      <i class="bi bi-arrows-fullscreen"></i> Fullscreen
+                    </button>
+                  </div>
+                </div>
+                <div class="risk-graph-meta-row">
+                  <div id="risk-system-meta" class="small text-muted">
+                    Use mousewheel or pinch to zoom, drag to pan, and switch to fullscreen for dense repo graphs.
+                  </div>
+                  <div class="risk-graph-legend" aria-label="System graph legend">
+                    <span class="risk-legend-item"><span class="risk-legend-swatch is-digital"></span>Digital</span>
+                    <span class="risk-legend-item"><span class="risk-legend-swatch is-network"></span>Network</span>
+                    <span class="risk-legend-item"><span class="risk-legend-swatch is-physical"></span>Physical</span>
+                    <span class="risk-legend-item"><span class="risk-legend-swatch is-flow"></span>Flow</span>
+                    <span class="risk-legend-item"><span class="risk-legend-swatch is-function"></span>Function</span>
+                  </div>
+                </div>
+                <div class="row g-3 risk-graph-layout-row">
+                  <div class="col-xl-8 risk-graph-main-col">
+                    <div id="risk-system-graph" class="risk-graph-frame"></div>
+                  </div>
+                  <div class="col-xl-4 risk-graph-side-col">
+                    <div class="risk-detail-card h-100">
+                      <div class="fw-semibold mb-2">Selected System Node</div>
+                      <div id="risk-system-detail-body" class="small text-muted">
+                        Select a repo-backed asset to inspect it. Compact labels and fullscreen help when the model is dense.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="risk-bayesian" role="tabpanel">
       <div class="card shadow-sm">
-        <div class="card-header d-flex justify-content-between align-items-center">
-          <h5 class="mb-0">Service Status</h5>
-          <button class="btn btn-sm btn-outline-primary" id="risk-status-refresh">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <h5 class="mb-0">Repo Bayesian Graph</h5>
+          <button class="btn btn-sm btn-outline-primary" id="risk-bayesian-refresh">
             <i class="bi bi-arrow-clockwise"></i> Refresh
           </button>
         </div>
         <div class="card-body">
-          <div id="risk-status" class="text-muted">Loading status…</div>
-          <div id="risk-status-summary" class="mt-3"></div>
-        </div>
-      </div>
-      <div class="card shadow-sm mt-3">
-        <div class="card-header">
-          <h5 class="mb-0">P&amp;ID Draw.io Import</h5>
-        </div>
-        <div class="card-body">
-          <p class="text-muted mb-3">Convert draw.io XML into the current <code>sim_system.json</code> used by the workspace and, optionally, the upstream risk service.</p>
-          <div class="row g-3 align-items-end">
-            <div class="col-lg-6">
-              <label class="form-label" for="risk-pid-file">Draw.io XML</label>
-              <input type="file" class="form-control" id="risk-pid-file" accept=".xml,.drawio">
-            </div>
-            <div class="col-lg-4">
-              <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="risk-pid-upload-target">
-                <label class="form-check-label" for="risk-pid-upload-target">Upload to risk assessment workspace</label>
-              </div>
-              <div class="text-muted small" id="risk-pid-target-hint"></div>
-            </div>
-            <div class="col-lg-2 d-grid">
-              <button type="button" class="btn btn-primary" id="risk-pid-upload">
-                <i class="bi bi-upload"></i> Convert &amp; Upload
-              </button>
-            </div>
-          </div>
-          <div id="risk-pid-status" class="text-muted mt-3">Ready to convert.</div>
-        </div>
-      </div>
-      <div class="card shadow-sm mt-3">
-        <div class="card-header">
-          <h5 class="mb-0">Current Model Workflow</h5>
-        </div>
-        <div class="card-body">
-          <p class="text-muted mb-3">Operate on the current model source, validate expected cyber nodes, and drive the active twin workflow.</p>
+          <div id="risk-bayesian-status" class="text-muted mb-3">No Bayesian graph loaded.</div>
           <div class="row g-3">
-            <div class="col-lg-4">
-              <div class="fw-semibold mb-2">Step 1: Knowledge Extraction</div>
-              <div class="text-muted small mb-2">Convert draw.io XML into <code>sim_system.json</code>.</div>
-              <button type="button" class="btn btn-outline-primary w-100" id="risk-workflow-extract">Use P&amp;ID Import</button>
+            <div class="col-xl-8">
+              <div id="risk-bayesian-graph" class="risk-graph-frame"></div>
             </div>
-            <div class="col-lg-4">
-              <div class="fw-semibold mb-2">Step 2: System Definition</div>
-              <div class="text-muted small mb-2">Load the system graph from the PID outputs.</div>
-              <button type="button" class="btn btn-outline-primary w-100" id="risk-workflow-system">Open System View</button>
-            </div>
-            <div class="col-lg-4">
-              <div class="fw-semibold mb-2">Step 3: Network Validation</div>
-              <div class="text-muted small mb-2">Validate expected PID cyber nodes against discovered assets.</div>
-              <button type="button" class="btn btn-primary w-100" id="risk-workflow-validate">Validate Network</button>
-            </div>
-            <div class="col-lg-4">
-              <div class="fw-semibold mb-2">Run End-to-End</div>
-              <div class="text-muted small mb-2">Convert, validate, scan, and generate a twin in one run.</div>
-              <button type="button" class="btn btn-dark w-100" id="risk-workflow-run">Run Full Workflow</button>
-            </div>
-            <div class="col-lg-4">
-              <div class="fw-semibold mb-2">Emulation Testbed</div>
-              <div class="text-muted small mb-2">Generate docker-compose + inventory for PID cyber nodes.</div>
-              <button type="button" class="btn btn-outline-dark w-100" id="risk-workflow-testbed">Generate Testbed</button>
-            </div>
-          </div>
-          <div class="row g-3 mt-1">
-            <div class="col-lg-4">
-              <div class="fw-semibold mb-2">Step 4: Vulnerability Discovery</div>
-              <div class="text-muted small mb-2">Launch OpenVAS scans per VLAN CIDR.</div>
-              <button type="button" class="btn btn-outline-danger w-100" id="risk-workflow-vuln">Run OpenVAS</button>
-            </div>
-            <div class="col-lg-4">
-              <div class="fw-semibold mb-2">Step 5: Penetration Testing</div>
-              <div class="text-muted small mb-2">Generate a PID-based scan run for the digital twin.</div>
-              <button type="button" class="btn btn-outline-secondary w-100" id="risk-workflow-twin">Create Digital Twin</button>
-            </div>
-            <div class="col-lg-4">
-              <div class="fw-semibold mb-2">Step 6: Emulation</div>
-              <div class="text-muted small mb-2">Open the Digital Twin workspace for emulation.</div>
-              <button type="button" class="btn btn-outline-secondary w-100" id="risk-workflow-open-twin">Open Digital Twin</button>
-            </div>
-            <div class="col-lg-4">
-              <div class="fw-semibold mb-2">Validation Flags</div>
-              <div class="text-muted small mb-2">Toggle optional steps for full workflow.</div>
-              <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="risk-workflow-include-openvas">
-                <label class="form-check-label small" for="risk-workflow-include-openvas">Include OpenVAS</label>
+            <div class="col-xl-4">
+              <div class="risk-detail-card">
+                <div class="fw-semibold mb-2">Selected Bayesian Node</div>
+                <div id="risk-bayesian-detail" class="small text-muted">Select a node to inspect CPT and sidecar metadata.</div>
               </div>
-              <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="risk-workflow-include-twin">
-                <label class="form-check-label small" for="risk-workflow-include-twin">Create Digital Twin</label>
+              <div class="risk-detail-card mt-3">
+                <div class="fw-semibold mb-2">Pipeline Log</div>
+                <pre id="risk-bayesian-pipeline-log" class="risk-json-viewer risk-json-viewer--short">No pipeline log loaded.</pre>
               </div>
             </div>
           </div>
-          <div class="mt-3">
-            <div class="small text-muted mb-1">Validation options</div>
-            <div class="d-flex flex-wrap gap-3 align-items-center">
-              <select class="form-select form-select-sm" id="risk-workflow-scan">
-                <option value="">No discovery scan</option>
-                <option value="ping">Ping sweep</option>
-                <option value="nmap">Nmap discovery</option>
-              </select>
-              <label class="form-check-label small">
-                <input type="checkbox" class="form-check-input me-1" id="risk-workflow-sync"> Run scans synchronously
-              </label>
-              <input type="number" class="form-control form-control-sm" id="risk-workflow-scanrun" placeholder="Scan Run ID">
-            </div>
-          </div>
-          <div id="risk-workflow-status" class="text-muted mt-3">Workflow idle.</div>
-          <div id="risk-workflow-report" class="risk-workflow-report mt-3"></div>
         </div>
       </div>
     </div>
 
-    <div class="tab-pane fade" id="risk-system" role="tabpanel">
-      <div class="card shadow-sm">
-        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-          <h5 class="mb-0">System View</h5>
-          <div class="d-flex gap-2 align-items-center">
-            <select class="form-select form-select-sm" id="risk-system-source">
-              <option value="auto">Current sim_system.json</option>
-              <option value="target">Configured Target Path</option>
-            </select>
-            <select class="form-select form-select-sm" id="risk-system-layout">
-              <option value="breadthfirst">Breadthfirst</option>
-              <option value="cose">COSE</option>
-              <option value="circle">Circle</option>
-            </select>
-            <div class="d-flex align-items-center gap-1 small text-muted">
-              <label for="risk-system-spacing" class="mb-0">Spacing</label>
-              <input type="range" id="risk-system-spacing" min="1" max="3" step="0.1" value="1.8">
-              <span id="risk-system-spacing-value">1.8</span>
-            </div>
-            <div class="form-check form-switch">
-              <input class="form-check-input" type="checkbox" id="risk-system-network" checked>
-              <label class="form-check-label" for="risk-system-network">Network overlay</label>
-            </div>
-            <button class="btn btn-sm btn-outline-secondary" id="risk-system-relayout">
-              <i class="bi bi-arrow-repeat"></i> Relayout
-            </button>
-            <button class="btn btn-sm btn-outline-primary" id="risk-system-refresh">
-              <i class="bi bi-diagram-3"></i> Load System
-            </button>
-          </div>
-        </div>
-        <div class="card-body">
-          <div id="risk-system-status" class="text-muted mb-3">No system loaded.</div>
-          <div id="risk-system-graph" class="risk-network-graph"></div>
-          <div id="risk-system-detail" class="risk-system-detail mt-3">
-            <div class="fw-semibold">Selected node</div>
-            <div id="risk-system-detail-body" class="small text-muted">Click a node to see details.</div>
-          </div>
-          <div id="risk-system-unconnected" class="small text-muted mt-2"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="tab-pane fade" id="risk-nodes" role="tabpanel">
-      <div class="card shadow-sm">
-        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-          <h5 class="mb-0">Available Nodes</h5>
-          <div class="d-flex gap-2">
-            <select class="form-select form-select-sm" id="risk-node-source">
-              <option value="pid">Current sim_system.json</option>
-              <option value="risk">Risk service</option>
-            </select>
-            <label class="visually-hidden" for="risk-node-filter">Filter nodes</label>
-            <input class="form-control form-control-sm" id="risk-node-filter" placeholder="Filter nodes">
-            <button class="btn btn-sm btn-outline-primary" id="risk-nodes-refresh">
-              <i class="bi bi-arrow-clockwise"></i> Refresh
-            </button>
-          </div>
-        </div>
-        <div class="card-body p-0">
-          <div class="table-responsive">
-            <table class="table table-hover mb-0" id="risk-nodes-table">
-              <thead class="table-light">
-                <tr>
-                  <th>Node</th>
-                  <th>States</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td colspan="2" class="text-center text-muted">Loading nodes…</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="tab-pane fade" id="risk-mappings" role="tabpanel">
-      <div class="card shadow-sm">
-        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-          <h5 class="mb-0">Risk Node Mappings</h5>
-          <div class="d-flex gap-2">
-            <label class="visually-hidden" for="risk-mapping-filter">Filter mappings</label>
-            <input class="form-control form-control-sm" id="risk-mapping-filter" placeholder="Filter nodes or IPs">
-            <button class="btn btn-sm btn-outline-primary" id="risk-mappings-refresh">
-              <i class="bi bi-arrow-clockwise"></i> Refresh
-            </button>
-            <button class="btn btn-sm btn-outline-secondary" id="risk-mappings-import">
-              <i class="bi bi-upload"></i> Import CSV
-            </button>
-            <button class="btn btn-sm btn-outline-primary" id="risk-mappings-save-all">
-              <i class="bi bi-save"></i> Save All
-            </button>
-          </div>
-        </div>
-        <div class="card-body">
-          <input type="file" id="risk-mapping-file" class="d-none" accept=".csv,text/csv">
-          <div id="risk-mapping-summary" class="text-muted mb-2">Loading mappings…</div>
-          <div class="table-responsive">
-            <table class="table table-hover mb-0" id="risk-mapping-table">
-              <thead class="table-light">
-                <tr>
-                  <th>Risk Node ID</th>
-                  <th>Map to Node</th>
-                  <th>IP Address</th>
-                  <th>Label</th>
-                  <th>Notes</th>
-                  <th>Active</th>
-                  <th>Node Metadata</th>
-                  <th>Action</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td colspan="9" class="text-center text-muted">Loading mappings…</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="tab-pane fade" id="risk-testbed" role="tabpanel">
-      <div class="card shadow-sm">
-        <div class="card-header">
-          <h5 class="mb-0">Risk Schema Testbed</h5>
-        </div>
-        <div class="card-body">
-          <p class="text-muted">Generate a synthetic network from the current risk-node set and push it through the supported risk workflow.</p>
-          <form id="risk-testbed-form" class="row g-3">
-            <div class="col-md-4">
-              <label class="form-label" for="risk-testbed-cidr">CIDR</label>
-              <input class="form-control" id="risk-testbed-cidr" value="192.168.236.0/24">
-            </div>
-            <div class="col-md-4">
-              <label class="form-label" for="risk-testbed-max-cves">Max CVEs per node</label>
-              <input type="number" min="0" max="50" class="form-control" id="risk-testbed-max-cves" value="10">
-            </div>
-            <div class="col-12">
-              <label class="form-label" for="risk-testbed-cves">CVE List (comma or newline separated)</label>
-              <textarea class="form-control" id="risk-testbed-cves" rows="4" placeholder="CVE-TEST-0001, CVE-TEST-0002"></textarea>
-            </div>
-            <div class="col-12 d-flex gap-2">
-              <button type="submit" class="btn btn-primary">
-                <i class="bi bi-hdd-network"></i> Generate Testbed
-              </button>
-              <button type="button" class="btn btn-outline-secondary" id="risk-testbed-refresh">
-                <i class="bi bi-arrow-clockwise"></i> Refresh Mappings
+    <div class="tab-pane fade" id="risk-fault-tree" role="tabpanel">
+      <div class="row g-3">
+        <div class="col-xl-4">
+          <div class="card shadow-sm h-100">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <h5 class="mb-0">Fault Tree Components</h5>
+              <button class="btn btn-sm btn-outline-primary" id="risk-fault-tree-refresh">
+                <i class="bi bi-arrow-clockwise"></i> Refresh
               </button>
             </div>
-          </form>
-          <div id="risk-testbed-status" class="text-muted mt-3">Ready to generate.</div>
+            <div class="card-body">
+              <div id="risk-fault-tree-status" class="text-muted mb-3">No fault-tree summary loaded.</div>
+              <div class="risk-fault-tree-toolbar mb-3">
+                <input
+                  type="search"
+                  class="form-control form-control-sm"
+                  id="risk-fault-tree-filter"
+                  placeholder="Filter components, folders, or states"
+                >
+              </div>
+              <div id="risk-fault-tree-summary" class="risk-summary-grid risk-summary-grid--compact mb-3"></div>
+              <div id="risk-fault-tree-list" class="risk-fault-tree-list">
+                <div class="text-muted small">Select the tab to load repo fault-tree components.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-xl-8">
+          <div class="card shadow-sm h-100">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <h5 class="mb-0">Selected Fault Tree</h5>
+              <div id="risk-fault-tree-selected-meta" class="small text-muted">No component selected.</div>
+            </div>
+            <div class="card-body">
+              <div id="risk-fault-tree-detail" class="text-muted">Select a fault-tree component to inspect its component data, rule sets, and value previews.</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="tab-pane fade" id="risk-probability" role="tabpanel">
-      <div class="row g-4">
-        <div class="col-lg-5">
+    <div class="tab-pane fade" id="risk-prediction" role="tabpanel">
+      <div class="row g-3">
+        <div class="col-xl-4">
           <div class="card shadow-sm">
             <div class="card-header">
-              <h5 class="mb-0">Probability Query</h5>
+              <h5 class="mb-0">Prediction Controls</h5>
             </div>
             <div class="card-body">
-              <form id="risk-probability-form">
-                <div class="mb-3">
-                  <label class="form-label" for="risk-t">Time Horizon (T)</label>
-                  <input type="number" min="0" class="form-control" id="risk-t" value="3">
-                </div>
-                <div class="mb-3">
-                  <label class="form-label" for="risk-nodes-input">Nodes (comma separated)</label>
-                  <input type="text" class="form-control" id="risk-nodes-input" placeholder="{{ risk_primary_example_node }}">
-                </div>
-                <div class="mb-3">
-                  <label class="form-label" for="risk-vulnerabilities">Vulnerability Updates (JSON)</label>
-                  <textarea class="form-control" id="risk-vulnerabilities" rows="4" placeholder='{"{{ risk_primary_example_node }}":{"{{ risk_primary_example_cve }}":{"epss":0.7}}}'></textarea>
-                  <div class="form-text">The current risk API supports <code>/post_vulnerability</code> and <code>/get_probability</code> for this workflow. <code>/post_detection</code> exists upstream, but it does not expose posterior probabilities for the dashboard to query afterward.</div>
-                </div>
-                <div class="d-flex gap-2">
-                  <button type="submit" class="btn btn-primary">
-                    <i class="bi bi-calculator"></i> Calculate
-                  </button>
-                  <button type="button" class="btn btn-outline-secondary" id="risk-probability-reset">Reset</button>
-                </div>
-              </form>
+              <div class="mb-3">
+                <label class="form-label" for="risk-prediction-t">Time Horizon (T)</label>
+                <input type="number" min="1" class="form-control" id="risk-prediction-t" value="4">
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="risk-prediction-nodes">Module Nodes</label>
+                <textarea class="form-control" id="risk-prediction-nodes" rows="6"></textarea>
+                <div class="form-text">Comma or newline separated node ids from the integrated module model.</div>
+              </div>
+              <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-primary" id="risk-prediction-run">
+                  <i class="bi bi-play-fill"></i> Run Prediction
+                </button>
+                <button class="btn btn-outline-secondary" id="risk-prediction-defaults">
+                  Use Core Module Nodes
+                </button>
+              </div>
+              <div id="risk-prediction-status" class="text-muted mt-3">Ready to query the loaded DBN.</div>
             </div>
           </div>
         </div>
-        <div class="col-lg-7">
-          <div class="card shadow-sm h-100">
-            <div class="card-header d-flex justify-content-between align-items-center">
-              <h5 class="mb-0">Results</h5>
-              <button class="btn btn-sm btn-outline-secondary" id="risk-results-copy">
-                <i class="bi bi-clipboard"></i> Copy JSON
-              </button>
+        <div class="col-xl-8">
+          <div class="card shadow-sm">
+            <div class="card-header">
+              <h5 class="mb-0">Prediction Results</h5>
             </div>
             <div class="card-body">
-              <pre id="risk-results" class="mb-0 text-muted">Run a probability query to see results.</pre>
+              <div id="risk-prediction-summary" class="risk-summary-grid mb-3"></div>
+              <div id="risk-prediction-results" class="risk-prediction-results text-muted">Run a prediction query to render module node timelines.</div>
             </div>
           </div>
         </div>
       </div>
     </div>
 
-    <div class="tab-pane fade" id="risk-network" role="tabpanel">
-      <div class="card shadow-sm">
-        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-          <h5 class="mb-0">Network Risk Overlay</h5>
-          <div class="d-flex gap-2">
-            <button class="btn btn-sm btn-outline-secondary" id="risk-network-load">
-              <i class="bi bi-diagram-3"></i> Load Graph
-            </button>
-            <button class="btn btn-sm btn-outline-primary" id="risk-network-refresh">
-              <i class="bi bi-arrow-clockwise"></i> Compute Risk
-            </button>
+    <div class="tab-pane fade" id="risk-history" role="tabpanel">
+      <div class="row g-3">
+        <div class="col-xl-4">
+          <div class="card shadow-sm">
+            <div class="card-header">
+              <h5 class="mb-0">History Sampling</h5>
+            </div>
+            <div class="card-body">
+              <div class="mb-3">
+                <label class="form-label" for="risk-history-nodes">Tracked Module Nodes</label>
+                <textarea class="form-control" id="risk-history-nodes" rows="6"></textarea>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="risk-history-interval">Polling Interval</label>
+                <select class="form-select" id="risk-history-interval">
+                  <option value="1000">1 second</option>
+                  <option value="2000">2 seconds</option>
+                  <option value="5000" selected>5 seconds</option>
+                  <option value="10000">10 seconds</option>
+                  <option value="15000">15 seconds</option>
+                </select>
+              </div>
+              <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-primary" id="risk-history-start">
+                  <i class="bi bi-play-fill"></i> Start
+                </button>
+                <button class="btn btn-outline-secondary" id="risk-history-stop">
+                  <i class="bi bi-pause-fill"></i> Stop
+                </button>
+                <button class="btn btn-outline-danger" id="risk-history-reset">
+                  <i class="bi bi-trash"></i> Reset
+                </button>
+              </div>
+              <div id="risk-history-status" class="text-muted mt-3">History sampling is stopped.</div>
+            </div>
           </div>
         </div>
-        <div class="card-body">
-          <div id="risk-graph-status" class="text-muted mb-3">Loading graph…</div>
-          <div class="row g-3">
-            <div class="col-lg-7">
-              <div id="risk-network-graph" class="risk-network-graph"></div>
-              <div class="d-flex flex-wrap gap-3 small text-muted mt-2">
-                <span><span class="badge bg-danger">High</span> ≥ 70%</span>
-                <span><span class="badge bg-warning text-dark">Medium</span> 40–69%</span>
-                <span><span class="badge bg-success">Low</span> &lt; 40%</span>
-                <span><span class="badge bg-secondary">Unknown</span> No data</span>
-              </div>
+        <div class="col-xl-8">
+          <div class="card shadow-sm">
+            <div class="card-header">
+              <h5 class="mb-0">Recent Probability Samples</h5>
             </div>
-            <div class="col-lg-5">
+            <div class="card-body">
+              <div id="risk-history-summary" class="risk-summary-grid mb-3"></div>
               <div class="table-responsive">
-                <table class="table table-hover mb-0" id="risk-network-table">
+                <table class="table table-hover mb-0" id="risk-history-table">
                   <thead class="table-light">
                     <tr>
+                      <th>Elapsed</th>
                       <th>Node</th>
-                      <th>IP</th>
-                      <th>Risk Node ID</th>
-                      <th>CVEs</th>
-                      <th>Top CVEs</th>
-                      <th>Risk Score</th>
-                      <th>Risk Level</th>
+                      <th>Normal</th>
+                      <th>Compromised</th>
+                      <th>Abnormal</th>
+                      <th>Other States</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td colspan="7" class="text-center text-muted">Compute to load mapped vulnerabilities and risk results.</td>
+                      <td colspan="6" class="text-center text-muted">No samples collected yet.</td>
                     </tr>
                   </tbody>
                 </table>
@@ -422,189 +357,516 @@
         </div>
       </div>
     </div>
+
+    <div class="tab-pane fade" id="risk-logs" role="tabpanel">
+      <div class="row g-3">
+        <div class="col-xl-7">
+          <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <h5 class="mb-0">Dashboard Activity Log</h5>
+              <button class="btn btn-sm btn-outline-secondary" id="risk-logs-clear">
+                <i class="bi bi-eraser"></i> Clear
+              </button>
+            </div>
+            <div class="card-body p-0">
+              <div class="table-responsive">
+                <table class="table table-hover mb-0" id="risk-activity-table">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Time</th>
+                      <th>Kind</th>
+                      <th>Message</th>
+                      <th>Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td colspan="4" class="text-center text-muted">No activity recorded yet.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-xl-5">
+          <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <h5 class="mb-0">Risk Service Controls</h5>
+              <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-sm btn-outline-success" id="risk-status-upload-model">
+                  <i class="bi bi-cloud-upload"></i> Upload Repo Model
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" id="risk-status-unload-model">
+                  <i class="bi bi-eject"></i> Unload Model
+                </button>
+                <button class="btn btn-sm btn-outline-primary" id="risk-status-refresh">
+                  <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="risk-status-summary" class="mb-3 text-muted">Loading status…</div>
+              <pre id="risk-status" class="risk-json-viewer risk-json-viewer--short">Loading status…</pre>
+              <div id="risk-service-upload-status" class="small text-muted mt-3">
+                The preferred repo model comes from <code>upload/sim_system.json</code>, with fallback to <code>db/sim_system.json</code>.
+              </div>
+            </div>
+          </div>
+          <div class="card shadow-sm mt-3">
+            <div class="card-header">
+              <h5 class="mb-0">Repository Pipeline Log</h5>
+            </div>
+            <div class="card-body">
+              <pre id="risk-log-pipeline" class="risk-json-viewer risk-json-viewer--short">No pipeline log loaded.</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
+
+{{ risk_hybrid_focus_nodes|json_script:"risk-hybrid-focus-nodes" }}
 {% endblock %}
 
 {% block extra_scripts %}
 <style>
-  .risk-network-graph {
-    height: 80vh;
-    min-height: 640px;
+  .risk-page .nav-pills .nav-link {
+    border-radius: 999px;
+  }
+  .risk-json-viewer {
+    min-height: 240px;
+    max-height: 42vh;
+    overflow: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 12px 14px;
+    font-size: 0.84rem;
+    margin: 0;
+  }
+  .risk-json-viewer--short {
+    min-height: 180px;
+    max-height: 28vh;
+  }
+  .risk-summary-grid {
+    display: grid;
+    gap: 0.85rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+  .risk-summary-card,
+  .risk-layer-card,
+  .risk-detail-card,
+  .risk-prediction-node {
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 12px 14px;
+    background: #f8fafc;
+  }
+  .risk-summary-label {
+    color: #475569;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .risk-layer-grid {
+    display: grid;
+    gap: 0.85rem;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  }
+  .risk-layer-list {
+    display: grid;
+    gap: 0.65rem;
+  }
+  .risk-fault-tree-list {
+    display: grid;
+    gap: 0.75rem;
+    max-height: 72vh;
+    overflow: auto;
+  }
+  .risk-fault-tree-toolbar {
+    display: flex;
+    gap: 0.65rem;
+    align-items: center;
+  }
+  .risk-summary-grid--compact {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  }
+  .risk-fault-tree-item {
+    width: 100%;
+    text-align: left;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 0.8rem 0.9rem;
+    background: #f8fafc;
+    transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  }
+  .risk-fault-tree-item:hover {
+    border-color: #93c5fd;
+    background: #f8fbff;
+  }
+  .risk-fault-tree-item.is-active {
+    border-color: #2563eb;
+    box-shadow: inset 0 0 0 1px #2563eb;
+    background: #eff6ff;
+  }
+  .risk-fault-tree-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.55rem;
+  }
+  .risk-fault-tree-condition {
+    border-top: 1px dashed #cbd5e1;
+    padding-top: 0.8rem;
+    margin-top: 0.8rem;
+  }
+  .risk-fault-tree-state-row,
+  .risk-fault-tree-folder-row,
+  .risk-fault-tree-pill-row,
+  .risk-fault-tree-probability-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .risk-fault-tree-state-row,
+  .risk-fault-tree-folder-row {
+    margin-top: 0.65rem;
+  }
+  .risk-fault-tree-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.18rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #334155;
+    font-size: 0.76rem;
+    line-height: 1.2;
+  }
+  .risk-fault-tree-pill.is-state {
+    background: #eef2ff;
+    border-color: #c7d2fe;
+    color: #3730a3;
+  }
+  .risk-fault-tree-pill.is-folder {
+    background: #f8fafc;
+  }
+  .risk-fault-tree-grid {
+    display: grid;
+    gap: 1rem;
+  }
+  .risk-fault-tree-mini-grid {
+    display: grid;
+    gap: 0.9rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+  .risk-fault-tree-bucket-list {
+    display: grid;
+    gap: 0.45rem;
+  }
+  .risk-fault-tree-bucket-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.45rem 0.55rem;
+    border-radius: 8px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    font-size: 0.82rem;
+  }
+  .risk-fault-tree-condition-grid {
+    display: grid;
+    gap: 1rem;
+  }
+  .risk-fault-tree-condition-card {
+    border: 1px solid #dbe4ef;
+    border-radius: 12px;
+    padding: 1rem;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  }
+  .risk-fault-tree-scenario-table {
+    width: 100%;
+    font-size: 0.82rem;
+  }
+  .risk-fault-tree-scenario-table th,
+  .risk-fault-tree-scenario-table td {
+    padding: 0.42rem 0.5rem;
+    border-top: 1px solid #e2e8f0;
+    vertical-align: top;
+  }
+  .risk-fault-tree-scenario-table thead th {
+    border-top: none;
+    color: #475569;
+    font-weight: 600;
+  }
+  .risk-fault-tree-prob-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 999px;
+    border: 1px solid #bfdbfe;
+    background: #eff6ff;
+    color: #1d4ed8;
+    padding: 0.16rem 0.5rem;
+    font-size: 0.74rem;
+  }
+  .risk-fault-tree-graph-frame {
+    height: 30rem;
+    min-height: 22rem;
+    border: 1px solid #dbe4ef;
+    border-radius: 10px;
+    background:
+      radial-gradient(circle at top left, rgba(37, 99, 235, 0.06), transparent 30%),
+      linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  }
+  .risk-fault-tree-graph-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+  }
+  .risk-fault-tree-graph-toolbar .form-select {
+    min-width: 13rem;
+  }
+  .risk-layer-item {
+    padding-top: 0.55rem;
+    border-top: 1px dashed #cbd5e1;
+  }
+  .risk-layer-item:first-child {
+    border-top: none;
+    padding-top: 0;
+  }
+  .risk-graph-frame {
+    height: 78vh;
+    min-height: 620px;
     max-height: 90vh;
-    background-color: var(--graph-bg);
+    background:
+      radial-gradient(circle at top left, rgba(37, 99, 235, 0.07), transparent 32%),
+      linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: 10px;
   }
-  .risk-system-detail {
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 12px 14px;
-    background: #f8fafc;
+  .risk-graph-workspace {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    padding: 0.9rem;
   }
-  .risk-workflow-report {
-    border: 1px dashed var(--border-color);
-    border-radius: 8px;
-    padding: 12px 14px;
+  .risk-graph-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+  }
+  .risk-graph-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+  }
+  .risk-graph-toolbar .form-select {
+    min-width: 9.5rem;
+  }
+  .risk-graph-meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+  }
+  .risk-graph-legend {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .risk-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.78rem;
+    color: #475569;
     background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    padding: 0.18rem 0.55rem;
+  }
+  .risk-legend-swatch {
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 999px;
+    display: inline-block;
+  }
+  .risk-legend-swatch.is-digital {
+    background: #2563eb;
+  }
+  .risk-legend-swatch.is-network {
+    background: #ea580c;
+  }
+  .risk-legend-swatch.is-physical {
+    background: #0d9488;
+  }
+  .risk-legend-swatch.is-flow {
+    background: #15803d;
+  }
+  .risk-legend-swatch.is-function {
+    background: #ca8a04;
+  }
+  .risk-graph-workspace.is-fullscreen,
+  .risk-graph-workspace:fullscreen {
+    width: 100%;
+    height: 100%;
+    min-height: 100vh;
+    border-radius: 0;
+    padding: 1rem;
+    background: #f8fafc;
+    display: flex;
+    flex-direction: column;
+  }
+  .risk-graph-workspace.is-fullscreen .risk-graph-layout-row,
+  .risk-graph-workspace:fullscreen .risk-graph-layout-row {
+    flex: 1;
+    min-height: 0;
+  }
+  .risk-graph-workspace.is-fullscreen .risk-graph-main-col,
+  .risk-graph-workspace.is-fullscreen .risk-graph-side-col,
+  .risk-graph-workspace:fullscreen .risk-graph-main-col,
+  .risk-graph-workspace:fullscreen .risk-graph-side-col {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .risk-graph-workspace.is-fullscreen .risk-graph-frame,
+  .risk-graph-workspace.is-fullscreen .risk-detail-card,
+  .risk-graph-workspace:fullscreen .risk-graph-frame,
+  .risk-graph-workspace:fullscreen .risk-detail-card {
+    height: 100%;
+    max-height: none;
+    min-height: 0;
+    flex: 1;
+  }
+  .risk-prediction-results {
+    display: grid;
+    gap: 0.85rem;
+  }
+  .risk-prediction-table {
+    width: 100%;
+    font-size: 0.84rem;
+  }
+  .risk-prediction-table th,
+  .risk-prediction-table td {
+    padding: 0.35rem 0.45rem;
+    border-top: 1px solid #e2e8f0;
+    vertical-align: top;
+  }
+  .risk-prediction-table thead th {
+    border-top: none;
+    color: #475569;
+    font-weight: 600;
   }
   @media (max-width: 992px) {
-    .risk-network-graph {
+    .risk-graph-frame {
       height: 60vh;
       min-height: 420px;
     }
+    .risk-graph-toolbar .form-select {
+      min-width: 0;
+      width: auto;
+    }
   }
 </style>
+
 <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
 <script>
-  const statusEl = document.getElementById('risk-status');
+  const hybridFocusNodes = JSON.parse(document.getElementById('risk-hybrid-focus-nodes').textContent || '[]');
+  const faultTreeAndGateUrl = "{% static 'dashboard/gates/and-gate.svg' %}";
+  const faultTreeOrGateUrl = "{% static 'dashboard/gates/or-gate.svg' %}";
+
+  const statusRaw = document.getElementById('risk-status');
   const statusSummary = document.getElementById('risk-status-summary');
-  const nodesTableBody = document.querySelector('#risk-nodes-table tbody');
-  const nodeFilter = document.getElementById('risk-node-filter');
-  const resultsEl = document.getElementById('risk-results');
-  const riskGraphStatus = document.getElementById('risk-graph-status');
-  const riskGraphContainer = document.getElementById('risk-network-graph');
-  const mappingTableBody = document.querySelector('#risk-mapping-table tbody');
-  const mappingFilter = document.getElementById('risk-mapping-filter');
-  const mappingSummary = document.getElementById('risk-mapping-summary');
-  const mappingFileInput = document.getElementById('risk-mapping-file');
-  const mappingImportButton = document.getElementById('risk-mappings-import');
-  const mappingSaveAllButton = document.getElementById('risk-mappings-save-all');
-  const testbedForm = document.getElementById('risk-testbed-form');
-  const testbedStatus = document.getElementById('risk-testbed-status');
-  const testbedRefresh = document.getElementById('risk-testbed-refresh');
-  const riskNodeSource = document.getElementById('risk-node-source');
-  const pidFileInput = document.getElementById('risk-pid-file');
-  const pidUploadButton = document.getElementById('risk-pid-upload');
-  const pidUploadTarget = document.getElementById('risk-pid-upload-target');
-  const pidStatus = document.getElementById('risk-pid-status');
-  const pidTargetHint = document.getElementById('risk-pid-target-hint');
-  const pidTargetPath = "{{ risk_pid_target_path|default:''|escapejs }}";
-  const workflowExtract = document.getElementById('risk-workflow-extract');
-  const workflowSystem = document.getElementById('risk-workflow-system');
-  const workflowValidate = document.getElementById('risk-workflow-validate');
-  const workflowVuln = document.getElementById('risk-workflow-vuln');
-  const workflowTwin = document.getElementById('risk-workflow-twin');
-  const workflowOpenTwin = document.getElementById('risk-workflow-open-twin');
-  const workflowRun = document.getElementById('risk-workflow-run');
-  const workflowIncludeOpenvas = document.getElementById('risk-workflow-include-openvas');
-  const workflowIncludeTwin = document.getElementById('risk-workflow-include-twin');
-  const workflowTestbed = document.getElementById('risk-workflow-testbed');
-  const workflowScan = document.getElementById('risk-workflow-scan');
-  const workflowSync = document.getElementById('risk-workflow-sync');
-  const workflowScanrun = document.getElementById('risk-workflow-scanrun');
-  const workflowStatus = document.getElementById('risk-workflow-status');
-  const workflowReport = document.getElementById('risk-workflow-report');
-  const systemGraphContainer = document.getElementById('risk-system-graph');
+  const statusRefreshButton = document.getElementById('risk-status-refresh');
+  const statusUploadButton = document.getElementById('risk-status-upload-model');
+  const statusUnloadButton = document.getElementById('risk-status-unload-model');
+  const serviceUploadStatus = document.getElementById('risk-service-upload-status');
+
+  const icsSummaryStatus = document.getElementById('risk-ics-summary-status');
+  const icsSummaryGrid = document.getElementById('risk-ics-summary-grid');
+  const icsRefreshButton = document.getElementById('risk-ics-refresh');
+
+  const systemRefreshButton = document.getElementById('risk-system-refresh');
   const systemStatus = document.getElementById('risk-system-status');
-  const systemUnconnected = document.getElementById('risk-system-unconnected');
+  const systemGraphWorkspace = document.getElementById('risk-system-workspace');
+  const systemGraphContainer = document.getElementById('risk-system-graph');
   const systemDetailBody = document.getElementById('risk-system-detail-body');
-  const systemSource = document.getElementById('risk-system-source');
+  const systemMeta = document.getElementById('risk-system-meta');
   const systemLayoutSelect = document.getElementById('risk-system-layout');
-  const systemSpacingInput = document.getElementById('risk-system-spacing');
-  const systemSpacingValue = document.getElementById('risk-system-spacing-value');
-  const systemNetworkToggle = document.getElementById('risk-system-network');
-  const systemRefresh = document.getElementById('risk-system-refresh');
-  const systemRelayout = document.getElementById('risk-system-relayout');
-  let riskCy = null;
+  const systemLabelModeSelect = document.getElementById('risk-system-label-mode');
+  const systemRelayoutButton = document.getElementById('risk-system-relayout');
+  const systemFitButton = document.getElementById('risk-system-fit');
+  const systemFocusButton = document.getElementById('risk-system-focus');
+  const systemZoomOutButton = document.getElementById('risk-system-zoom-out');
+  const systemZoomInButton = document.getElementById('risk-system-zoom-in');
+  const systemFullscreenButton = document.getElementById('risk-system-fullscreen');
+
+  const bayesianRefreshButton = document.getElementById('risk-bayesian-refresh');
+  const bayesianStatus = document.getElementById('risk-bayesian-status');
+  const bayesianGraphContainer = document.getElementById('risk-bayesian-graph');
+  const bayesianDetail = document.getElementById('risk-bayesian-detail');
+  const bayesianPipelineLog = document.getElementById('risk-bayesian-pipeline-log');
+
+  const faultTreeRefreshButton = document.getElementById('risk-fault-tree-refresh');
+  const faultTreeStatus = document.getElementById('risk-fault-tree-status');
+  const faultTreeFilterInput = document.getElementById('risk-fault-tree-filter');
+  const faultTreeSummary = document.getElementById('risk-fault-tree-summary');
+  const faultTreeList = document.getElementById('risk-fault-tree-list');
+  const faultTreeSelectedMeta = document.getElementById('risk-fault-tree-selected-meta');
+  const faultTreeDetail = document.getElementById('risk-fault-tree-detail');
+
+  const predictionRunButton = document.getElementById('risk-prediction-run');
+  const predictionDefaultsButton = document.getElementById('risk-prediction-defaults');
+  const predictionTInput = document.getElementById('risk-prediction-t');
+  const predictionNodesInput = document.getElementById('risk-prediction-nodes');
+  const predictionStatus = document.getElementById('risk-prediction-status');
+  const predictionSummary = document.getElementById('risk-prediction-summary');
+  const predictionResults = document.getElementById('risk-prediction-results');
+
+  const historyNodesInput = document.getElementById('risk-history-nodes');
+  const historyIntervalSelect = document.getElementById('risk-history-interval');
+  const historyStartButton = document.getElementById('risk-history-start');
+  const historyStopButton = document.getElementById('risk-history-stop');
+  const historyResetButton = document.getElementById('risk-history-reset');
+  const historyStatus = document.getElementById('risk-history-status');
+  const historySummary = document.getElementById('risk-history-summary');
+  const historyTableBody = document.querySelector('#risk-history-table tbody');
+
+  const logPipeline = document.getElementById('risk-log-pipeline');
+  const logClearButton = document.getElementById('risk-logs-clear');
+  const activityTableBody = document.querySelector('#risk-activity-table tbody');
+
   let systemCy = null;
-  let riskGraphElements = [];
-  let riskMappingRows = new Map();
-  let mappingNodeById = new Map();
-  let mappingNodeByName = new Map();
-  let mappingNodeByIp = new Map();
-  let mappingSummaryData = null;
-  let riskActiveScanId = null;
-  let riskGraphScanId = null;
-
-  function renderStatusSummary(data) {
-    if (!statusSummary) return;
-    if (!data || typeof data !== 'object') {
-      statusSummary.innerHTML = '';
-      return;
-    }
-    if (data.status === 'error') {
-      statusSummary.innerHTML = `<div class="text-danger">Risk service not initialized.</div>`;
-      return;
-    }
-
-    const dbnLoaded = Boolean(data.dbn_loaded);
-    const badge = dbnLoaded
-      ? '<span class="badge bg-success">DBN Loaded</span>'
-      : '<span class="badge bg-warning text-dark">DBN Not Loaded</span>';
-    const nodes = data.nodes_count ?? '—';
-    const arcs = data.arcs_count ?? '—';
-    const outputDir = data.output_dir ? escapeHtml(String(data.output_dir)) : '—';
-    const message = data.message ? escapeHtml(String(data.message)) : '';
-
-    statusSummary.innerHTML = `
-      <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-        ${badge}
-        <span class="text-muted small">Nodes: ${nodes}</span>
-        <span class="text-muted small">Arcs: ${arcs}</span>
-      </div>
-      <div class="small text-muted">Output dir: ${outputDir}</div>
-      ${message ? `<div class="small text-muted">${message}</div>` : ''}
-    `;
-  }
-
-  async function fetchStatus() {
-    statusEl.textContent = 'Loading status…';
-    if (statusSummary) statusSummary.innerHTML = '';
-    try {
-      const response = await fetch("{% url 'dashboard:risk_assessment_status' %}");
-      const data = await response.json();
-      statusEl.textContent = response.ok ? JSON.stringify(data, null, 2) : data.error || 'Status error';
-      if (response.ok) {
-        renderStatusSummary(data);
-      } else {
-        renderStatusSummary({ status: 'error' });
-      }
-    } catch (err) {
-      statusEl.textContent = 'Status unavailable';
-      renderStatusSummary({ status: 'error' });
-    }
-  }
-
-  async function fetchNodes() {
-    nodesTableBody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Loading nodes…</td></tr>';
-    try {
-      const source = riskNodeSource && riskNodeSource.value === 'risk' ? 'risk' : 'pid';
-      const url = source === 'risk'
-        ? "{% url 'dashboard:risk_assessment_nodes' %}"
-        : "{% url 'dashboard:risk_assessment_pid_nodes_api' %}";
-      const response = await fetch(url);
-      const data = await response.json();
-      if (!response.ok) {
-        nodesTableBody.innerHTML = `<tr><td colspan="2" class="text-center text-muted">${data.error || 'Error loading nodes'}</td></tr>`;
-        return;
-      }
-      const nodes = data.nodes || data;
-      if (!nodes || nodes.length === 0) {
-        nodesTableBody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">No nodes available.</td></tr>';
-        return;
-      }
-      nodesTableBody.innerHTML = nodes.map(node => {
-        const name = node.name || node.node || node.id || 'Unknown';
-        const states = node.states
-          ? node.states.join(', ')
-          : (node.type ? `${node.type}${node.domain ? ` (${node.domain})` : ''}` : (node.state || '—'));
-        return `<tr><td>${name}</td><td>${states}</td></tr>`;
-      }).join('');
-      applyNodeFilter();
-    } catch (err) {
-      nodesTableBody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Nodes unavailable.</td></tr>';
-    }
-  }
-
-  function applyNodeFilter() {
-    const term = (nodeFilter.value || '').toLowerCase();
-    const rows = Array.from(nodesTableBody.querySelectorAll('tr'));
-    rows.forEach(row => {
-      const text = row.textContent.toLowerCase();
-      row.style.display = text.includes(term) ? '' : 'none';
-    });
-  }
+  let systemGraphData = null;
+  let systemSelectedNodeId = '';
+  let bayesianCy = null;
+  let faultTreeCy = null;
+  let icsSummaryData = null;
+  let faultTreeDetailData = null;
+  let faultTreeSummaryData = null;
+  let faultTreeFilterText = '';
+  let faultTreeGraphConditionName = '';
+  let faultTreeGraphState = '';
+  let selectedFaultTreeId = '';
+  let latestServiceStatus = null;
+  let historyTimer = null;
+  let historyStartEpoch = null;
+  let historySamples = [];
+  let activityLog = [];
 
   function getCSRFToken() {
     const input = document.querySelector('#risk-csrf-form input[name=csrfmiddlewaretoken]');
@@ -628,1276 +890,1858 @@
       .replace(/'/g, '&#39;');
   }
 
-  function setPidStatus(message, isError=false) {
-    if (!pidStatus) return;
-    pidStatus.textContent = message;
-    pidStatus.classList.toggle('text-danger', isError);
-    pidStatus.classList.toggle('text-muted', !isError);
+  function prettyJson(value) {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string') return value;
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch (err) {
+      return String(value);
+    }
   }
 
-  function setWorkflowStatus(message, isError=false) {
-    if (!workflowStatus) return;
-    workflowStatus.textContent = message;
-    workflowStatus.classList.toggle('text-danger', isError);
-    workflowStatus.classList.toggle('text-muted', !isError);
+  function parseNodeList(text) {
+    return Array.from(new Set(
+      String(text || '')
+        .split(/[\n,]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    ));
   }
 
-  function renderWorkflowReport(data) {
-    if (!workflowReport) return;
-    if (!data || typeof data !== 'object') {
-      workflowReport.innerHTML = '';
+  function stateProbability(stateMap, state) {
+    const raw = stateMap && typeof stateMap === 'object' ? stateMap[state] : undefined;
+    return Number.isFinite(Number(raw)) ? Number(raw) : 0;
+  }
+
+  function formatProbability(value) {
+    return `${(Number(value || 0) * 100).toFixed(1)}%`;
+  }
+
+  function dominantState(stateMap) {
+    if (!stateMap || typeof stateMap !== 'object') return { state: 'unknown', probability: 0 };
+    let bestState = 'unknown';
+    let bestProbability = -1;
+    Object.entries(stateMap).forEach(([state, probability]) => {
+      const numeric = Number(probability);
+      if (Number.isFinite(numeric) && numeric > bestProbability) {
+        bestState = state;
+        bestProbability = numeric;
+      }
+    });
+    return { state: bestState, probability: Math.max(bestProbability, 0) };
+  }
+
+  function addActivity(kind, message, detail = '') {
+    activityLog.unshift({
+      time: new Date().toLocaleTimeString(),
+      kind,
+      message,
+      detail,
+    });
+    activityLog = activityLog.slice(0, 120);
+    renderActivityLog();
+  }
+
+  function renderActivityLog() {
+    if (!activityTableBody) return;
+    if (!activityLog.length) {
+      activityTableBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No activity recorded yet.</td></tr>';
       return;
     }
-    const summary = data.summary || {};
-    const validation = data.validation || {};
-    const missing = Array.isArray(validation.missing) ? validation.missing : [];
-    const found = Array.isArray(validation.found) ? validation.found : [];
-    const unknown = Array.isArray(validation.unknown_ips) ? validation.unknown_ips : [];
-    const vlans = summary.vlans || {};
-    const purdue = summary.purdue_levels || {};
-    const redundancy = summary.redundancy_groups || {};
+    activityTableBody.innerHTML = activityLog.map((entry) => `
+      <tr>
+        <td>${escapeHtml(entry.time)}</td>
+        <td>${escapeHtml(entry.kind)}</td>
+        <td>${escapeHtml(entry.message)}</td>
+        <td class="small text-muted">${escapeHtml(entry.detail || '—')}</td>
+      </tr>
+    `).join('');
+  }
 
-    const vlanText = Object.keys(vlans).length
-      ? Object.entries(vlans).map(([key, count]) => `${escapeHtml(key)}: ${count}`).join(', ')
-      : '—';
-    const purdueText = Object.keys(purdue).length
-      ? Object.entries(purdue).map(([key, count]) => `${escapeHtml(key)}: ${count}`).join(', ')
-      : '—';
-    const redundancyText = Object.keys(redundancy).length
-      ? Object.entries(redundancy).map(([key, count]) => `${escapeHtml(key)}: ${count}`).join(', ')
-      : '—';
+  function setInlineStatus(element, message, isError = false) {
+    if (!element) return;
+    element.textContent = message;
+    element.classList.toggle('text-danger', Boolean(isError));
+    element.classList.toggle('text-muted', !isError);
+  }
 
-    const missingList = missing.slice(0, 8).map(item => {
-      const label = escapeHtml(item.label || item.id || 'unknown');
-      const ip = item.ip ? ` (${escapeHtml(item.ip)})` : '';
-      const reason = item.reason ? ` - ${escapeHtml(item.reason)}` : '';
-      return `<li>${label}${ip}${reason}</li>`;
-    }).join('');
-    const unknownList = unknown.slice(0, 8).map(ip => `<li>${escapeHtml(ip)}</li>`).join('');
+  function faultTreeItems(data) {
+    return Array.isArray(data?.items) ? data.items : [];
+  }
 
-    workflowReport.innerHTML = `
-      <div class="fw-semibold mb-2">Validation Report</div>
-      <div class="small text-muted mb-2">Expected: ${validation.expected_count ?? summary.count ?? 0} | Found: ${found.length} | Missing: ${missing.length}</div>
-      <div class="small text-muted mb-2">VLANs: ${vlanText}</div>
-      <div class="small text-muted mb-2">Purdue levels: ${purdueText}</div>
-      <div class="small text-muted mb-2">Redundancy groups: ${redundancyText}</div>
-      <div class="small fw-semibold mt-2">Missing nodes (sample)</div>
-      <ul class="small text-muted">${missingList || '<li>None</li>'}</ul>
-      <div class="small fw-semibold mt-2">Unknown IPs (sample)</div>
-      <ul class="small text-muted">${unknownList || '<li>None</li>'}</ul>
+  function filteredFaultTreeItems(data) {
+    const items = faultTreeItems(data);
+    const term = String(faultTreeFilterText || '').trim().toLowerCase();
+    if (!term) return items;
+    return items.filter((item) => {
+      const haystack = [
+        item.id,
+        item.path,
+        ...(Array.isArray(item.states) ? item.states : []),
+        ...(Array.isArray(item.condition_folders) ? item.condition_folders : []),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(term);
+    });
+  }
+
+  function renderFaultTreePills(values, kind = '') {
+    const items = Array.isArray(values) ? values.filter(Boolean) : [];
+    if (!items.length) return '<span class="text-muted small">—</span>';
+    return items.map((value) => `
+      <span class="risk-fault-tree-pill ${kind ? `is-${kind}` : ''}">${escapeHtml(value)}</span>
+    `).join('');
+  }
+
+  function renderFaultTreeSummaryCards(data, items) {
+    if (!faultTreeSummary) return;
+    const allItems = faultTreeItems(data);
+    if (!allItems.length) {
+      faultTreeSummary.innerHTML = '';
+      return;
+    }
+    const selectedItem = allItems.find((item) => item.id === selectedFaultTreeId);
+    const cards = [
+      {
+        label: 'Components',
+        value: String(allItems.length),
+        detail: `${items.length} shown`,
+      },
+      {
+        label: 'Conditions',
+        value: String(data.condition_count || 0),
+        detail: 'Repo folders',
+      },
+      {
+        label: 'Selected',
+        value: selectedItem ? selectedItem.id : 'None',
+        detail: selectedItem ? `${selectedItem.condition_count || 0} conditions` : 'Pick a component',
+      },
+    ];
+    faultTreeSummary.innerHTML = cards.map((card) => `
+      <div class="risk-summary-card">
+        <div class="risk-summary-label">${escapeHtml(card.label)}</div>
+        <div class="fw-semibold mt-1">${escapeHtml(card.value)}</div>
+        <div class="small text-muted mt-2">${escapeHtml(card.detail)}</div>
+      </div>
+    `).join('');
+  }
+
+  function probabilityEntries(probabilities) {
+    if (!probabilities || typeof probabilities !== 'object') return [];
+    return Object.entries(probabilities)
+      .map(([state, probability]) => [state, Number(probability)])
+      .filter(([, probability]) => Number.isFinite(probability))
+      .sort((left, right) => right[1] - left[1]);
+  }
+
+  function renderProbabilityChips(probabilities) {
+    const entries = probabilityEntries(probabilities);
+    if (!entries.length) return '<span class="text-muted small">No probabilities</span>';
+    return entries.map(([state, probability]) => `
+      <span class="risk-fault-tree-prob-chip">${escapeHtml(state)} ${escapeHtml(formatProbability(probability))}</span>
+    `).join('');
+  }
+
+  function flattenFaultTreeBuckets(bucketEntries) {
+    return bucketEntries.flatMap(([bucket, valueMap]) => {
+      if (!valueMap || typeof valueMap !== 'object') return [];
+      return Object.entries(valueMap).map(([name, probability]) => ({
+        bucket,
+        name,
+        probability,
+      }));
+    });
+  }
+
+  function renderFaultTreeBucketList(entries, emptyLabel) {
+    const items = Array.isArray(entries) ? entries : [];
+    if (!items.length) return `<div class="text-muted small">${escapeHtml(emptyLabel)}</div>`;
+    return `
+      <div class="risk-fault-tree-bucket-list">
+        ${items.map((entry) => `
+          <div class="risk-fault-tree-bucket-item">
+            <div>
+              <div class="fw-semibold">${escapeHtml(entry.name || entry.bucket || 'Unknown')}</div>
+              ${entry.bucket ? `<div class="small text-muted">${escapeHtml(entry.bucket)}</div>` : ''}
+            </div>
+            <div class="small text-muted">${entry.probability === undefined ? '—' : escapeHtml(formatProbability(entry.probability))}</div>
+          </div>
+        `).join('')}
+      </div>
     `;
   }
 
-  function initPidUploader() {
-    if (pidTargetHint) {
-      pidTargetHint.textContent = pidTargetPath
-        ? `Target: ${pidTargetPath}`
-        : 'Upload path not configured (set RISK_ASSESSMENT_SIM_SYSTEM_PATH).';
+  function renderFaultTreeScenarioTable(sampleRows) {
+    const rows = Array.isArray(sampleRows) ? sampleRows : [];
+    if (!rows.length) {
+      return '<div class="text-muted small">No scenario rows were found in value.json.</div>';
     }
-    if (pidUploadTarget) {
-      pidUploadTarget.checked = Boolean(pidTargetPath);
-      pidUploadTarget.disabled = !pidTargetPath;
+    return `
+      <div class="table-responsive">
+        <table class="risk-fault-tree-scenario-table">
+          <thead>
+            <tr>
+              <th>Scenario</th>
+              <th>Event Count</th>
+              <th>Probabilities</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr>
+                <td><code>${escapeHtml(row.label || 'scenario')}</code></td>
+                <td>${escapeHtml(String(row.event_count || 0))}</td>
+                <td><div class="risk-fault-tree-probability-list">${renderProbabilityChips(row.probabilities)}</div></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderFaultTreeSelectedMeta(data) {
+    if (!faultTreeSelectedMeta) return;
+    if (!data || typeof data !== 'object' || !data.found) {
+      faultTreeSelectedMeta.textContent = 'No component selected.';
+      return;
+    }
+    faultTreeSelectedMeta.textContent = `${data.conditions?.length || 0} conditions loaded`;
+  }
+
+  function formatFaultTreeGraphProbability(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '';
+    if (numeric > 0 && numeric < 0.0001) return numeric.toExponential(1);
+    return formatProbability(numeric);
+  }
+
+  function faultTreeGraphableConditions(data) {
+    const conditions = Array.isArray(data?.conditions) ? data.conditions : [];
+    return conditions.filter((condition) => Array.isArray(condition.graphs) && condition.graphs.length);
+  }
+
+  function faultTreeGraphCondition(data) {
+    const conditions = faultTreeGraphableConditions(data);
+    if (!conditions.length) return null;
+    const match = conditions.find((condition) => condition.name === faultTreeGraphConditionName);
+    const nextCondition = match || conditions[0];
+    faultTreeGraphConditionName = nextCondition?.name || '';
+    return nextCondition || null;
+  }
+
+  function faultTreeGraphVariant(condition) {
+    const variants = Array.isArray(condition?.graphs) ? condition.graphs : [];
+    if (!variants.length) return null;
+    const preferredState = faultTreeGraphState || condition?.graph_default_state || '';
+    const match = variants.find((variant) => variant.state === preferredState);
+    const nextVariant = match || variants[0];
+    faultTreeGraphState = nextVariant?.state || '';
+    return nextVariant || null;
+  }
+
+  function faultTreeGraphNodeClasses(node) {
+    const type = String(node?.type || '').trim();
+    const classes = [type.includes('gate') ? 'gate' : 'event', `node-type-${type}`];
+    if (type === 'top_event') classes.push('top');
+    return classes.join(' ');
+  }
+
+  function faultTreeGraphNodeWidth(type) {
+    const nodeType = String(type || '').trim();
+    if (nodeType === 'basic_event') return 88;
+    if (nodeType === 'top_event' || nodeType === 'intermediate_event') return 96;
+    if (nodeType === 'and_gate' || nodeType === 'or_gate') return 44;
+    if (nodeType === 'not_gate') return 31;
+    if (nodeType === 'kofn_gate') return 62;
+    return 96;
+  }
+
+  function faultTreeGraphNodeHeight(type) {
+    const nodeType = String(type || '').trim();
+    if (nodeType === 'basic_event') return 88;
+    if (nodeType === 'top_event' || nodeType === 'intermediate_event') return 56;
+    if (nodeType === 'and_gate' || nodeType === 'or_gate') return 44;
+    if (nodeType === 'not_gate') return 31;
+    if (nodeType === 'kofn_gate') return 62;
+    return 56;
+  }
+
+  function faultTreeGraphDisplayLabel(node) {
+    const type = String(node?.type || '').trim();
+    const probability = Number(node?.probability);
+    const hasProbability = Number.isFinite(probability);
+    if (type.includes('gate')) {
+      return hasProbability ? formatFaultTreeGraphProbability(probability) : '';
+    }
+    if (hasProbability) {
+      return `${String(node?.label || '')}\n${formatFaultTreeGraphProbability(probability)}`;
+    }
+    return String(node?.label || '');
+  }
+
+  function destroyFaultTreeGraph() {
+    if (faultTreeCy) {
+      faultTreeCy.destroy();
+      faultTreeCy = null;
     }
   }
 
-  async function runPidValidation(options) {
-    setWorkflowStatus('Running validation…');
-    if (workflowReport) workflowReport.innerHTML = '';
+  function renderFaultTreeGraph(data) {
+    const graphContainer = document.getElementById('risk-fault-tree-graph');
+    const graphMeta = document.getElementById('risk-fault-tree-graph-meta');
+    const graphDetail = document.getElementById('risk-fault-tree-graph-detail');
+    const graphConditionSelect = document.getElementById('risk-fault-tree-graph-condition');
+    const graphStateSelect = document.getElementById('risk-fault-tree-graph-state');
+    destroyFaultTreeGraph();
+    if (!graphContainer) return;
+    if (!data || typeof data !== 'object' || !data.found) {
+      graphContainer.innerHTML = '<div class="text-muted text-center py-5">No fault-tree graph is available.</div>';
+      if (graphMeta) graphMeta.textContent = 'Select a component to render its condition graph.';
+      if (graphDetail) graphDetail.textContent = 'Select a graph node to inspect its role in the selected component.';
+      if (graphConditionSelect) graphConditionSelect.innerHTML = '<option value="">No graphable conditions</option>';
+      if (graphStateSelect) graphStateSelect.innerHTML = '<option value="">No graph states</option>';
+      return;
+    }
+
+    const graphableConditions = faultTreeGraphableConditions(data);
+    if (!graphableConditions.length) {
+      graphContainer.innerHTML = '<div class="text-muted text-center py-5">This component does not expose any gate-style fault-tree graphs.</div>';
+      if (graphMeta) graphMeta.textContent = 'No graphable condition data was found.';
+      if (graphDetail) graphDetail.textContent = 'Select a graph node to inspect its role in the selected component.';
+      if (graphConditionSelect) graphConditionSelect.innerHTML = '<option value="">No graphable conditions</option>';
+      if (graphStateSelect) graphStateSelect.innerHTML = '<option value="">No graph states</option>';
+      return;
+    }
+
+    const activeCondition = faultTreeGraphCondition(data);
+    const activeVariant = faultTreeGraphVariant(activeCondition);
+    const stateVariants = Array.isArray(activeCondition?.graphs) ? activeCondition.graphs : [];
+
+    if (graphConditionSelect) {
+      graphConditionSelect.innerHTML = graphableConditions.map((condition) => `
+        <option value="${escapeHtml(condition.name || '')}" ${condition.name === faultTreeGraphConditionName ? 'selected' : ''}>
+          ${escapeHtml(condition.name || 'condition')}
+        </option>
+      `).join('');
+    }
+    if (graphStateSelect) {
+      graphStateSelect.innerHTML = stateVariants.map((variant) => `
+        <option value="${escapeHtml(variant.state || '')}" ${variant.state === faultTreeGraphState ? 'selected' : ''}>
+          ${escapeHtml(variant.state || 'state')}
+        </option>
+      `).join('');
+    }
+
+    const graphData = activeVariant?.graph || {};
+    const nodes = Array.isArray(graphData.nodes) ? graphData.nodes : [];
+    const edges = Array.isArray(graphData.edges) ? graphData.edges : [];
+    if (!nodes.length) {
+      graphContainer.innerHTML = '<div class="text-muted text-center py-5">No graph nodes were generated for the selected condition/state.</div>';
+      if (graphMeta) {
+        graphMeta.textContent = `Condition ${activeCondition?.name || 'unknown'} has no graph nodes for state ${activeVariant?.state || 'unknown'}.`;
+      }
+      if (graphDetail) graphDetail.textContent = 'Select a graph node to inspect its role in the selected component.';
+      return;
+    }
+
+    graphContainer.innerHTML = '';
+    faultTreeCy = cytoscape({
+      container: graphContainer,
+      elements: [
+        ...nodes.map((node) => ({
+          data: {
+            ...node,
+            displayLabel: faultTreeGraphDisplayLabel(node),
+            width: faultTreeGraphNodeWidth(node?.type),
+            height: faultTreeGraphNodeHeight(node?.type),
+          },
+          classes: faultTreeGraphNodeClasses(node),
+          position: {
+            x: Math.round(Number(node.x || 0)),
+            y: Math.round(Number(node.y || 0)),
+          },
+        })),
+        ...edges.map((edge) => ({ data: edge })),
+      ],
+      style: [
+        {
+          selector: 'node',
+          style: {
+            label: 'data(displayLabel)',
+            'font-size': 9,
+            'text-wrap': 'wrap',
+            'text-max-width': 102,
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'font-weight': 'bold',
+            color: '#1f2937',
+            'background-color': '#ffffff',
+            'border-width': 1,
+            'border-color': '#000000',
+            width: 'data(width)',
+            height: 'data(height)',
+          }
+        },
+        {
+          selector: '.event',
+          style: {
+            shape: 'round-rectangle',
+            'background-color': '#ffffff',
+            'border-color': '#000000',
+          }
+        },
+        {
+          selector: '.gate',
+          style: {
+            shape: 'ellipse',
+            'background-color': '#ffffff',
+            'border-color': '#000000',
+          }
+        },
+        {
+          selector: '.node-type-top_event',
+          style: {
+            shape: 'round-hexagon',
+            'background-color': '#ffffff',
+            'border-color': '#000000',
+            'border-width': 1.5,
+          }
+        },
+        {
+          selector: '.node-type-intermediate_event',
+          style: {
+            shape: 'round-rectangle',
+            'background-color': '#ffffff',
+            'border-color': '#000000',
+          }
+        },
+        {
+          selector: '.node-type-basic_event',
+          style: {
+            shape: 'ellipse',
+            'background-color': '#ffffff',
+            'border-style': 'dashed',
+            'border-color': '#000000',
+          }
+        },
+        {
+          selector: '.node-type-and_gate',
+          style: {
+            shape: 'rectangle',
+            padding: '0px',
+            'background-color': '#ffffff',
+            'background-opacity': 1,
+            'border-width': 0,
+            'border-opacity': 0,
+            'background-image': `url(${faultTreeAndGateUrl})`,
+            'background-fit': 'contain',
+            'background-clip': 'node',
+            'background-repeat': 'no-repeat',
+            'background-position-x': '50%',
+            'background-position-y': '50%',
+          }
+        },
+        {
+          selector: '.node-type-or_gate',
+          style: {
+            shape: 'rectangle',
+            padding: '0px',
+            'background-color': '#ffffff',
+            'background-opacity': 1,
+            'border-width': 0,
+            'border-opacity': 0,
+            'background-image': `url(${faultTreeOrGateUrl})`,
+            'background-fit': 'contain',
+            'background-clip': 'node',
+            'background-repeat': 'no-repeat',
+            'background-position-x': '50%',
+            'background-position-y': '50%',
+          }
+        },
+        {
+          selector: '.node-type-and_gate:selected, .node-type-or_gate:selected',
+          style: {
+            'border-width': 0,
+            'border-opacity': 0,
+          }
+        },
+        {
+          selector: '.node-type-not_gate',
+          style: {
+            'background-color': '#ffffff',
+            'border-color': '#000000',
+            'border-width': 1,
+          }
+        },
+        {
+          selector: '.node-type-kofn_gate',
+          style: {
+            'background-color': '#ffffff',
+            'border-color': '#000000',
+            'border-width': 1,
+          }
+        },
+        {
+          selector: 'node:selected',
+          style: {
+            'border-width': 3,
+            'border-color': '#000000',
+            'overlay-opacity': 0,
+          }
+        },
+        {
+          selector: 'edge',
+          style: {
+            width: 0.5,
+            'line-color': '#000000',
+            'target-arrow-color': '#000000',
+            'target-arrow-shape': 'triangle',
+            'arrow-scale': 0.5,
+            'curve-style': 'taxi',
+            'taxi-direction': 'vertical',
+            'taxi-turn': '44px',
+            'taxi-turn-min-distance': 20,
+          }
+        },
+      ],
+      layout: {
+        name: 'preset',
+        fit: true,
+        padding: 48,
+      },
+      minZoom: 0.2,
+      maxZoom: 3.5,
+      wheelSensitivity: 0.18,
+    });
+
+    if (graphMeta) {
+      graphMeta.textContent = `${activeCondition?.name || 'condition'} · ${activeVariant?.state || 'state'} · scenario ${activeVariant?.scenario || '_'}. ${nodes.length} nodes, ${edges.length} links.`;
+    }
+    if (graphDetail) {
+      graphDetail.textContent = 'Select a graph node to inspect its role in the selected fault tree.';
+    }
+
+    faultTreeCy.on('tap', 'node', (event) => {
+      const item = event.target.data() || {};
+      if (!graphDetail) return;
+      graphDetail.innerHTML = `
+        <div class="fw-semibold">${escapeHtml(item.label || item.id || 'Unknown')}</div>
+        <div class="mt-2">Type: ${escapeHtml(item.type || 'unknown')}</div>
+        ${item.probability !== undefined ? `<div class="small text-muted mt-2">Probability: ${escapeHtml(formatFaultTreeGraphProbability(item.probability))}</div>` : ''}
+        ${item.description ? `<div class="small text-muted mt-2">${escapeHtml(item.description)}</div>` : ''}
+        <div class="small text-muted mt-2"><code>${escapeHtml(item.id || '')}</code></div>
+      `;
+    });
+
+    faultTreeCy.on('tap', (event) => {
+      if (event.target === faultTreeCy && graphDetail) {
+        graphDetail.textContent = 'Select a graph node to inspect its role in the selected fault tree.';
+      }
+    });
+  }
+
+  function renderStatusSummary(data) {
+    if (!statusSummary) return;
+    if (!data || typeof data !== 'object') {
+      statusSummary.innerHTML = '';
+      return;
+    }
+    const healthy = data.status === 'healthy';
+    const badgeClass = healthy ? 'bg-success' : 'bg-warning text-dark';
+    const nodesCount = data.nodes_count ?? '—';
+    const linksCount = data.links_count ?? data.arcs_count ?? '—';
+    statusSummary.innerHTML = `
+      <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+        <span class="badge ${badgeClass}">${escapeHtml(data.status || 'unknown')}</span>
+        <span class="small text-muted">Nodes: ${escapeHtml(nodesCount)}</span>
+        <span class="small text-muted">Links: ${escapeHtml(linksCount)}</span>
+        <span class="small text-muted">DBN loaded: ${healthy && data.dbn_loaded ? 'yes' : 'no'}</span>
+      </div>
+      ${data.message ? `<div class="small text-muted">${escapeHtml(data.message)}</div>` : ''}
+    `;
+  }
+
+  async function fetchStatus() {
+    if (statusRaw) statusRaw.textContent = 'Loading status…';
+    addActivity('status', 'Refreshing risk service status');
     try {
-      const response = await fetch("{% url 'dashboard:risk_assessment_pid_validate' %}", {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(options || {})
-      });
+      const response = await fetch("{% url 'dashboard:risk_assessment_status' %}");
+      const data = await response.json();
+      latestServiceStatus = data;
+      if (statusRaw) statusRaw.textContent = response.ok ? prettyJson(data) : (data.error || 'Status unavailable.');
+      renderStatusSummary(response.ok ? data : { status: 'error', message: data.error || 'Status unavailable.' });
+      addActivity(response.ok ? 'status' : 'error', 'Risk service status updated', response.ok ? String(data.status || 'unknown') : (data.error || 'request failed'));
+    } catch (err) {
+      const message = 'Risk service status unavailable.';
+      latestServiceStatus = null;
+      if (statusRaw) statusRaw.textContent = message;
+      renderStatusSummary({ status: 'error', message });
+      addActivity('error', 'Risk service status request failed', message);
+    }
+  }
+
+  function renderSummaryGrid(data) {
+    if (!icsSummaryGrid) return;
+    if (!data || typeof data !== 'object') {
+      icsSummaryGrid.innerHTML = '';
+      return;
+    }
+    const metrics = data.metrics || {};
+    const cards = [
+      {
+        label: 'Repository',
+        value: data.repo_available ? 'Available' : 'Unavailable',
+        detail: data.repo_path || 'Not configured',
+      },
+      {
+        label: 'System Model',
+        value: data.sim_system_found ? `${data.model_source === 'db' ? 'db' : 'upload'}/sim_system.json` : 'Missing',
+        detail: data.model_path || data.upload_path || 'No model path',
+      },
+      {
+        label: 'System Graph',
+        value: `${metrics.nodes || 0} nodes / ${metrics.links || 0} links`,
+        detail: 'Repo sim_system graph',
+      },
+      {
+        label: 'Bayesian Graph',
+        value: data.bayesian_found ? 'dbn.bifxml present' : 'Missing',
+        detail: data.bayesian_path || 'No BIF path',
+      },
+      {
+        label: 'CPT Sidecar',
+        value: data.cpt_found ? 'dbn_2_with_cpt.json present' : 'Missing',
+        detail: data.cpt_path || 'No CPT path',
+      },
+      {
+        label: 'Fault Trees',
+        value: `${data.fault_tree_count || 0} artifacts`,
+        detail: data.pipeline_log_found ? 'pipeline_log.json present' : 'pipeline_log.json missing',
+      },
+    ];
+
+    icsSummaryGrid.innerHTML = cards.map((card) => `
+      <div class="risk-summary-card">
+        <div class="risk-summary-label">${escapeHtml(card.label)}</div>
+        <div class="fw-semibold mt-1">${escapeHtml(card.value)}</div>
+        <div class="small text-muted mt-2"><code>${escapeHtml(card.detail)}</code></div>
+      </div>
+    `).join('');
+  }
+
+  async function loadRepoSummary() {
+    setInlineStatus(icsSummaryStatus, 'Inspecting integrated risk-assessment artifacts…');
+    try {
+      const response = await fetch("{% url 'dashboard:risk_assessment_ics_summary' %}");
       const data = await response.json();
       if (!response.ok) {
-        setWorkflowStatus(data.error || 'Validation failed.', true);
+        setInlineStatus(icsSummaryStatus, data.error || 'Repository summary unavailable.', true);
+        renderSummaryGrid(null);
+        addActivity('error', 'Repository summary request failed', data.error || 'summary unavailable');
         return null;
       }
-      const summary = data.summary || {};
-      const validation = data.validation || {};
-      const found = Array.isArray(validation.found) ? validation.found.length : 0;
-      const missing = Array.isArray(validation.missing) ? validation.missing.length : 0;
-      const expected = validation.expected_count ?? summary.count ?? 0;
-      setWorkflowStatus(`Validation complete: ${found} found, ${missing} missing (expected ${expected}).`);
-      renderWorkflowReport(data);
+      icsSummaryData = data;
+      renderSummaryGrid(data);
+      const message = data.repo_available
+        ? `Using ${data.model_source || 'upload'} model from ${data.model_path || data.repo_path}.`
+        : 'Integrated risk-assessment repo is not available.';
+      setInlineStatus(icsSummaryStatus, message, !data.repo_available);
+      setInlineStatus(
+        serviceUploadStatus,
+        data.sim_system_found
+          ? `Repo model ready from ${data.model_path}.`
+          : 'No repo model found under upload/ or db/.',
+        !data.sim_system_found
+      );
+      addActivity('repo', 'Repository summary updated', data.model_path || data.repo_path || 'no repo path');
       return data;
     } catch (err) {
-      setWorkflowStatus('Validation unavailable.', true);
+      setInlineStatus(icsSummaryStatus, 'Repository summary unavailable.', true);
+      renderSummaryGrid(null);
+      addActivity('error', 'Repository summary request failed', 'request error');
       return null;
     }
   }
 
-  function setSystemStatus(message, isError=false) {
-    if (!systemStatus) return;
-    systemStatus.textContent = message;
-    systemStatus.classList.toggle('text-danger', isError);
-    systemStatus.classList.toggle('text-muted', !isError);
-  }
-
-  function renderSystemUnconnected(list) {
-    if (!systemUnconnected) return;
-    if (!Array.isArray(list) || list.length === 0) {
-      systemUnconnected.textContent = '';
-      return;
-    }
-    const preview = list.slice(0, 8).join(', ');
-    const suffix = list.length > 8 ? ` (+${list.length - 8} more)` : '';
-    systemUnconnected.textContent = `Unconnected cyber nodes: ${preview}${suffix}`;
-  }
-
-  function renderSystemGraph(elements) {
-    if (!systemGraphContainer) return;
-    if (!Array.isArray(elements) || elements.length === 0) {
-      systemGraphContainer.innerHTML = '<div class="text-muted text-center py-5">No system graph data available.</div>';
-      if (systemCy) {
-        systemCy.destroy();
-        systemCy = null;
+  async function uploadRepoModel() {
+    statusUploadButton.disabled = true;
+    setInlineStatus(serviceUploadStatus, 'Uploading preferred repo model to the risk service…');
+    addActivity('upload', 'Uploading repo model');
+    try {
+      const modelResponse = await fetch("{% url 'dashboard:risk_assessment_ics_model' %}");
+      const modelPayload = await modelResponse.json();
+      if (!modelResponse.ok) {
+        throw new Error(modelPayload.error || 'Repo model lookup failed.');
       }
-      return;
-    }
+      if (!modelPayload.found || !modelPayload.data) {
+        throw new Error('No repo model is available under upload/ or db/.');
+      }
 
-    systemGraphContainer.innerHTML = '';
+      const response = await fetch("{% url 'dashboard:risk_assessment_service_upload' %}", {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCSRFToken(),
+        },
+        body: JSON.stringify({ model: modelPayload.data }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Risk model upload failed.');
+      }
+
+      setInlineStatus(serviceUploadStatus, `Repo model uploaded from ${modelPayload.path}.`);
+      addActivity('upload', 'Repo model uploaded', modelPayload.path || 'unknown path');
+      await Promise.all([fetchStatus(), loadRepoSummary(), loadSystemGraph(), loadBayesianGraph(), loadPipelineLog(), loadFaultTreeSummary(selectedFaultTreeId)]);
+    } catch (err) {
+      setInlineStatus(serviceUploadStatus, `Upload failed: ${err.message}`, true);
+      addActivity('error', 'Repo model upload failed', err.message);
+    } finally {
+      statusUploadButton.disabled = false;
+    }
+  }
+
+  async function unloadModel() {
+    statusUnloadButton.disabled = true;
+    setInlineStatus(serviceUploadStatus, 'Unloading current risk model…');
+    addActivity('service', 'Unloading current risk model');
+    try {
+      const response = await fetch("{% url 'dashboard:risk_assessment_service_unload' %}", {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCSRFToken() },
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Unload failed.');
+      }
+      setInlineStatus(serviceUploadStatus, data.message || 'Risk model unloaded.');
+      addActivity('service', 'Risk model unloaded', data.message || 'unloaded');
+      await fetchStatus();
+    } catch (err) {
+      setInlineStatus(serviceUploadStatus, `Unload failed: ${err.message}`, true);
+      addActivity('error', 'Risk model unload failed', err.message);
+    } finally {
+      statusUnloadButton.disabled = false;
+    }
+  }
+
+  function renderSystemGraph(data) {
+    const nodes = Array.isArray(data?.nodes) ? data.nodes : [];
+    const edges = Array.isArray(data?.edges) ? data.edges : [];
+    const nextSelectionId = nodes.some((node) => node.id === systemSelectedNodeId) ? systemSelectedNodeId : '';
+    if (!systemGraphContainer) return;
     if (systemCy) {
       systemCy.destroy();
       systemCy = null;
     }
+    systemGraphData = data || null;
+    systemSelectedNodeId = nextSelectionId;
+    if (!nodes.length) {
+      systemGraphContainer.innerHTML = '<div class="text-muted text-center py-5">No repo system graph is available.</div>';
+      if (systemDetailBody) {
+        systemDetailBody.textContent = 'Select a repo-backed asset to inspect it. Compact labels and fullscreen help when the model is dense.';
+      }
+      updateSystemGraphMeta();
+      return;
+    }
 
+    systemGraphContainer.innerHTML = '';
     systemCy = cytoscape({
       container: systemGraphContainer,
-      elements,
-      style: [
-        { selector: 'node', style: {
-          'label': 'data(label_short)',
-          'font-size': 12,
-          'min-zoomed-font-size': 9,
-          'text-wrap': 'wrap',
-          'text-max-width': 120,
-          'text-valign': 'center',
-          'text-halign': 'center',
-          'text-background-color': '#ffffff',
-          'text-background-opacity': 0.85,
-          'text-background-shape': 'roundrectangle',
-          'text-border-color': '#334155',
-          'text-border-width': 0.5,
-          'border-width': 1,
-          'border-color': '#1f2937',
-          'width': 'label',
-          'height': 'label',
-          'padding': 8
-        }},
-        { selector: 'node[domain = \"physical\"]', style: {
-          'background-color': '#cbd5f5',
-          'shape': 'roundrectangle'
-        }},
-        { selector: 'node[domain = \"cyber\"]', style: {
-          'background-color': '#7dd3fc',
-          'shape': 'ellipse'
-        }},
-        { selector: 'node:selected', style: {
-          'border-color': '#1d4ed8',
-          'border-width': 3
-        }},
-        { selector: 'node[cyber_connected = false]', style: {
-          'border-color': '#dc2626',
-          'border-width': 3
-        }},
-        { selector: 'edge', style: {
-          'label': '',
-          'font-size': 9,
-          'color': '#111827',
-          'text-background-color': '#ffffff',
-          'text-background-opacity': 0.8,
-          'text-background-shape': 'roundrectangle',
-          'curve-style': 'bezier',
-          'width': 2,
-          'line-color': '#94a3b8',
-          'target-arrow-shape': 'triangle',
-          'target-arrow-color': '#94a3b8'
-        }},
-        { selector: 'edge:selected', style: {
-          'label': 'data(label)'
-        }},
-        { selector: 'edge[kind = \"process\"]', style: {
-          'line-color': '#94a3b8',
-          'target-arrow-color': '#94a3b8'
-        }},
-        { selector: 'edge[kind = \"network\"]', style: {
-          'line-color': '#22c55e',
-          'target-arrow-color': '#22c55e',
-          'line-style': 'dashed'
-        }}
+      elements: [
+        ...nodes.map((node) => ({ data: node })),
+        ...edges.map((edge) => ({ data: edge })),
       ],
-      layout: buildSystemLayout()
+      style: [
+        {
+          selector: 'node',
+          style: {
+            label: 'data(label)',
+            'font-size': 9,
+            'min-zoomed-font-size': 14,
+            'text-wrap': 'wrap',
+            'text-max-width': 92,
+            'text-valign': 'bottom',
+            'text-halign': 'center',
+            'text-margin-y': 6,
+            'text-background-color': '#ffffff',
+            'text-background-opacity': 0.86,
+            'text-background-shape': 'roundrectangle',
+            'border-width': 1.5,
+            'border-color': '#1f2937',
+            'background-color': '#64748b',
+            width: 44,
+            height: 44,
+            'overlay-opacity': 0,
+          }
+        },
+        { selector: 'node[section = "digital"]', style: { 'background-color': '#2563eb', shape: 'round-rectangle' } },
+        { selector: 'node[section = "network"]', style: { 'background-color': '#ea580c', shape: 'ellipse' } },
+        { selector: 'node[section = "physical"]', style: { 'background-color': '#0d9488', shape: 'rectangle' } },
+        { selector: 'node[section = "flow"]', style: { 'background-color': '#15803d', shape: 'diamond' } },
+        { selector: 'node[section = "function"]', style: { 'background-color': '#ca8a04', shape: 'hexagon' } },
+        {
+          selector: 'node.is-focus',
+          style: {
+            'border-width': 3,
+            'border-color': '#0f172a',
+            'z-index': 999,
+            width: 50,
+            height: 50,
+          }
+        },
+        {
+          selector: 'node.is-dim',
+          style: {
+            opacity: 0.24,
+          }
+        },
+        {
+          selector: 'edge',
+          style: {
+            'curve-style': 'bezier',
+            'width': 2,
+            'line-color': '#64748b',
+            'target-arrow-color': '#64748b',
+            'target-arrow-shape': 'triangle',
+            opacity: 0.7,
+          }
+        },
+        {
+          selector: 'edge.is-focus',
+          style: {
+            'line-color': '#2563eb',
+            'target-arrow-color': '#2563eb',
+            width: 3,
+            opacity: 0.95,
+          }
+        },
+        {
+          selector: 'edge.is-dim',
+          style: {
+            opacity: 0.12,
+          }
+        },
+      ],
+      minZoom: 0.15,
+      maxZoom: 3.5,
+      wheelSensitivity: 0.18,
+      boxSelectionEnabled: false,
     });
 
-    if (systemDetailBody) {
-      systemDetailBody.textContent = 'Click a node to see details.';
+    systemCy.on('tap', 'node', (event) => {
+      const item = event.target.data() || {};
+      selectSystemNode(item.id || '');
+    });
+    systemCy.on('tap', (event) => {
+      if (event.target === systemCy) {
+        clearSystemNodeSelection();
+      }
+    });
+    applySystemLabelMode();
+    runSystemLayout();
+    if (systemSelectedNodeId) {
+      selectSystemNode(systemSelectedNodeId);
+    } else {
+      clearSystemNodeSelection(true);
     }
-    systemCy.on('select', 'node', event => {
-      if (!systemDetailBody) return;
-      const data = event.target.data() || {};
-      const parts = [];
-      parts.push(`<div class="fw-semibold">${escapeHtml(data.label_full || data.label || data.id)}</div>`);
-      parts.push(`<div>Domain: ${escapeHtml(data.domain || 'unknown')}</div>`);
-      if (data.type) parts.push(`<div>Type: ${escapeHtml(data.type)}</div>`);
-      if (data.module) parts.push(`<div>Module: ${escapeHtml(data.module)}</div>`);
-      if (data.system) parts.push(`<div>System: ${escapeHtml(data.system)}</div>`);
-      if (data.unit) parts.push(`<div>Unit: ${escapeHtml(data.unit)}</div>`);
-      if (data.vlan) parts.push(`<div>VLAN: ${escapeHtml(data.vlan)}</div>`);
-      if (data.vlan_cidr) parts.push(`<div>VLAN CIDR: ${escapeHtml(data.vlan_cidr)}</div>`);
-      if (data.purdue_level) parts.push(`<div>Purdue: ${escapeHtml(data.purdue_level)}</div>`);
-      if (data.redundancy_group) parts.push(`<div>Redundancy: ${escapeHtml(data.redundancy_group)}</div>`);
-      if (data.description) parts.push(`<div>Description: ${escapeHtml(data.description)}</div>`);
-      if (data.ip) parts.push(`<div>IP: ${escapeHtml(data.ip)}</div>`);
-      if (data.agent_id) parts.push(`<div>Agent: ${escapeHtml(data.agent_id)}</div>`);
-      systemDetailBody.innerHTML = parts.join('');
-    });
-    systemCy.on('unselect', 'node', () => {
-      if (!systemDetailBody) return;
-      systemDetailBody.textContent = 'Click a node to see details.';
-    });
   }
 
-  function currentSpacing() {
-    const raw = parseFloat(systemSpacingInput?.value || '1.8');
-    return Number.isFinite(raw) ? raw : 1.8;
+  function getSystemFitPadding() {
+    return (systemGraphWorkspace && systemGraphWorkspace.classList.contains('is-fullscreen')) ? 100 : 72;
   }
 
-  function buildSystemLayout() {
-    const name = systemLayoutSelect?.value || 'breadthfirst';
-    const spacing = currentSpacing();
-    const base = {
-      name,
-      fit: true,
-      padding: 60,
-      spacingFactor: spacing
+  function updateSystemGraphMeta() {
+    if (!systemMeta) return;
+    if (!systemGraphData || !systemCy) {
+      systemMeta.textContent = 'Use mousewheel or pinch to zoom, drag to pan, and switch to fullscreen for dense repo graphs.';
+      return;
+    }
+    const layoutLabels = {
+      sectioned: 'Sectioned',
+      breadthfirst: 'Layered',
+      cose: 'Force',
+      concentric: 'Radial',
     };
-
-    if (name === 'cose') {
-      return {
-        ...base,
-        animate: false,
-        randomize: true,
-        nodeRepulsion: 36000 * spacing,
-        idealEdgeLength: 240 * spacing,
-        edgeElasticity: 0.18,
-        gravity: 0.12,
-        numIter: 2200
-      };
-    }
-
-    if (name === 'breadthfirst') {
-      return {
-        ...base,
-        directed: true,
-        circle: false,
-        grid: false
-      };
-    }
-
-    if (name === 'circle') {
-      return {
-        ...base,
-        animate: false,
-        radius: 200 * spacing
-      };
-    }
-
-    return base;
+    const labelLabels = {
+      compact: 'Compact',
+      full: 'Always On',
+      focus: 'Selection Only',
+    };
+    const layoutName = layoutLabels[systemLayoutSelect?.value || 'sectioned'] || 'Sectioned';
+    const labelMode = labelLabels[systemLabelModeSelect?.value || 'compact'] || 'Compact';
+    const selectionText = systemSelectedNodeId ? ` Selected: ${systemSelectedNodeId}.` : '';
+    systemMeta.textContent = `${systemCy.nodes().length} nodes, ${systemCy.edges().length} links. Layout: ${layoutName}. Labels: ${labelMode}.${selectionText}`;
   }
 
-  function relayoutSystemGraph() {
+  function renderSystemDetail(item) {
+    if (!systemDetailBody) return;
+    if (!item || !item.id || !systemCy) {
+      systemDetailBody.innerHTML = 'Select a repo-backed asset to inspect it. Compact labels and fullscreen help when the model is dense.';
+      return;
+    }
+    const node = systemCy.getElementById(item.id);
+    const inbound = node && !node.empty() ? node.incomers('edge').length : 0;
+    const outbound = node && !node.empty() ? node.outgoers('edge').length : 0;
+    const neighbors = node && !node.empty() ? node.neighborhood('node').length : 0;
+    const neighborLabels = node && !node.empty()
+      ? node.neighborhood('node').map((neighbor) => neighbor.data('label') || neighbor.id()).slice(0, 8)
+      : [];
+    systemDetailBody.innerHTML = `
+      <div class="fw-semibold">${escapeHtml(item.label || item.id || 'Unknown')}</div>
+      <div class="mt-2">Type: ${escapeHtml(item.type || 'Unknown')}</div>
+      <div>Section: ${escapeHtml(item.section || 'Unknown')}</div>
+      <div>Inbound Links: ${escapeHtml(String(inbound))}</div>
+      <div>Outbound Links: ${escapeHtml(String(outbound))}</div>
+      <div>Neighbors: ${escapeHtml(String(neighbors))}</div>
+      <div>Node ID: <code>${escapeHtml(item.id || '')}</code></div>
+      ${neighborLabels.length ? `<div class="small text-muted mt-2">Nearby: ${escapeHtml(neighborLabels.join(', '))}</div>` : ''}
+      ${systemGraphData?.path ? `<div class="small text-muted mt-2"><code>${escapeHtml(systemGraphData.path)}</code></div>` : ''}
+    `;
+  }
+
+  function highlightSystemSelection(nodeId) {
     if (!systemCy) return;
-    const layout = systemCy.layout(buildSystemLayout());
-    layout.run();
+    systemCy.elements().removeClass('is-focus is-dim');
+    if (!nodeId) return;
+    const node = systemCy.getElementById(nodeId);
+    if (!node || node.empty()) return;
+    const focusSet = node.closedNeighborhood();
+    systemCy.elements().difference(focusSet).addClass('is-dim');
+    focusSet.addClass('is-focus');
   }
 
-  if (systemSpacingInput && systemSpacingValue) {
-    systemSpacingValue.textContent = currentSpacing().toFixed(1);
-    systemSpacingInput.addEventListener('input', () => {
-      systemSpacingValue.textContent = currentSpacing().toFixed(1);
+  function clearSystemNodeSelection(skipMetaUpdate = false) {
+    systemSelectedNodeId = '';
+    if (systemCy) {
+      systemCy.nodes().unselect();
+      systemCy.elements().removeClass('is-focus is-dim');
+    }
+    renderSystemDetail(null);
+    if (!skipMetaUpdate) {
+      updateSystemGraphMeta();
+    }
+  }
+
+  function selectSystemNode(nodeId) {
+    if (!systemCy || !nodeId) {
+      clearSystemNodeSelection();
+      return;
+    }
+    const node = systemCy.getElementById(nodeId);
+    if (!node || node.empty()) {
+      clearSystemNodeSelection();
+      return;
+    }
+    systemSelectedNodeId = nodeId;
+    systemCy.nodes().unselect();
+    node.select();
+    highlightSystemSelection(nodeId);
+    renderSystemDetail(node.data() || {});
+    updateSystemGraphMeta();
+  }
+
+  function applySystemLabelMode() {
+    if (!systemCy) return;
+    const mode = systemLabelModeSelect?.value || 'compact';
+    const baseStyle = systemCy.style();
+    baseStyle
+      .selector('node')
+      .style({
+        label: mode === 'focus' ? '' : 'data(label)',
+        'font-size': mode === 'full' ? 10 : 9,
+        'text-max-width': mode === 'full' ? 110 : 92,
+        'min-zoomed-font-size': mode === 'compact' ? 14 : 0,
+      })
+      .selector('node.is-focus')
+      .style({
+        label: 'data(label)',
+        'font-size': 10,
+        'min-zoomed-font-size': 0,
+      })
+      .update();
+    if (systemSelectedNodeId) {
+      highlightSystemSelection(systemSelectedNodeId);
+    }
+    updateSystemGraphMeta();
+  }
+
+  function buildSectionedSystemPositions() {
+    if (!systemCy) return {};
+    const sectionOrder = ['physical', 'flow', 'digital', 'network', 'function', 'nodes', 'other'];
+    const nodesBySection = new Map(sectionOrder.map((section) => [section, []]));
+    const degreeById = new Map();
+    systemCy.nodes().forEach((node) => {
+      degreeById.set(node.id(), node.connectedEdges().length);
+      const section = String(node.data('section') || '').toLowerCase();
+      if (!nodesBySection.has(section)) {
+        nodesBySection.set(section, []);
+      }
+      nodesBySection.get(section).push(node);
+    });
+    const activeSections = Array.from(nodesBySection.entries()).filter(([, items]) => items.length);
+    const columnSpacing = systemCy.nodes().length > 80 ? 340 : 300;
+    const rowSpacing = systemCy.nodes().length > 100 ? 76 : (systemCy.nodes().length > 36 ? 92 : 114);
+    const maxRows = Math.max(...activeSections.map(([, items]) => items.length), 1);
+    const positions = {};
+
+    activeSections.forEach(([section, items], sectionIndex) => {
+      items
+        .sort((left, right) => {
+          const degreeDelta = (degreeById.get(right.id()) || 0) - (degreeById.get(left.id()) || 0);
+          if (degreeDelta) return degreeDelta;
+          return String(left.data('label') || left.id()).localeCompare(String(right.data('label') || right.id()));
+        })
+        .forEach((node, itemIndex) => {
+          const yOffset = ((maxRows - items.length) * rowSpacing) / 2;
+          positions[node.id()] = {
+            x: sectionIndex * columnSpacing,
+            y: yOffset + (itemIndex * rowSpacing),
+          };
+        });
+    });
+
+    return positions;
+  }
+
+  function systemLayoutOptions() {
+    if (!systemCy) return { name: 'grid' };
+    const layoutName = systemLayoutSelect?.value || 'sectioned';
+    const nodesCount = systemCy.nodes().length;
+    const padding = getSystemFitPadding();
+    if (layoutName === 'sectioned') {
+      const positions = buildSectionedSystemPositions();
+      return {
+        name: 'preset',
+        positions: (node) => positions[node.id()] || { x: 0, y: 0 },
+        fit: true,
+        padding,
+      };
+    }
+    if (layoutName === 'breadthfirst') {
+      const roots = systemCy.nodes().filter((node) => node.indegree(false) === 0);
+      return {
+        name: 'breadthfirst',
+        directed: true,
+        fit: true,
+        padding,
+        spacingFactor: nodesCount > 90 ? 1.15 : 1.45,
+        avoidOverlap: true,
+        nodeDimensionsIncludeLabels: true,
+        roots: roots.length ? roots : undefined,
+      };
+    }
+    if (layoutName === 'concentric') {
+      return {
+        name: 'concentric',
+        fit: true,
+        padding,
+        avoidOverlap: true,
+        minNodeSpacing: nodesCount > 80 ? 18 : 28,
+        concentric: (node) => node.connectedEdges().length,
+        levelWidth: () => 2,
+      };
+    }
+    return {
+      name: 'cose',
+      animate: false,
+      fit: true,
+      padding,
+      nodeRepulsion: nodesCount > 80 ? 95000 : 62000,
+      idealEdgeLength: nodesCount > 80 ? 170 : 190,
+      componentSpacing: 90,
+      nodeOverlap: 18,
+      gravity: 0.25,
+      numIter: 1600,
+    };
+  }
+
+  function runSystemLayout() {
+    if (!systemCy) return;
+    systemCy.layout(systemLayoutOptions()).run();
+    if (systemSelectedNodeId) {
+      highlightSystemSelection(systemSelectedNodeId);
+    }
+    updateSystemGraphMeta();
+  }
+
+  function fitSystemGraphToSelection() {
+    if (!systemCy) return;
+    if (systemSelectedNodeId) {
+      const selectedNode = systemCy.getElementById(systemSelectedNodeId);
+      if (selectedNode && !selectedNode.empty()) {
+        systemCy.fit(selectedNode.closedNeighborhood(), getSystemFitPadding());
+        return;
+      }
+    }
+    systemCy.fit(systemCy.elements(), getSystemFitPadding());
+  }
+
+  function zoomSystemGraph(multiplier) {
+    if (!systemCy) return;
+    const nextZoom = Math.min(systemCy.maxZoom(), Math.max(systemCy.minZoom(), systemCy.zoom() * multiplier));
+    systemCy.zoom({
+      level: nextZoom,
+      renderedPosition: {
+        x: systemGraphContainer.clientWidth / 2,
+        y: systemGraphContainer.clientHeight / 2,
+      },
     });
   }
-  if (systemRelayout) {
-    systemRelayout.addEventListener('click', () => relayoutSystemGraph());
+
+  function updateSystemFullscreenState() {
+    if (!systemGraphWorkspace || !systemFullscreenButton) return;
+    const isFullscreen = document.fullscreenElement === systemGraphWorkspace;
+    systemGraphWorkspace.classList.toggle('is-fullscreen', isFullscreen);
+    systemFullscreenButton.innerHTML = isFullscreen
+      ? '<i class="bi bi-fullscreen-exit"></i> Exit Fullscreen'
+      : '<i class="bi bi-arrows-fullscreen"></i> Fullscreen';
+    window.requestAnimationFrame(() => {
+      if (!systemCy) return;
+      systemCy.resize();
+      fitSystemGraphToSelection();
+    });
   }
-  if (systemLayoutSelect) {
-    systemLayoutSelect.addEventListener('change', () => relayoutSystemGraph());
+
+  async function toggleSystemFullscreen() {
+    if (!systemGraphWorkspace || !document.fullscreenEnabled) return;
+    if (document.fullscreenElement === systemGraphWorkspace) {
+      await document.exitFullscreen();
+      return;
+    }
+    await systemGraphWorkspace.requestFullscreen();
   }
 
   async function loadSystemGraph() {
-    if (!systemGraphContainer) return;
-    const params = new URLSearchParams();
-    if (systemSource && systemSource.value) params.set('source', systemSource.value);
-    params.set('include_network', systemNetworkToggle && systemNetworkToggle.checked ? '1' : '0');
-
-    setSystemStatus('Loading system graph…');
+    setInlineStatus(systemStatus, 'Loading repo system graph…');
     try {
-      const response = await fetch("{% url 'dashboard:risk_assessment_pid_system_api' %}?" + params.toString());
+      const response = await fetch("{% url 'dashboard:risk_assessment_ics_system_graph' %}");
       const data = await response.json();
       if (!response.ok) {
-        setSystemStatus(data.error || 'System graph unavailable.', true);
-        renderSystemGraph([]);
+        setInlineStatus(systemStatus, data.error || 'System topology unavailable.', true);
+        renderSystemGraph(null);
+        addActivity('error', 'System graph request failed', data.error || 'request failed');
         return;
       }
-      renderSystemGraph(data.elements || []);
-      const meta = data.meta || {};
-      setSystemStatus(
-        `Loaded ${meta.variables || 0} nodes (${meta.cyber_nodes || 0} cyber, ${meta.physical_nodes || 0} physical), ` +
-        `${meta.connections || 0} process edges, ${meta.network_edges || 0} network edges.`
+      renderSystemGraph(data);
+      setInlineStatus(
+        systemStatus,
+        data.found
+          ? `Loaded ${data.metrics?.nodes || 0} repo nodes and ${data.metrics?.edges || 0} links from ${data.path}.`
+          : `No repo system model found at ${data.path || 'the configured repo path'}.`,
+        !data.found
       );
-      renderSystemUnconnected(meta.unconnected_cyber);
+      addActivity('graph', 'System graph refreshed', data.path || 'no system path');
     } catch (err) {
-      setSystemStatus('System graph unavailable.', true);
-      renderSystemGraph([]);
+      setInlineStatus(systemStatus, 'System topology unavailable.', true);
+      renderSystemGraph(null);
+      addActivity('error', 'System graph request failed', 'request error');
     }
   }
 
-  if (workflowExtract && pidUploadButton) {
-    workflowExtract.addEventListener('click', () => pidUploadButton.click());
+  function renderBayesianDetailPayload(data) {
+    if (!bayesianDetail) return;
+    if (!data || typeof data !== 'object' || !data.found) {
+      bayesianDetail.textContent = 'No Bayesian detail is available for the selected node.';
+      return;
+    }
+    const detail = data.detail || {};
+    const bifCpt = data.bif_cpt || {};
+    const parts = [];
+    parts.push(`<div class="fw-semibold">${escapeHtml(data.id || 'Unknown node')}</div>`);
+    if (detail.type) parts.push(`<div class="mt-2">Type: ${escapeHtml(detail.type)}</div>`);
+    if (detail.category) parts.push(`<div>Category: ${escapeHtml(detail.category)}</div>`);
+    if (Array.isArray(bifCpt.parents)) parts.push(`<div>Parents: ${escapeHtml(bifCpt.parents.join(', ') || '—')}</div>`);
+    if (Array.isArray(bifCpt.outcomes)) parts.push(`<div>Outcomes: ${escapeHtml(bifCpt.outcomes.join(', ') || '—')}</div>`);
+    if (Array.isArray(bifCpt.rows)) parts.push(`<div>CPT rows: ${escapeHtml(String(bifCpt.rows.length))}</div>`);
+    if (Array.isArray(data.fts_condition_folders)) {
+      parts.push(`<div>Fault-tree folders: ${escapeHtml(data.fts_condition_folders.join(', ') || '—')}</div>`);
+    }
+    parts.push(`<details class="mt-3"><summary>Full detail JSON</summary><pre class="risk-json-viewer risk-json-viewer--short mt-2">${escapeHtml(prettyJson(detail || {}))}</pre></details>`);
+    bayesianDetail.innerHTML = parts.join('');
   }
-  if (workflowSystem) {
-    workflowSystem.addEventListener('click', () => {
-      const tab = document.getElementById('risk-system-tab');
-      if (tab) tab.click();
-      if (systemRefresh) systemRefresh.click();
-    });
-  }
-  if (workflowValidate) {
-    workflowValidate.addEventListener('click', () => {
-      const payload = {
-        source: systemSource?.value || 'auto',
-        scan: workflowScan?.value || '',
-        scan_sync: Boolean(workflowSync?.checked),
-        scan_run_id: workflowScanrun?.value ? Number(workflowScanrun.value) : null,
-      };
-      runPidValidation(payload);
-    });
-  }
-  if (workflowVuln) {
-    workflowVuln.addEventListener('click', () => {
-      const payload = {
-        source: systemSource?.value || 'auto',
-        openvas: true,
-      };
-      runPidValidation(payload);
-    });
-  }
-  if (workflowTwin) {
-    workflowTwin.addEventListener('click', async () => {
-      const payload = {
-        source: systemSource?.value || 'auto',
-        create_twin: true,
-      };
-      const data = await runPidValidation(payload);
-      if (data && data.digital_twin && data.digital_twin.scan_id) {
-        const scanId = data.digital_twin.scan_id;
-        setWorkflowStatus(`Digital twin scan created (scan_id=${scanId}). Open Digital Twin tab to launch.`, false);
-      }
-    });
-  }
-  if (workflowOpenTwin) {
-    workflowOpenTwin.addEventListener('click', () => {
-      window.location.href = "{% url 'dashboard:digital_twin_page' %}";
-    });
-  }
-  if (workflowRun) {
-    workflowRun.addEventListener('click', async () => {
-      if (!pidFileInput || !pidFileInput.files?.length) {
-        setWorkflowStatus('Select a draw.io XML file first.', true);
+
+  async function loadBayesianNodeDetail(nodeId) {
+    if (!nodeId) return;
+    bayesianDetail.textContent = `Loading detail for ${nodeId}…`;
+    try {
+      const response = await fetch("{% url 'dashboard:risk_assessment_ics_bayesian_node_detail' %}?id=" + encodeURIComponent(nodeId));
+      const data = await response.json();
+      if (!response.ok) {
+        bayesianDetail.textContent = data.error || 'Node detail unavailable.';
+        addActivity('error', 'Bayesian detail request failed', data.error || nodeId);
         return;
       }
-      const formData = new FormData();
-      formData.append('drawio_file', pidFileInput.files[0]);
-      formData.append('upload_target', pidUploadTarget?.checked ? '1' : '0');
-      formData.append('run_validation', '1');
-      formData.append('scan', workflowScan?.value || '');
-      formData.append('scan_sync', workflowSync?.checked ? '1' : '0');
-      formData.append('openvas', workflowIncludeOpenvas?.checked ? '1' : '0');
-      formData.append('create_twin', workflowIncludeTwin?.checked ? '1' : '0');
-      if (workflowScanrun?.value) {
-        formData.append('scan_run_id', workflowScanrun.value);
-      }
-      setWorkflowStatus('Running full workflow…');
-      try {
-        const response = await fetch("{% url 'dashboard:risk_assessment_pid_upload' %}", {
-          method: 'POST',
-          body: formData,
-        });
-        const data = await response.json();
-        if (!response.ok) {
-          setWorkflowStatus(data.error || 'Workflow failed.', true);
-          return;
-        }
-        if (data.validation) {
-          renderWorkflowReport({
-            summary: data.validation.summary,
-            validation: data.validation.validation,
-            validation_scans: data.validation.discovery_scans,
-          });
-          const validation = data.validation.validation || {};
-          const found = Array.isArray(validation.found) ? validation.found.length : 0;
-          const missing = Array.isArray(validation.missing) ? validation.missing.length : 0;
-          const expected = validation.expected_count ?? 0;
-          setWorkflowStatus(`Workflow complete: ${found} found, ${missing} missing (expected ${expected}).`);
-        } else {
-          setWorkflowStatus('Workflow complete.');
-        }
-      } catch (err) {
-        setWorkflowStatus('Workflow unavailable.', true);
-      }
-    });
-  }
-  if (workflowTestbed) {
-    workflowTestbed.addEventListener('click', async () => {
-      setWorkflowStatus('Generating testbed compose…');
-      try {
-        const response = await fetch("{% url 'dashboard:risk_assessment_pid_testbed' %}", {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source: systemSource?.value || 'auto' }),
-        });
-        const data = await response.json();
-        if (!response.ok) {
-          setWorkflowStatus(data.error || 'Testbed generation failed.', true);
-          return;
-        }
-        setWorkflowStatus(`Testbed generated: ${data.compose_path}`);
-        if (workflowReport) {
-          workflowReport.innerHTML = `
-            <div class="fw-semibold mb-2">Testbed Artifacts</div>
-            <div class="small text-muted">Compose: ${escapeHtml(data.compose_path)}</div>
-            <div class="small text-muted">Inventory: ${escapeHtml(data.inventory_path)}</div>
-          `;
-        }
-      } catch (err) {
-        setWorkflowStatus('Testbed generation unavailable.', true);
-      }
-    });
-  }
-
-  function applyMappingFilter() {
-    const term = (mappingFilter?.value || '').toLowerCase();
-    const rows = Array.from(mappingTableBody.querySelectorAll('tr'));
-    rows.forEach(row => {
-      const text = row.textContent.toLowerCase();
-      row.style.display = text.includes(term) ? '' : 'none';
-    });
-  }
-
-  function nodeMetaText(node) {
-    if (!node) return '—';
-    const parts = [];
-    if (node.os_info) parts.push(`OS: ${node.os_info}`);
-    if (node.platform_info) parts.push(`Platform: ${node.platform_info}`);
-    if (node.cpu_count) parts.push(`CPU: ${node.cpu_count}`);
-    if (node.memory_total) {
-      const gb = Number(node.memory_total) / (1024 * 1024 * 1024);
-      if (!Number.isNaN(gb)) {
-        parts.push(`RAM: ${gb.toFixed(1)} GB`);
-      }
+      renderBayesianDetailPayload(data);
+      addActivity('bayesian', 'Loaded Bayesian node detail', nodeId);
+    } catch (err) {
+      bayesianDetail.textContent = 'Node detail unavailable.';
+      addActivity('error', 'Bayesian detail request failed', nodeId);
     }
-    if (Array.isArray(node.active_ports)) parts.push(`Ports: ${node.active_ports.length}`);
-    if (Array.isArray(node.mac_addresses)) parts.push(`MACs: ${node.mac_addresses.length}`);
-    if (node.last_heartbeat) parts.push(`Last: ${node.last_heartbeat}`);
-    return parts.length ? parts.join(' | ') : '—';
   }
 
-  function updateMappingSummary(extraMessage) {
-    if (!mappingSummary || !mappingSummaryData) return;
-    const mappedCount = mappingSummaryData.mappings.filter(
-      mapping => mapping.active !== false && (mapping.node_id || mapping.ip_address)
-    ).length;
-    const summaryParts = [`Mapped ${mappedCount} / ${mappingSummaryData.risk_nodes.length}`];
-    if (mappingSummaryData.risk_error) summaryParts.push(`Risk service: ${mappingSummaryData.risk_error}`);
-    if (extraMessage) summaryParts.push(extraMessage);
-    mappingSummary.textContent = summaryParts.join(' • ');
-  }
+  function renderBayesianGraph(data) {
+    const nodes = Array.isArray(data?.nodes) ? data.nodes : [];
+    const edges = Array.isArray(data?.edges) ? data.edges : [];
+    if (!bayesianGraphContainer) return;
+    if (bayesianCy) {
+      bayesianCy.destroy();
+      bayesianCy = null;
+    }
+    if (!nodes.length) {
+      bayesianGraphContainer.innerHTML = '<div class="text-muted text-center py-5">No Bayesian graph is available.</div>';
+      bayesianDetail.textContent = 'Select a node to inspect CPT and sidecar metadata.';
+      return;
+    }
 
-  function renderMappingTable(data) {
-    if (!mappingTableBody) return;
-    const riskNodes = Array.isArray(data.risk_nodes) ? data.risk_nodes : [];
-    const nodes = Array.isArray(data.nodes) ? data.nodes : [];
-    const mappings = Array.isArray(data.mappings) ? data.mappings : [];
-    const mappingByRisk = new Map(mappings.map(mapping => [String(mapping.risk_node_id), mapping]));
-
-    mappingNodeById = new Map();
-    mappingNodeByName = new Map();
-    mappingNodeByIp = new Map();
-    const nodeOptions = nodes.map(node => {
-      const name = node.name || `Node ${node.id}`;
-      const ip = node.ip_address ? ` (${node.ip_address})` : '';
-      mappingNodeById.set(String(node.id), node);
-      if (node.name) mappingNodeByName.set(node.name.toLowerCase(), String(node.id));
-      if (node.ip_address) mappingNodeByIp.set(node.ip_address, String(node.id));
-      return {
-        value: String(node.id),
-        ip: node.ip_address || '',
-        label: `${name}${ip}`,
-      };
+    bayesianGraphContainer.innerHTML = '';
+    bayesianCy = cytoscape({
+      container: bayesianGraphContainer,
+      elements: [
+        ...nodes.map((node) => ({ data: node })),
+        ...edges.map((edge) => ({ data: edge })),
+      ],
+      style: [
+        {
+          selector: 'node',
+          style: {
+            label: 'data(label)',
+            'font-size': 8,
+            'text-wrap': 'wrap',
+            'text-max-width': 90,
+            'text-valign': 'bottom',
+            'text-halign': 'center',
+            'text-margin-y': 6,
+            'text-background-color': '#ffffff',
+            'text-background-opacity': 0.86,
+            'text-background-shape': 'roundrectangle',
+            'background-color': 'data(color)',
+            'border-width': 1.4,
+            'border-color': '#0f172a',
+            width: 18,
+            height: 18,
+          }
+        },
+        {
+          selector: 'node[cpt_nominal_mismatch]',
+          style: {
+            'border-width': 3,
+            'border-color': '#dc2626',
+          }
+        },
+        {
+          selector: 'edge',
+          style: {
+            'curve-style': 'bezier',
+            'width': 1.5,
+            'line-color': '#64748b',
+            'target-arrow-color': '#64748b',
+            'target-arrow-shape': 'triangle',
+          }
+        }
+      ],
+      layout: {
+        name: 'breadthfirst',
+        directed: true,
+        fit: true,
+        padding: 60,
+        spacingFactor: 1.4,
+      },
     });
 
-    mappingTableBody.innerHTML = riskNodes.map(riskId => {
-      const mapping = mappingByRisk.get(String(riskId)) || {};
-      const selectedNodeId = mapping.node_id ? String(mapping.node_id) : '';
-      const label = mapping.label || '';
-      const notes = mapping.notes || '';
-      const ip = mapping.ip_address || '';
-      const active = mapping.active !== false;
-      const metaText = nodeMetaText(mappingNodeById.get(selectedNodeId));
-      const rowOptions = ['<option value="">—</option>'].concat(
-        nodeOptions.map(option => {
-          const selected = option.value === selectedNodeId ? ' selected' : '';
-          return `<option value="${option.value}" data-ip="${escapeHtml(option.ip)}"${selected}>${escapeHtml(option.label)}</option>`;
-        })
-      ).join('');
+    bayesianCy.on('tap', 'node', (event) => {
+      const item = event.target.data() || {};
+      if (item.id) {
+        loadBayesianNodeDetail(item.id);
+      }
+    });
+  }
 
-      return `<tr data-risk-node-id="${escapeHtml(riskId)}">
-        <td class="fw-semibold">${escapeHtml(riskId)}</td>
-        <td>
-          <select class="form-select form-select-sm risk-map-node">
-            ${rowOptions}
-          </select>
-        </td>
-        <td>
-          <input type="text" class="form-control form-control-sm risk-map-ip" value="${escapeHtml(ip)}" placeholder="192.168.1.10">
-        </td>
-        <td>
-          <input type="text" class="form-control form-control-sm risk-map-label" value="${escapeHtml(label)}" placeholder="Optional label">
-        </td>
-        <td>
-          <input type="text" class="form-control form-control-sm risk-map-notes" value="${escapeHtml(notes)}" placeholder="Notes">
-        </td>
-        <td class="text-center">
-          <input type="checkbox" class="form-check-input risk-map-active" ${active ? 'checked' : ''}>
-        </td>
-        <td class="small text-muted risk-map-meta">${escapeHtml(metaText)}</td>
-        <td>
-          <button class="btn btn-sm btn-outline-primary risk-mapping-save">Save</button>
-        </td>
-        <td class="text-muted small risk-map-status">—</td>
-      </tr>`;
+  async function loadBayesianGraph() {
+    setInlineStatus(bayesianStatus, 'Loading repo Bayesian network…');
+    try {
+      const response = await fetch("{% url 'dashboard:risk_assessment_ics_bayesian_graph' %}");
+      const data = await response.json();
+      if (!response.ok) {
+        setInlineStatus(bayesianStatus, data.error || 'Bayesian network unavailable.', true);
+        renderBayesianGraph(null);
+        addActivity('error', 'Bayesian graph request failed', data.error || 'request failed');
+        return;
+      }
+      renderBayesianGraph(data);
+      setInlineStatus(
+        bayesianStatus,
+        data.found
+          ? `Loaded ${data.nodes?.length || 0} Bayesian nodes from ${data.path}.`
+          : `No Bayesian network found at ${data.path || 'the configured outputs path'}.`,
+        !data.found
+      );
+      addActivity('bayesian', 'Bayesian graph refreshed', data.path || 'no bayesian path');
+    } catch (err) {
+      setInlineStatus(bayesianStatus, 'Bayesian network unavailable.', true);
+      renderBayesianGraph(null);
+      addActivity('error', 'Bayesian graph request failed', 'request error');
+    }
+  }
+
+  async function loadPipelineLog() {
+    bayesianPipelineLog.textContent = 'Loading pipeline log…';
+    logPipeline.textContent = 'Loading pipeline log…';
+    try {
+      const response = await fetch("{% url 'dashboard:risk_assessment_ics_pipeline_log' %}");
+      const data = await response.json();
+      if (!response.ok) {
+        const message = data.error || 'Pipeline log unavailable.';
+        bayesianPipelineLog.textContent = message;
+        logPipeline.textContent = message;
+        addActivity('error', 'Pipeline log request failed', message);
+        return;
+      }
+      const message = data.found
+        ? prettyJson(data.data)
+        : `No pipeline log found at ${data.path || 'the configured outputs path'}.`;
+      bayesianPipelineLog.textContent = message;
+      logPipeline.textContent = message;
+      addActivity('repo', 'Pipeline log refreshed', data.path || 'no pipeline path');
+    } catch (err) {
+      bayesianPipelineLog.textContent = 'Pipeline log unavailable.';
+      logPipeline.textContent = 'Pipeline log unavailable.';
+      addActivity('error', 'Pipeline log request failed', 'request error');
+    }
+  }
+
+  function renderFaultTreeList(data) {
+    if (!faultTreeList) return;
+    const items = filteredFaultTreeItems(data);
+    renderFaultTreeSummaryCards(data, items);
+    if (!items.length) {
+      const message = faultTreeItems(data).length
+        ? `No fault-tree components match "${faultTreeFilterText}".`
+        : 'No fault-tree components were found under the repo outputs.';
+      faultTreeList.innerHTML = `<div class="text-muted small">${escapeHtml(message)}</div>`;
+      return;
+    }
+    faultTreeList.innerHTML = items.map((item) => `
+      <button type="button" class="risk-fault-tree-item ${selectedFaultTreeId === item.id ? 'is-active' : ''}" data-ft-id="${escapeHtml(item.id)}">
+        <div class="fw-semibold">${escapeHtml(item.id)}</div>
+        <div class="small text-muted mt-1"><code>${escapeHtml(item.path || '')}</code></div>
+        <div class="risk-fault-tree-meta">
+          <span class="badge text-bg-light border">${escapeHtml(String(item.condition_count || 0))} conditions</span>
+          <span class="badge text-bg-light border">${escapeHtml(String(item.fault_count || 0))} faults</span>
+          <span class="badge text-bg-light border">${escapeHtml(String(item.vulnerability_count || 0))} vulns</span>
+          <span class="badge text-bg-light border">${escapeHtml(String(item.defense_count || 0))} defenses</span>
+        </div>
+        <div class="risk-fault-tree-state-row">${renderFaultTreePills(item.states || [], 'state')}</div>
+        <div class="risk-fault-tree-folder-row">${renderFaultTreePills((item.condition_folders || []).slice(0, 5), 'folder')}</div>
+      </button>
+    `).join('');
+  }
+
+  function renderFaultTreeDetail(data) {
+    if (!faultTreeDetail) return;
+    faultTreeDetailData = data && typeof data === 'object' && data.found ? data : null;
+    if (!data || typeof data !== 'object' || !data.found) {
+      faultTreeDetail.innerHTML = '<div class="text-muted">No fault-tree detail is available for the selected component.</div>';
+      renderFaultTreeSelectedMeta(null);
+      renderFaultTreeGraph(null);
+      return;
+    }
+    const component = data.component || {};
+    const conditions = Array.isArray(data.conditions) ? data.conditions : [];
+    const states = Array.isArray(component.states) ? component.states : [];
+    const faults = component.faults && typeof component.faults === 'object' ? component.faults : {};
+    const vulnerabilityEntries = Object.entries(component).filter(([key, value]) => key.startsWith('vul_') && value && typeof value === 'object');
+    const defenseEntries = Object.entries(component).filter(([key, value]) => key.startsWith('defense') && value && typeof value === 'object');
+    const flatFaults = Object.entries(faults).map(([name, probability]) => ({ name, probability }));
+    const flatVulnerabilities = flattenFaultTreeBuckets(vulnerabilityEntries);
+    const flatDefenses = flattenFaultTreeBuckets(defenseEntries);
+    const totalScenarios = conditions.reduce((sum, condition) => sum + Number(condition.sample_count || 0), 0);
+    const totalEvents = conditions.reduce((sum, condition) => sum + Number(condition.event_count || 0), 0);
+    faultTreeDetail.innerHTML = `
+      <div class="risk-fault-tree-grid">
+        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+          <div>
+            <div class="fw-semibold fs-5">${escapeHtml(data.id || 'Unknown component')}</div>
+            <div class="small text-muted mt-2"><code>${escapeHtml(data.path || '')}</code></div>
+          </div>
+          <div class="small text-muted">${escapeHtml(String(conditions.length))} conditions · ${escapeHtml(String(totalScenarios))} scenarios</div>
+        </div>
+        <div class="risk-summary-grid">
+          <div class="risk-summary-card">
+            <div class="risk-summary-label">States</div>
+            <div class="fw-semibold mt-1">${escapeHtml(states.length ? String(states.length) : '0')}</div>
+            <div class="small text-muted mt-2">${escapeHtml(states.join(', ') || '—')}</div>
+          </div>
+          <div class="risk-summary-card">
+            <div class="risk-summary-label">Faults</div>
+            <div class="fw-semibold mt-1">${escapeHtml(String(flatFaults.length))}</div>
+            <div class="small text-muted mt-2">Component failures</div>
+          </div>
+          <div class="risk-summary-card">
+            <div class="risk-summary-label">Vulnerabilities</div>
+            <div class="fw-semibold mt-1">${escapeHtml(String(flatVulnerabilities.length))}</div>
+            <div class="small text-muted mt-2">Mapped exposures</div>
+          </div>
+          <div class="risk-summary-card">
+            <div class="risk-summary-label">Defenses</div>
+            <div class="fw-semibold mt-1">${escapeHtml(String(flatDefenses.length))}</div>
+            <div class="small text-muted mt-2">Mitigation entries</div>
+          </div>
+          <div class="risk-summary-card">
+            <div class="risk-summary-label">Rule Events</div>
+            <div class="fw-semibold mt-1">${escapeHtml(String(totalEvents))}</div>
+            <div class="small text-muted mt-2">Across loaded conditions</div>
+          </div>
+        </div>
+        <div class="risk-fault-tree-state-row">${renderFaultTreePills(states, 'state')}</div>
+        <div class="risk-detail-card">
+          <div class="risk-fault-tree-graph-toolbar">
+            <div class="fw-semibold">Fault Tree Graph</div>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <select id="risk-fault-tree-graph-condition" class="form-select form-select-sm">
+                <option value="">Loading conditions…</option>
+              </select>
+              <select id="risk-fault-tree-graph-state" class="form-select form-select-sm">
+                <option value="">Loading states…</option>
+              </select>
+            </div>
+          </div>
+          <div id="risk-fault-tree-graph-meta" class="small text-muted mt-2">Rendering selected component graph…</div>
+          <div class="row g-3 mt-1">
+            <div class="col-lg-8">
+              <div id="risk-fault-tree-graph" class="risk-fault-tree-graph-frame"></div>
+            </div>
+            <div class="col-lg-4">
+              <div class="risk-detail-card h-100">
+                <div class="fw-semibold mb-2">Graph Selection</div>
+                <div id="risk-fault-tree-graph-detail" class="small text-muted">Select a graph node to inspect its role in the selected component.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="risk-fault-tree-mini-grid">
+          <div class="risk-detail-card">
+            <div class="fw-semibold mb-2">Fault Entries</div>
+            ${renderFaultTreeBucketList(flatFaults, 'No fault entries found in component.json.')}
+          </div>
+          <div class="risk-detail-card">
+            <div class="fw-semibold mb-2">Vulnerability Entries</div>
+            ${renderFaultTreeBucketList(flatVulnerabilities, 'No vulnerability entries found in component.json.')}
+          </div>
+          <div class="risk-detail-card">
+            <div class="fw-semibold mb-2">Defense Entries</div>
+            ${renderFaultTreeBucketList(flatDefenses, 'No defense entries found in component.json.')}
+          </div>
+        </div>
+        <details class="risk-fault-tree-condition">
+          <summary>Component JSON</summary>
+          <pre class="risk-json-viewer risk-json-viewer--short mt-3">${escapeHtml(prettyJson(component))}</pre>
+        </details>
+        <section>
+          <div class="fw-semibold mb-3">Condition Previews</div>
+          <div class="risk-fault-tree-condition-grid">
+            ${conditions.map((condition) => `
+              <article class="risk-fault-tree-condition-card">
+                <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                  <div>
+                    <div class="fw-semibold">${escapeHtml(condition.name || 'condition')}</div>
+                    <div class="small text-muted mt-1"><code>${escapeHtml(condition.path || '')}</code></div>
+                  </div>
+                  <div class="badge text-bg-light border">${escapeHtml(String(condition.sample_count || 0))} scenarios</div>
+                </div>
+                <div class="risk-fault-tree-meta mt-3">
+                  <span class="badge text-bg-light border">${escapeHtml(String(Object.keys(condition.inputs || {}).length))} inputs</span>
+                  <span class="badge text-bg-light border">${escapeHtml(String(condition.event_count || 0))} events</span>
+                  <span class="badge text-bg-light border">${escapeHtml(String((condition.state_rules || []).length))} states</span>
+                </div>
+                <div class="risk-fault-tree-pill-row mt-3">${renderFaultTreePills(Object.keys(condition.inputs || {}), 'folder')}</div>
+                <div class="risk-fault-tree-pill-row mt-2">${renderFaultTreePills(condition.events || [], 'folder')}</div>
+                <div class="row g-3 mt-1">
+                  <div class="col-lg-6">
+                    <div class="risk-detail-card h-100">
+                      <div class="fw-semibold mb-2">Rule Preview</div>
+                      <div class="small text-muted mb-2"><code>${escapeHtml(condition.rule_path || '')}</code></div>
+                      <div class="small text-muted mb-2">State rules: ${escapeHtml((condition.state_rules || []).join(', ') || '—')}</div>
+                      <pre class="risk-json-viewer risk-json-viewer--short">${escapeHtml(prettyJson(condition.rule || {}))}</pre>
+                    </div>
+                  </div>
+                  <div class="col-lg-6">
+                    <div class="risk-detail-card h-100">
+                      <div class="fw-semibold mb-2">Scenario / Probability Preview</div>
+                      <div class="small text-muted mb-2"><code>${escapeHtml(condition.value_path || '')}</code></div>
+                      ${renderFaultTreeScenarioTable(condition.sample_rows)}
+                      <details class="mt-3">
+                        <summary>value.json preview</summary>
+                        <pre class="risk-json-viewer risk-json-viewer--short mt-2">${escapeHtml(prettyJson(condition.value_preview || {}))}</pre>
+                      </details>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            `).join('')}
+          </div>
+        </section>
+      </div>
+    `;
+    renderFaultTreeSelectedMeta(data);
+    renderFaultTreeGraph(data);
+  }
+
+  async function loadFaultTreeDetail(nodeId) {
+    if (!nodeId || !faultTreeDetail) return;
+    selectedFaultTreeId = nodeId;
+    if (faultTreeSummaryData) {
+      renderFaultTreeList(faultTreeSummaryData);
+    }
+    faultTreeDetail.innerHTML = `<div class="text-muted">Loading fault-tree detail for ${escapeHtml(nodeId)}…</div>`;
+    try {
+      const response = await fetch("{% url 'dashboard:risk_assessment_ics_fault_tree_detail' %}?id=" + encodeURIComponent(nodeId));
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Fault-tree detail unavailable.');
+      }
+      renderFaultTreeDetail(data);
+      addActivity('fault-tree', 'Fault-tree detail loaded', nodeId);
+    } catch (err) {
+      faultTreeDetail.innerHTML = `<div class="text-danger">${escapeHtml(err.message)}</div>`;
+      addActivity('error', 'Fault-tree detail request failed', nodeId);
+    }
+  }
+
+  async function loadFaultTreeSummary(preferredId = '') {
+    setInlineStatus(faultTreeStatus, 'Loading repo fault-tree components…');
+    try {
+      const response = await fetch("{% url 'dashboard:risk_assessment_ics_fault_trees' %}");
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Fault-tree summary unavailable.');
+      }
+      faultTreeSummaryData = data;
+      const items = Array.isArray(data.items) ? data.items : [];
+      const message = items.length
+        ? `Loaded ${items.length} fault-tree components and ${data.condition_count || 0} condition folders from ${data.path || 'the repo outputs'}.`
+        : `No fault-tree components found at ${data.path || 'the repo outputs path'}.`;
+      setInlineStatus(faultTreeStatus, message, !items.length);
+      if (!items.length) {
+        renderFaultTreeList(data);
+        renderFaultTreeDetail(null);
+        return;
+      }
+      const nextId = items.some((item) => item.id === preferredId) ? preferredId : (selectedFaultTreeId || items[0].id);
+      selectedFaultTreeId = nextId;
+      renderFaultTreeList(data);
+      loadFaultTreeDetail(nextId);
+      addActivity('fault-tree', 'Fault-tree summary refreshed', data.path || 'no fault-tree path');
+    } catch (err) {
+      setInlineStatus(faultTreeStatus, err.message, true);
+      faultTreeSummaryData = null;
+      renderFaultTreeList(null);
+      renderFaultTreeDetail(null);
+      addActivity('error', 'Fault-tree summary request failed', err.message);
+    }
+  }
+
+  function collectTimelineSlices(results) {
+    if (!results || typeof results !== 'object') return [];
+    return Object.keys(results)
+      .sort((a, b) => Number(a) - Number(b))
+      .map((timeKey) => ({ time: timeKey, nodes: results[timeKey] || {} }));
+  }
+
+  function renderPrediction(payload) {
+    const slices = collectTimelineSlices(payload?.results);
+    if (!slices.length) {
+      predictionSummary.innerHTML = '';
+      predictionResults.innerHTML = '<div class="text-muted">No prediction slices returned.</div>';
+      return;
+    }
+
+    const nodeIds = Array.from(new Set(slices.flatMap((slice) => Object.keys(slice.nodes || {})))).sort();
+    const lastSlice = slices[slices.length - 1];
+
+    predictionSummary.innerHTML = nodeIds.map((nodeId) => {
+      const stateMap = lastSlice.nodes[nodeId] || {};
+      const dominant = dominantState(stateMap);
+      return `
+        <div class="risk-summary-card">
+          <div class="risk-summary-label">${escapeHtml(nodeId)}</div>
+          <div class="fw-semibold mt-1">${escapeHtml(dominant.state)}</div>
+          <div class="small text-muted mt-2">${escapeHtml(formatProbability(dominant.probability))} at t=${escapeHtml(lastSlice.time)}</div>
+        </div>
+      `;
     }).join('');
 
-    riskMappingRows = new Map();
-    Array.from(mappingTableBody.querySelectorAll('tr')).forEach(row => {
-      const riskId = row.dataset.riskNodeId;
-      if (riskId) riskMappingRows.set(riskId, row);
-    });
-    mappingSummaryData = { risk_nodes: riskNodes, mappings, risk_error: data.risk_error };
-    updateMappingSummary();
-    applyMappingFilter();
+    predictionResults.innerHTML = nodeIds.map((nodeId) => {
+      const rows = slices
+        .filter((slice) => slice.nodes && slice.nodes[nodeId])
+        .map((slice) => ({ time: slice.time, states: slice.nodes[nodeId] }));
+      const stateNames = Array.from(new Set(rows.flatMap((row) => Object.keys(row.states || {})))).sort();
+      return `
+        <section class="risk-prediction-node">
+          <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+            <div class="fw-semibold">${escapeHtml(nodeId)}</div>
+            <div class="small text-muted">${rows.length} slices</div>
+          </div>
+          <div class="table-responsive">
+            <table class="risk-prediction-table">
+              <thead>
+                <tr>
+                  <th>t</th>
+                  ${stateNames.map((state) => `<th>${escapeHtml(state)}</th>`).join('')}
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map((row) => `
+                  <tr>
+                    <td>${escapeHtml(row.time)}</td>
+                    ${stateNames.map((state) => `<td>${escapeHtml(formatProbability(stateProbability(row.states, state)))}</td>`).join('')}
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      `;
+    }).join('');
   }
 
-  async function fetchMappings() {
-    if (!mappingTableBody) return;
-    mappingTableBody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Loading mappings…</td></tr>';
-    if (mappingSummary) mappingSummary.textContent = 'Loading mappings…';
+  async function loadPrediction() {
+    const nodes = parseNodeList(predictionNodesInput.value);
+    const tValue = Math.max(1, Number(predictionTInput.value || 4));
+    setInlineStatus(predictionStatus, 'Running module prediction query…');
+    addActivity('prediction', 'Running module prediction query', `${nodes.length} nodes, T=${tValue}`);
     try {
-      const response = await fetch("{% url 'dashboard:risk_assessment_mappings' %}");
-      const data = await response.json();
-      if (!response.ok) {
-        const message = data.error || 'Error loading mappings';
-        mappingTableBody.innerHTML = `<tr><td colspan="9" class="text-center text-muted">${message}</td></tr>`;
-        if (mappingSummary) mappingSummary.textContent = message;
-        return;
-      }
-      if (!data.risk_nodes || data.risk_nodes.length === 0) {
-        mappingTableBody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No risk nodes available.</td></tr>';
-        if (mappingSummary) mappingSummary.textContent = 'No risk nodes available.';
-        return;
-      }
-      renderMappingTable(data);
-    } catch (err) {
-      mappingTableBody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Mappings unavailable.</td></tr>';
-      if (mappingSummary) mappingSummary.textContent = 'Mappings unavailable.';
-    }
-  }
-
-  async function saveMappingRow(row) {
-    const riskNodeId = row.dataset.riskNodeId;
-    const nodeSelect = row.querySelector('.risk-map-node');
-    const ipInput = row.querySelector('.risk-map-ip');
-    const labelInput = row.querySelector('.risk-map-label');
-    const notesInput = row.querySelector('.risk-map-notes');
-    const activeInput = row.querySelector('.risk-map-active');
-    const statusEl = row.querySelector('.risk-map-status');
-
-    if (statusEl) statusEl.textContent = 'Saving…';
-
-    const payload = {
-      risk_node_id: riskNodeId,
-      node_id: nodeSelect?.value || null,
-      ip_address: (ipInput?.value || '').trim(),
-      label: (labelInput?.value || '').trim(),
-      notes: (notesInput?.value || '').trim(),
-      active: activeInput ? activeInput.checked : true,
-    };
-
-    try {
-      const response = await fetch("{% url 'dashboard:risk_assessment_mappings' %}", {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': getCSRFToken(),
-        },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Save failed');
-      }
-      if (statusEl) statusEl.textContent = `Saved ${new Date().toLocaleTimeString()}`;
-    } catch (err) {
-      if (statusEl) statusEl.textContent = `Error: ${err.message}`;
-    }
-  }
-
-  function collectRowPayload(row) {
-    const riskNodeId = row.dataset.riskNodeId;
-    const nodeSelect = row.querySelector('.risk-map-node');
-    const ipInput = row.querySelector('.risk-map-ip');
-    const labelInput = row.querySelector('.risk-map-label');
-    const notesInput = row.querySelector('.risk-map-notes');
-    const activeInput = row.querySelector('.risk-map-active');
-
-    return {
-      risk_node_id: riskNodeId,
-      node_id: nodeSelect?.value || null,
-      ip_address: (ipInput?.value || '').trim(),
-      label: (labelInput?.value || '').trim(),
-      notes: (notesInput?.value || '').trim(),
-      active: activeInput ? activeInput.checked : true,
-    };
-  }
-
-  function setRowStatus(row, message, isError = false) {
-    const statusEl = row.querySelector('.risk-map-status');
-    if (!statusEl) return;
-    statusEl.textContent = message;
-    statusEl.classList.toggle('text-danger', Boolean(isError));
-    statusEl.classList.toggle('text-muted', !isError);
-  }
-
-  async function saveAllMappings() {
-    if (!mappingTableBody) return;
-    const rows = Array.from(mappingTableBody.querySelectorAll('tr'));
-    rows.forEach(row => setRowStatus(row, 'Saving…'));
-
-    const payload = { mappings: rows.map(collectRowPayload) };
-    try {
-      const response = await fetch("{% url 'dashboard:risk_assessment_mappings' %}", {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': getCSRFToken(),
-        },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        const errors = Array.isArray(data.errors) ? data.errors : [];
-        const errorsByRisk = new Map();
-        errors.forEach(error => {
-          if (error.risk_node_id) {
-            errorsByRisk.set(String(error.risk_node_id), error.error || 'Error');
-          }
-        });
-        rows.forEach((row, index) => {
-          const riskId = row.dataset.riskNodeId;
-          if (errorsByRisk.has(riskId)) {
-            setRowStatus(row, `Error: ${errorsByRisk.get(riskId)}`, true);
-          } else if (errors.some(err => err.index === index)) {
-            const err = errors.find(entry => entry.index === index);
-            setRowStatus(row, `Error: ${err.error || 'Error'}`, true);
-          } else {
-            setRowStatus(row, `Saved ${new Date().toLocaleTimeString()}`);
-          }
-        });
-        updateMappingSummary('Save all encountered errors');
-        return;
-      }
-      rows.forEach(row => setRowStatus(row, `Saved ${new Date().toLocaleTimeString()}`));
-      updateMappingSummary('Save all completed');
-    } catch (err) {
-      rows.forEach(row => setRowStatus(row, `Error: ${err.message}`, true));
-      updateMappingSummary('Save all failed');
-    }
-  }
-
-  function parseCsvLine(line) {
-    const values = [];
-    let current = '';
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i += 1) {
-      const char = line[i];
-      if (char === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          current += '"';
-          i += 1;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (char === ',' && !inQuotes) {
-        values.push(current);
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    values.push(current);
-    return values.map(value => value.trim());
-  }
-
-  function parseCsv(text) {
-    const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-    if (!lines.length) return { headers: [], rows: [] };
-    const headers = parseCsvLine(lines[0]).map(header => header.trim());
-    const rows = lines.slice(1).map(line => parseCsvLine(line));
-    return { headers, rows };
-  }
-
-  function applyCsvMappings(records) {
-    if (!records.length) return { updated: 0, missing: 0 };
-    let updated = 0;
-    let missing = 0;
-    records.forEach(record => {
-      const riskNodeId = record.risk_node_id;
-      if (!riskNodeId) return;
-      const row = riskMappingRows.get(riskNodeId);
-      if (!row) {
-        missing += 1;
-        return;
-      }
-
-      const nodeSelect = row.querySelector('.risk-map-node');
-      const ipInput = row.querySelector('.risk-map-ip');
-      const labelInput = row.querySelector('.risk-map-label');
-      const notesInput = row.querySelector('.risk-map-notes');
-      const activeInput = row.querySelector('.risk-map-active');
-      const metaCell = row.querySelector('.risk-map-meta');
-
-      if (record.node_id && nodeSelect) {
-        nodeSelect.value = String(record.node_id);
-      } else if (record.node_name && nodeSelect) {
-        const lookup = mappingNodeByName.get(record.node_name.toLowerCase());
-        if (lookup) nodeSelect.value = lookup;
-      } else if (record.ip_address && nodeSelect) {
-        const lookup = mappingNodeByIp.get(record.ip_address);
-        if (lookup) nodeSelect.value = lookup;
-      }
-
-      if (record.ip_address && ipInput) ipInput.value = record.ip_address;
-      if (record.label && labelInput) labelInput.value = record.label;
-      if (record.notes && notesInput) notesInput.value = record.notes;
-      if (typeof record.active === 'boolean' && activeInput) activeInput.checked = record.active;
-
-      if (metaCell && nodeSelect) {
-        const meta = nodeMetaText(mappingNodeById.get(nodeSelect.value));
-        metaCell.textContent = meta;
-      }
-
-      updated += 1;
-    });
-    return { updated, missing };
-  }
-
-  function csvToRecords(text) {
-    const { headers, rows } = parseCsv(text);
-    const headerMap = headers.map(header => header.toLowerCase());
-    const findIndex = (names) => {
-      for (const name of names) {
-        const idx = headerMap.indexOf(name);
-        if (idx >= 0) return idx;
-      }
-      return -1;
-    };
-
-    const riskIdx = findIndex(['risk_node_id', 'risknode', 'risk_node', 'risknodeid', 'risk id', 'node']);
-    if (riskIdx < 0) return [];
-    const nodeIdIdx = findIndex(['node_id', 'nodeid']);
-    const nodeNameIdx = findIndex(['node_name', 'nodename', 'node name', 'name']);
-    const ipIdx = findIndex(['ip_address', 'ip', 'address']);
-    const labelIdx = findIndex(['label']);
-    const notesIdx = findIndex(['notes', 'note']);
-    const activeIdx = findIndex(['active', 'enabled']);
-
-    return rows.map(row => {
-      const activeRaw = activeIdx >= 0 ? row[activeIdx] : '';
-      const active = activeRaw === '' ? null : ['1', 'true', 'yes', 'on'].includes(String(activeRaw).toLowerCase());
-      return {
-        risk_node_id: (row[riskIdx] || '').trim(),
-        node_id: nodeIdIdx >= 0 ? (row[nodeIdIdx] || '').trim() : '',
-        node_name: nodeNameIdx >= 0 ? (row[nodeNameIdx] || '').trim() : '',
-        ip_address: ipIdx >= 0 ? (row[ipIdx] || '').trim() : '',
-        label: labelIdx >= 0 ? (row[labelIdx] || '').trim() : '',
-        notes: notesIdx >= 0 ? (row[notesIdx] || '').trim() : '',
-        active: active,
-      };
-    });
-  }
-
-  document.getElementById('risk-status-refresh').addEventListener('click', fetchStatus);
-  document.getElementById('risk-nodes-refresh').addEventListener('click', fetchNodes);
-  nodeFilter.addEventListener('input', applyNodeFilter);
-  document.getElementById('risk-mappings-refresh').addEventListener('click', fetchMappings);
-  if (mappingFilter) {
-    mappingFilter.addEventListener('input', applyMappingFilter);
-  }
-  if (mappingTableBody) {
-    mappingTableBody.addEventListener('click', (event) => {
-      const target = event.target;
-      if (target && target.classList.contains('risk-mapping-save')) {
-        const row = target.closest('tr');
-        if (row) {
-          saveMappingRow(row);
-        }
-      }
-    });
-    mappingTableBody.addEventListener('change', (event) => {
-      const target = event.target;
-      if (target && target.classList.contains('risk-map-node')) {
-        const row = target.closest('tr');
-        const ipInput = row?.querySelector('.risk-map-ip');
-        const metaCell = row?.querySelector('.risk-map-meta');
-        const selectedOption = target.selectedOptions?.[0];
-        const ipValue = selectedOption?.dataset?.ip || '';
-        if (ipInput && !ipInput.value && ipValue) {
-          ipInput.value = ipValue;
-        }
-        if (metaCell) {
-          metaCell.textContent = nodeMetaText(mappingNodeById.get(target.value));
-        }
-      }
-    });
-  }
-  if (mappingImportButton && mappingFileInput) {
-    mappingImportButton.addEventListener('click', () => {
-      mappingFileInput.value = '';
-      mappingFileInput.click();
-    });
-    mappingFileInput.addEventListener('change', async (event) => {
-      const file = event.target.files?.[0];
-      if (!file) return;
-      try {
-        const text = await file.text();
-        const records = csvToRecords(text);
-        if (!records.length) {
-          updateMappingSummary('CSV import: no valid rows');
-          return;
-        }
-        const { updated, missing } = applyCsvMappings(records);
-        updateMappingSummary(`CSV import: ${updated} updated, ${missing} missing`);
-      } catch (err) {
-        updateMappingSummary(`CSV import failed: ${err.message}`);
-      }
-    });
-  }
-  if (mappingSaveAllButton) {
-    mappingSaveAllButton.addEventListener('click', saveAllMappings);
-  }
-
-  document.getElementById('risk-probability-form').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const tValue = parseInt(document.getElementById('risk-t').value || '3', 10);
-    const nodesInput = document.getElementById('risk-nodes-input').value.trim();
-    const vulnerabilitiesRaw = document.getElementById('risk-vulnerabilities').value.trim();
-
-    let vulnerabilities = {};
-
-    try {
-      vulnerabilities = vulnerabilitiesRaw ? JSON.parse(vulnerabilitiesRaw) : {};
-    } catch (err) {
-      alert('Vulnerability updates must be valid JSON');
-      return;
-    }
-
-    resultsEl.textContent = 'Calculating…';
-    try {
-      const payload = {
-        T: Number.isNaN(tValue) ? 3 : tValue,
-      };
-      if (nodesInput) {
-        payload.nodes = nodesInput.split(',').map(node => node.trim()).filter(Boolean);
-      }
-      if (Object.keys(vulnerabilities).length) {
-        payload.vulnerabilities = vulnerabilities;
-      }
       const response = await fetch("{% url 'dashboard:risk_assessment_probability' %}", {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCSRFToken(),
+        },
+        body: JSON.stringify({
+          T: tValue,
+          nodes,
+          return_all: true,
+        }),
       });
       const data = await response.json();
-      resultsEl.textContent = response.ok ? JSON.stringify(data, null, 2) : (data.error || 'Calculation error');
+      if (!response.ok) {
+        throw new Error(data.error || 'Prediction query failed.');
+      }
+      renderPrediction(data);
+      setInlineStatus(predictionStatus, `Loaded ${Object.keys(data.results || {}).length} prediction slices for ${nodes.length} module nodes.`);
+      addActivity('prediction', 'Module prediction updated', `${Object.keys(data.results || {}).length} slices`);
     } catch (err) {
-      resultsEl.textContent = 'Calculation unavailable.';
-    }
-  });
-
-  document.getElementById('risk-probability-reset').addEventListener('click', () => {
-    document.getElementById('risk-t').value = '3';
-    document.getElementById('risk-nodes-input').value = '';
-    document.getElementById('risk-vulnerabilities').value = '';
-    resultsEl.textContent = 'Run a probability query to see results.';
-  });
-
-  document.getElementById('risk-results-copy').addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(resultsEl.textContent);
-    } catch (err) {
-      alert('Copy failed');
-    }
-  });
-
-  if (testbedForm) {
-    testbedForm.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const cidr = document.getElementById('risk-testbed-cidr').value.trim();
-      const maxCves = parseInt(document.getElementById('risk-testbed-max-cves').value || '10', 10);
-      const cves = document.getElementById('risk-testbed-cves').value.trim();
-
-      if (testbedStatus) testbedStatus.textContent = 'Generating testbed…';
-      try {
-        const response = await fetch("{% url 'dashboard:risk_assessment_testbed_generate' %}", {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCSRFToken(),
-          },
-          body: JSON.stringify({
-            cidr,
-            max_cves_per_node: Number.isNaN(maxCves) ? 10 : maxCves,
-            cves,
-          })
-        });
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || 'Testbed generation failed');
-        }
-        if (testbedStatus) {
-          testbedStatus.textContent = `Generated ${data.nodes_created} nodes and ${data.links_created} links (Scan #${data.scan_run_id}). Mappings updated: ${data.mappings_updated}.`;
-        }
-        riskActiveScanId = data.scan_run_id;
-        fetchMappings();
-        loadRiskGraph();
-      } catch (err) {
-        if (testbedStatus) testbedStatus.textContent = `Error: ${err.message}`;
-      }
-    });
-  }
-
-  if (testbedRefresh) {
-    testbedRefresh.addEventListener('click', fetchMappings);
-  }
-
-  fetchStatus();
-  fetchNodes();
-  fetchMappings();
-
-  function setRiskGraphStatus(message) {
-    if (riskGraphStatus) {
-      riskGraphStatus.textContent = message;
+      predictionSummary.innerHTML = '';
+      predictionResults.innerHTML = `<div class="text-danger">${escapeHtml(err.message)}</div>`;
+      setInlineStatus(predictionStatus, err.message, true);
+      addActivity('error', 'Module prediction query failed', err.message);
     }
   }
 
-  function withScanRun(url) {
-    if (riskActiveScanId) {
-      return `${url}?scan_run_id=${encodeURIComponent(riskActiveScanId)}`;
-    }
-    return url;
-  }
-
-  function riskLabelFor(nodeData, match) {
-    const baseLabel = nodeData.label || nodeData.id || 'Unknown';
-    if (!match || match.risk_score === null || match.risk_score === undefined) {
-      return baseLabel;
-    }
-    const pct = Math.round(Number(match.risk_score) * 100);
-    return `${baseLabel} (${pct}%)`;
-  }
-
-  function summarizeRiskVulnerabilities(match) {
-    const vulnerabilities = Array.isArray(match?.vulnerabilities) ? match.vulnerabilities : [];
-    if (!vulnerabilities.length) {
-      return { countText: '0', topText: '—' };
-    }
-    const totalCount = Number.isFinite(Number(match?.vulnerability_count))
-      ? Number(match.vulnerability_count)
-      : vulnerabilities.length;
-    const topText = vulnerabilities.slice(0, 3).map(vuln => {
-      const epss = Number(vuln?.epss);
-      const suffix = Number.isFinite(epss) ? ` (${Math.round(epss * 100)}%)` : '';
-      return `${vuln.id}${suffix}`;
-    }).join(', ');
-    return { countText: String(totalCount), topText };
-  }
-
-  function applyRiskOverlay(mappedNodes) {
-    if (!riskCy || !mappedNodes) return;
-    const byNodeId = new Map();
-    const byIp = new Map();
-    const byName = new Map();
-    const byRiskNodeId = new Map();
-
-    mappedNodes.forEach(node => {
-      if (node.node_id !== null && node.node_id !== undefined) {
-        byNodeId.set(String(node.node_id), node);
-      }
-      if (node.ip_address) {
-        byIp.set(String(node.ip_address), node);
-      }
-      if (node.name) {
-        byName.set(String(node.name), node);
-      }
-      if (node.risk_node_id) {
-        byRiskNodeId.set(String(node.risk_node_id), node);
-      }
-    });
-
-    riskCy.nodes().forEach(node => {
-      const data = node.data();
-      const match =
-        (data.node_id && byNodeId.get(String(data.node_id))) ||
-        (data.ip && byIp.get(String(data.ip))) ||
-        (data.label && byName.get(String(data.label))) ||
-        (data.id && byRiskNodeId.get(String(data.id)));
-
-      const riskLevel = match && match.risk_level ? match.risk_level : 'unknown';
-      const vulnCount = match && Number.isFinite(Number(match.vulnerability_count))
-        ? Number(match.vulnerability_count)
-        : 0;
-      node.data('risk_level', riskLevel);
-      node.data('risk_score', match ? match.risk_score : null);
-      node.data('vulnerability_count', vulnCount);
-      node.data('risk_label', riskLabelFor(data, match));
-    });
-  }
-
-  function renderRiskGraph(elements) {
-    if (!riskGraphContainer) return;
-    if (!Array.isArray(elements) || elements.length === 0) {
-      riskGraphContainer.innerHTML = '<div class="text-muted text-center py-5">No graph data available.</div>';
-      if (riskCy) {
-        riskCy.destroy();
-        riskCy = null;
-      }
+  function renderHistory() {
+    if (!historySamples.length) {
+      historySummary.innerHTML = '';
+      historyTableBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No samples collected yet.</td></tr>';
       return;
     }
 
-    riskGraphContainer.innerHTML = '';
-    if (riskCy) {
-      riskCy.destroy();
-      riskCy = null;
-    }
-
-    riskCy = cytoscape({
-      container: riskGraphContainer,
-      elements,
-      style: [
-        { selector: 'node', style: {
-          'label': 'data(risk_label)',
-          'background-color': '#6c757d',
-          'text-valign': 'bottom',
-          'text-halign': 'center',
-          'color': '#0f172a',
-          'font-size': 11,
-          'text-margin-y': 6,
-          'text-background-color': '#ffffff',
-          'text-background-opacity': 0.9,
-          'text-background-shape': 'roundrectangle',
-          'text-border-color': '#334155',
-          'text-border-width': 0.5,
-          'border-width': 1,
-          'border-color': '#ffffff'
-        }},
-        { selector: 'node[risk_level = "high"]', style: { 'background-color': '#dc3545' } },
-        { selector: 'node[risk_level = "medium"]', style: { 'background-color': '#ffc107' } },
-        { selector: 'node[risk_level = "low"]', style: { 'background-color': '#28a745' } },
-        { selector: 'node[risk_level = "unknown"]', style: { 'background-color': '#6c757d' } },
-        { selector: 'edge', style: {
-          'label': 'data(weight)',
-          'font-size': 9,
-          'color': '#111827',
-          'text-background-color': '#ffffff',
-          'text-background-opacity': 0.8,
-          'text-background-shape': 'roundrectangle',
-          'text-rotation': 'autorotate',
-          'curve-style': 'bezier',
-          'width': 2,
-          'line-color': 'mapData(raw_weight,0,6,green,red)',
-          'target-arrow-shape': 'triangle',
-          'target-arrow-color': 'mapData(raw_weight,0,6,green,red)',
-          'line-opacity': 0.85
-        }}
-        ,
-        { selector: 'edge[kind = "scan"]', style: {
-          'line-color': '#3b82f6',
-          'target-arrow-color': '#3b82f6',
-          'width': 2.5
-        }}
-      ],
-      layout: { name: 'cose', animate: true, fit: true }
-    });
-
-    riskCy.nodes().forEach(node => {
-      const data = node.data();
-      node.data('risk_label', data.label || data.id || 'Unknown');
-    });
-
-    riskCy.on('tap', 'node', evt => {
-      const data = evt.target.data();
-      if (data.agent_id) {
-        window.location.href = `/dashboard/agent/${encodeURIComponent(data.agent_id)}/`;
-        return;
-      }
-      const nodeId = data.node_id || data.id;
-      if (/^\\d+$/.test(String(nodeId))) {
-        window.location.href = `/dashboard/node/${encodeURIComponent(nodeId)}/`;
+    const latestByNode = new Map();
+    historySamples.forEach((sample) => {
+      if (!latestByNode.has(sample.node)) {
+        latestByNode.set(sample.node, sample);
       }
     });
+    historySummary.innerHTML = Array.from(latestByNode.values()).map((sample) => `
+      <div class="risk-summary-card">
+        <div class="risk-summary-label">${escapeHtml(sample.node)}</div>
+        <div class="fw-semibold mt-1">${escapeHtml(sample.dominantState)}</div>
+        <div class="small text-muted mt-2">${escapeHtml(formatProbability(sample.dominantProbability))} at ${escapeHtml(sample.elapsed)}</div>
+      </div>
+    `).join('');
+
+    historyTableBody.innerHTML = historySamples.slice(0, 120).map((sample) => `
+      <tr>
+        <td>${escapeHtml(sample.elapsed)}</td>
+        <td>${escapeHtml(sample.node)}</td>
+        <td>${escapeHtml(formatProbability(sample.normal))}</td>
+        <td>${escapeHtml(formatProbability(sample.compromised))}</td>
+        <td>${escapeHtml(formatProbability(sample.abnormal))}</td>
+        <td class="small text-muted">${escapeHtml(sample.otherStates || '—')}</td>
+      </tr>
+    `).join('');
   }
 
-  async function loadRiskGraph() {
-    if (!riskGraphContainer) return;
-    setRiskGraphStatus('Loading graph…');
+  async function sampleHistoryOnce() {
+    const nodes = parseNodeList(historyNodesInput.value);
+    if (!nodes.length) {
+      setInlineStatus(historyStatus, 'Add at least one module node before sampling history.', true);
+      return;
+    }
     try {
-      const response = await fetch(withScanRun("{% url 'dashboard:graph-data' %}"));
+      const response = await fetch("{% url 'dashboard:risk_assessment_probability' %}", {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCSRFToken(),
+        },
+        body: JSON.stringify({
+          T: 3,
+          nodes,
+        }),
+      });
       const data = await response.json();
       if (!response.ok) {
-        setRiskGraphStatus(data.error || 'Graph unavailable.');
-        return;
-      }
-      riskGraphElements = data;
-      renderRiskGraph(riskGraphElements);
-      riskGraphScanId = riskActiveScanId;
-      setRiskGraphStatus('Graph loaded.');
-    } catch (err) {
-      setRiskGraphStatus('Graph unavailable.');
-    }
-  }
-
-  async function fetchNetworkRisk() {
-    const tableBody = document.querySelector('#risk-network-table tbody');
-    tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Computing risk…</td></tr>';
-    try {
-      const response = await fetch(withScanRun("{% url 'dashboard:risk_assessment_network_compute' %}"));
-      const data = await response.json();
-      if (!response.ok) {
-        tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">${data.error || 'Error computing risk'}</td></tr>`;
-        return;
-      }
-      if (data.scan_run_id) {
-        riskActiveScanId = data.scan_run_id;
-      }
-      const mapped = data.mapped_nodes || [];
-      if (mapped.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No mapped nodes found.</td></tr>';
-        setRiskGraphStatus('No mapped cyber nodes are currently linked to risk-model nodes.');
-        return;
-      }
-      const vulnerableCount = mapped.filter(node => Number(node.vulnerability_count || 0) > 0).length;
-      tableBody.innerHTML = mapped.map(node => {
-        const score = node.risk_score !== null && node.risk_score !== undefined
-          ? Number(node.risk_score).toFixed(6).replace(/\.?0+$/, '')
-          : '—';
-        const level = node.risk_level || 'unknown';
-        const vulnSummary = summarizeRiskVulnerabilities(node);
-        const rowClass = level === 'high' ? 'table-danger' : (level === 'medium' ? 'table-warning' : '');
-        return `
-          <tr class="${rowClass}">
-            <td>${node.name || 'Unknown'}</td>
-            <td>${node.ip_address || '—'}</td>
-            <td>${node.risk_node_id || '—'}</td>
-            <td>${vulnSummary.countText}</td>
-            <td class="small">${escapeHtml(vulnSummary.topText)}</td>
-            <td>${score}</td>
-            <td class="text-capitalize">${level}</td>
-          </tr>
-        `;
-      }).join('');
-      setRiskGraphStatus(`Mapped ${mapped.length} nodes to the Bayesian model. ${vulnerableCount} mapped nodes currently carry CVEs from discovered network evidence.`);
-      if (!riskCy || (riskActiveScanId && riskGraphScanId !== riskActiveScanId)) {
-        await loadRiskGraph();
-      }
-      applyRiskOverlay(mapped);
-    } catch (err) {
-      tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Risk service unavailable.</td></tr>';
-    }
-  }
-
-  initPidUploader();
-  if (pidUploadButton) {
-    pidUploadButton.addEventListener('click', async () => {
-      if (!pidFileInput || !pidFileInput.files.length) {
-        setPidStatus('Select a draw.io XML file to upload.', true);
-        return;
-      }
-      const file = pidFileInput.files[0];
-      const formData = new FormData();
-      formData.append('drawio_file', file);
-      if (pidUploadTarget && pidUploadTarget.checked) {
-        formData.append('upload_target', '1');
+        throw new Error(data.error || 'History sample failed.');
       }
 
-      setPidStatus('Converting draw.io XML…');
-      try {
-        const response = await fetch("{% url 'dashboard:risk_assessment_pid_upload' %}", {
-          method: 'POST',
-          headers: {
-            'X-CSRFToken': getCSRFToken()
-          },
-          body: formData
+      const elapsedMs = historyStartEpoch ? (Date.now() - historyStartEpoch) : 0;
+      const elapsed = `${(elapsedMs / 1000).toFixed(1)} s`;
+      const results = data.results || {};
+      Object.entries(results).forEach(([node, states]) => {
+        const dominant = dominantState(states);
+        const otherStates = Object.entries(states || {})
+          .filter(([state]) => !['normal', 'compromised', 'abnormal'].includes(String(state)))
+          .map(([state, probability]) => `${state} ${formatProbability(probability)}`)
+          .join(', ');
+        historySamples.unshift({
+          elapsed,
+          node,
+          normal: stateProbability(states, 'normal'),
+          compromised: stateProbability(states, 'compromised'),
+          abnormal: stateProbability(states, 'abnormal'),
+          otherStates,
+          dominantState: dominant.state,
+          dominantProbability: dominant.probability,
         });
-        const data = await response.json();
-        if (!response.ok) {
-          setPidStatus(data.error || 'Conversion failed.', true);
-          return;
-        }
-        let message = `Converted ${data.variables_count} nodes, ${data.connections_count} edges. Saved ${data.sim_system_path}.`;
-        if (data.risk_model_path) {
-          message += ` Prepared current risk model ${data.risk_model_path}.`;
-        }
-        if (data.upload && data.upload.attempted) {
-          if (data.upload.success) {
-            message += ` Uploaded to ${data.upload.path}.`;
-          } else if (data.upload.error) {
-            message += ` Upload failed: ${data.upload.error}`;
-          }
-          if (data.upload.posted) {
-            message += ' Posted to risk assessment API.';
-          } else if (data.upload.post_error) {
-            message += ` Post failed: ${data.upload.post_error}`;
-          }
-        }
-        setPidStatus(message);
-      } catch (err) {
-        setPidStatus('Conversion failed. Please try again.', true);
-      }
+      });
+      historySamples = historySamples.slice(0, 240);
+      renderHistory();
+      setInlineStatus(historyStatus, `Sampling ${nodes.length} module nodes every ${(Number(historyIntervalSelect.value) / 1000).toFixed(0)} seconds.`);
+      addActivity('history', 'Collected history sample', `${nodes.length} nodes`);
+    } catch (err) {
+      setInlineStatus(historyStatus, err.message, true);
+      addActivity('error', 'History sample failed', err.message);
+    }
+  }
+
+  function startHistory() {
+    if (historyTimer) {
+      window.clearInterval(historyTimer);
+    }
+    historyStartEpoch = Date.now();
+    sampleHistoryOnce();
+    historyTimer = window.setInterval(sampleHistoryOnce, Number(historyIntervalSelect.value || 5000));
+    setInlineStatus(historyStatus, 'History sampling started.');
+    addActivity('history', 'Started history sampling');
+  }
+
+  function stopHistory() {
+    if (historyTimer) {
+      window.clearInterval(historyTimer);
+      historyTimer = null;
+    }
+    setInlineStatus(historyStatus, 'History sampling is stopped.');
+    addActivity('history', 'Stopped history sampling');
+  }
+
+  function resetHistory() {
+    stopHistory();
+    historyStartEpoch = null;
+    historySamples = [];
+    renderHistory();
+    setInlineStatus(historyStatus, 'History samples cleared.');
+    addActivity('history', 'Cleared history samples');
+  }
+
+  function setDefaultNodeInputs() {
+    const text = hybridFocusNodes.join('\n');
+    predictionNodesInput.value = text;
+    historyNodesInput.value = text;
+  }
+
+  statusRefreshButton.addEventListener('click', fetchStatus);
+  statusUploadButton.addEventListener('click', uploadRepoModel);
+  statusUnloadButton.addEventListener('click', unloadModel);
+  icsRefreshButton.addEventListener('click', loadRepoSummary);
+  systemRefreshButton.addEventListener('click', loadSystemGraph);
+  systemLayoutSelect.addEventListener('change', runSystemLayout);
+  systemLabelModeSelect.addEventListener('change', applySystemLabelMode);
+  systemRelayoutButton.addEventListener('click', runSystemLayout);
+  systemFitButton.addEventListener('click', () => {
+    if (systemCy) {
+      systemCy.resize();
+      fitSystemGraphToSelection();
+    }
+  });
+  systemFocusButton.addEventListener('click', fitSystemGraphToSelection);
+  systemZoomOutButton.addEventListener('click', () => zoomSystemGraph(0.85));
+  systemZoomInButton.addEventListener('click', () => zoomSystemGraph(1.18));
+  systemFullscreenButton.addEventListener('click', toggleSystemFullscreen);
+  bayesianRefreshButton.addEventListener('click', () => {
+    loadBayesianGraph();
+    loadPipelineLog();
+  });
+  predictionRunButton.addEventListener('click', loadPrediction);
+  predictionDefaultsButton.addEventListener('click', setDefaultNodeInputs);
+  historyStartButton.addEventListener('click', startHistory);
+  historyStopButton.addEventListener('click', stopHistory);
+  historyResetButton.addEventListener('click', resetHistory);
+  faultTreeRefreshButton.addEventListener('click', () => loadFaultTreeSummary(selectedFaultTreeId));
+  faultTreeFilterInput.addEventListener('input', (event) => {
+    faultTreeFilterText = event.target.value || '';
+    renderFaultTreeList(faultTreeSummaryData);
+  });
+  faultTreeList.addEventListener('click', (event) => {
+    const trigger = event.target.closest('[data-ft-id]');
+    if (!trigger) return;
+    loadFaultTreeDetail(trigger.dataset.ftId || '');
+  });
+  faultTreeDetail.addEventListener('change', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.id === 'risk-fault-tree-graph-condition') {
+      faultTreeGraphConditionName = target.value || '';
+      faultTreeGraphState = '';
+      renderFaultTreeGraph(faultTreeDetailData);
+    } else if (target.id === 'risk-fault-tree-graph-state') {
+      faultTreeGraphState = target.value || '';
+      renderFaultTreeGraph(faultTreeDetailData);
+    }
+  });
+  logClearButton.addEventListener('click', () => {
+    activityLog = [];
+    renderActivityLog();
+  });
+
+  document.getElementById('risk-system-tab').addEventListener('shown.bs.tab', loadSystemGraph);
+  document.getElementById('risk-bayesian-tab').addEventListener('shown.bs.tab', () => {
+    loadBayesianGraph();
+    loadPipelineLog();
+  });
+  document.getElementById('risk-fault-tree-tab').addEventListener('shown.bs.tab', () => {
+    loadFaultTreeSummary(selectedFaultTreeId);
+  });
+  document.getElementById('risk-prediction-tab').addEventListener('shown.bs.tab', loadPrediction);
+  document.getElementById('risk-logs-tab').addEventListener('shown.bs.tab', renderActivityLog);
+  document.addEventListener('fullscreenchange', updateSystemFullscreenState);
+  window.addEventListener('resize', () => {
+    if (!systemCy) return;
+    window.requestAnimationFrame(() => {
+      systemCy.resize();
+      fitSystemGraphToSelection();
     });
-  }
+  });
 
-  if (riskNodeSource) {
-    riskNodeSource.addEventListener('change', fetchNodes);
-  }
-
-  if (systemRefresh) {
-    systemRefresh.addEventListener('click', loadSystemGraph);
-  }
-  if (systemSource) {
-    systemSource.addEventListener('change', loadSystemGraph);
-  }
-  if (systemNetworkToggle) {
-    systemNetworkToggle.addEventListener('change', loadSystemGraph);
-  }
-  const systemTab = document.getElementById('risk-system-tab');
-  if (systemTab) {
-    systemTab.addEventListener('shown.bs.tab', loadSystemGraph);
-  }
-
-  document.getElementById('risk-network-refresh').addEventListener('click', fetchNetworkRisk);
-  document.getElementById('risk-network-load').addEventListener('click', loadRiskGraph);
-  loadRiskGraph();
+  setDefaultNodeInputs();
+  renderActivityLog();
+  fetchStatus();
+  loadRepoSummary();
+  loadSystemGraph();
+  updateSystemFullscreenState();
 </script>
 {% endblock %}

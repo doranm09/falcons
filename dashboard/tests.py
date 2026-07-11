@@ -1,4 +1,5 @@
 import json
+import shutil
 import tempfile
 from pathlib import Path
 from django.test import TestCase, TransactionTestCase
@@ -2361,6 +2362,277 @@ class AgentNetworkMetadataTests(TestCase):
         plc_main = next(item for item in topology.json()['nodes'] if item['label'] == 'plc-main')
         self.assertEqual(plc_main['id'], 'static:plc-main')
         self.assertEqual(plc_main['ip_addresses'], ['10.1.1.14', '10.1.2.14'])
+
+
+class RiskAssessmentRepoIntegrationTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tempdir.cleanup)
+        self.repo_root = Path(self.tempdir.name)
+        (self.repo_root / "upload").mkdir(parents=True, exist_ok=True)
+        (self.repo_root / "outputs" / "fts" / "PLC-Main" / "control_path").mkdir(parents=True, exist_ok=True)
+
+        (self.repo_root / "upload" / "sim_system.json").write_text(
+            json.dumps(
+                {
+                    "version": "1.0",
+                    "digital": {
+                        "PLC-Main": {
+                            "type": "PLC",
+                            "networks": {"ControlNet": {}},
+                            "source": {},
+                            "target": {"Historian": "opc"},
+                        },
+                        "Historian": {
+                            "type": "DataHistorian",
+                            "source": {"PLC-Main": "opc"},
+                            "target": {},
+                        },
+                    },
+                    "physical": {
+                        "Pressurizer": {
+                            "type": "pressurizer",
+                            "source": {},
+                            "target": {},
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        (self.repo_root / "outputs" / "dbn.bifxml").write_text(
+            """<?xml version="1.0"?>
+<BIF>
+  <NETWORK>
+    <VARIABLE TYPE="nature">
+      <NAME>Historian</NAME>
+      <OUTCOME>Nominal</OUTCOME>
+      <OUTCOME>Abnormal</OUTCOME>
+    </VARIABLE>
+    <VARIABLE TYPE="nature">
+      <NAME>PLC-Main</NAME>
+      <OUTCOME>Nominal</OUTCOME>
+      <OUTCOME>Abnormal</OUTCOME>
+    </VARIABLE>
+    <DEFINITION>
+      <FOR>Historian</FOR>
+      <TABLE>0.9 0.1</TABLE>
+    </DEFINITION>
+    <DEFINITION>
+      <FOR>PLC-Main</FOR>
+      <GIVEN>Historian</GIVEN>
+      <TABLE>1 0 1 0</TABLE>
+    </DEFINITION>
+  </NETWORK>
+</BIF>
+""",
+            encoding="utf-8",
+        )
+        (self.repo_root / "outputs" / "dbn_2_with_cpt.json").write_text(
+            json.dumps(
+                {
+                    "nodes": {
+                        "PLC-Main": {
+                            "type": "PLC",
+                            "category": "digital",
+                            "states": ["Nominal", "Abnormal"],
+                        },
+                        "Historian": {
+                            "type": "Computer",
+                            "category": "digital",
+                            "states": ["Nominal", "Abnormal"],
+                        },
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        (self.repo_root / "outputs" / "pipeline_log.json").write_text(
+            json.dumps({"steps": [{"name": "upload", "status": "ok"}]}),
+            encoding="utf-8",
+        )
+        (self.repo_root / "outputs" / "fts" / "PLC-Main" / "component.json").write_text(
+            json.dumps(
+                {
+                    "faults": {"PLC-FTS": 1e-09},
+                    "vul_tech1": {"CVE-TEST-0001": 0.01},
+                    "defense1": {"M-TEST-1": 0.1},
+                    "states": ["Nominal", "Abnormal"],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (self.repo_root / "outputs" / "fts" / "PLC-Main" / "control_path" / "rule.json").write_text(
+            json.dumps(
+                {
+                    "inputs": {"Historian": "opc"},
+                    "events": ["PLC-FTS", "vul_tech1", "defense1"],
+                    "value_rules": {
+                        "Abnormal": {"OR": ["PLC-FTS", "vul_tech1"]},
+                        "Nominal": {"NOT": "Abnormal"},
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        (self.repo_root / "outputs" / "fts" / "PLC-Main" / "control_path" / "value.json").write_text(
+            json.dumps(
+                {
+                    "inputs": {"Historian": "opc"},
+                    "values": [
+                        {
+                            "Historian.Nominal": {
+                                "events": {"PLC-FTS": 1e-09, "Historian.Nominal": 1.0},
+                                "probabilities": {"Nominal": 0.99, "Abnormal": 0.01},
+                            }
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def _settings_override(self):
+        return override_settings(
+            ICS_RISK_ASSESSMENT_REPO_PATH=str(self.repo_root),
+            RISK_ASSESSMENT_SIM_SYSTEM_PATH=str(self.repo_root / "upload" / "sim_system.json"),
+        )
+
+    def test_risk_assessment_page_includes_ics_visuals_tab(self):
+        with self._settings_override():
+            response = self.client.get(reverse("dashboard:risk_assessment"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "ICS Visuals")
+        self.assertContains(response, "Repo Bayesian Graph")
+        self.assertContains(response, "Fault Trees")
+        self.assertContains(response, "risk-fault-tree-filter")
+        self.assertContains(response, "risk-ics-summary-status")
+        self.assertContains(response, "risk-system-layout")
+        self.assertContains(response, "risk-system-fullscreen")
+        self.assertContains(response, "Upload Repo Model")
+
+    def test_risk_assessment_ics_summary_api_reports_repo_artifacts(self):
+        with self._settings_override():
+            response = self.client.get(reverse("dashboard:risk_assessment_ics_summary"))
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["repo_available"])
+        self.assertTrue(payload["sim_system_found"])
+        self.assertTrue(payload["bayesian_found"])
+        self.assertTrue(payload["cpt_found"])
+        self.assertTrue(payload["pipeline_log_found"])
+        self.assertEqual(payload["fault_tree_count"], 1)
+        self.assertEqual(payload["metrics"]["nodes"], 4)
+        self.assertEqual(payload["metrics"]["links"], 2)
+
+    def test_risk_assessment_ics_system_graph_api_returns_repo_graph(self):
+        with self._settings_override():
+            response = self.client.get(reverse("dashboard:risk_assessment_ics_system_graph"))
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["found"])
+        labels = {node["label"] for node in payload["nodes"]}
+        self.assertIn("PLC-Main", labels)
+        self.assertIn("Historian", labels)
+        self.assertIn("Pressurizer", labels)
+        self.assertIn("ControlNet", labels)
+        self.assertTrue(any(edge["source"] == "PLC-Main" and edge["target"] == "Historian" for edge in payload["edges"]))
+
+    def test_risk_assessment_ics_model_api_falls_back_to_repo_db_model(self):
+        db_dir = self.repo_root / "db"
+        db_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(self.repo_root / "upload" / "sim_system.json", db_dir / "sim_system.json")
+        (self.repo_root / "upload" / "sim_system.json").unlink()
+
+        with self._settings_override():
+            summary_response = self.client.get(reverse("dashboard:risk_assessment_ics_summary"))
+            model_response = self.client.get(reverse("dashboard:risk_assessment_ics_model"))
+
+        self.assertEqual(summary_response.status_code, 200)
+        summary_payload = summary_response.json()
+        self.assertTrue(summary_payload["sim_system_found"])
+        self.assertEqual(summary_payload["model_source"], "db")
+        self.assertTrue(summary_payload["model_path"].endswith("db/sim_system.json"))
+
+        self.assertEqual(model_response.status_code, 200)
+        model_payload = model_response.json()
+        self.assertTrue(model_payload["found"])
+        self.assertEqual(model_payload["source"], "db")
+        self.assertIn("digital", model_payload["data"])
+
+    def test_risk_assessment_ics_bayesian_graph_and_detail_apis_return_repo_outputs(self):
+        with self._settings_override():
+            graph_response = self.client.get(reverse("dashboard:risk_assessment_ics_bayesian_graph"))
+            detail_response = self.client.get(
+                reverse("dashboard:risk_assessment_ics_bayesian_node_detail"),
+                {"id": "PLC-Main"},
+            )
+
+        self.assertEqual(graph_response.status_code, 200)
+        graph_payload = graph_response.json()
+        self.assertTrue(graph_payload["found"])
+        plc_node = next(node for node in graph_payload["nodes"] if node["id"] == "PLC-Main")
+        self.assertEqual(plc_node["type"], "PLC")
+        self.assertTrue(plc_node["cpt_nominal_mismatch"])
+        self.assertTrue(any(edge["source"] == "Historian" and edge["target"] == "PLC-Main" for edge in graph_payload["edges"]))
+
+        self.assertEqual(detail_response.status_code, 200)
+        detail_payload = detail_response.json()
+        self.assertTrue(detail_payload["found"])
+        self.assertEqual(detail_payload["bif_cpt"]["parents"], ["Historian"])
+        self.assertEqual(len(detail_payload["bif_cpt"]["rows"]), 2)
+        self.assertEqual(detail_payload["fts_condition_folders"], ["control_path"])
+
+    def test_risk_assessment_ics_pipeline_log_api_returns_repo_log(self):
+        with self._settings_override():
+            response = self.client.get(reverse("dashboard:risk_assessment_ics_pipeline_log"))
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["found"])
+        self.assertEqual(payload["data"]["steps"][0]["name"], "upload")
+
+    def test_risk_assessment_ics_fault_tree_summary_and_detail_apis_return_repo_outputs(self):
+        with self._settings_override():
+            summary_response = self.client.get(reverse("dashboard:risk_assessment_ics_fault_trees"))
+            detail_response = self.client.get(
+                reverse("dashboard:risk_assessment_ics_fault_tree_detail"),
+                {"id": "PLC-Main"},
+            )
+
+        self.assertEqual(summary_response.status_code, 200)
+        summary_payload = summary_response.json()
+        self.assertTrue(summary_payload["found"])
+        self.assertEqual(summary_payload["component_count"], 1)
+        self.assertEqual(summary_payload["condition_count"], 1)
+        self.assertEqual(summary_payload["items"][0]["id"], "PLC-Main")
+        self.assertEqual(summary_payload["items"][0]["states"], ["Nominal", "Abnormal"])
+
+        self.assertEqual(detail_response.status_code, 200)
+        detail_payload = detail_response.json()
+        self.assertTrue(detail_payload["found"])
+        self.assertEqual(detail_payload["id"], "PLC-Main")
+        self.assertEqual(detail_payload["component"]["states"], ["Nominal", "Abnormal"])
+        self.assertEqual(len(detail_payload["conditions"]), 1)
+        self.assertEqual(detail_payload["conditions"][0]["name"], "control_path")
+        self.assertTrue(detail_payload["conditions"][0]["rule_path"].endswith("rule.json"))
+        self.assertTrue(detail_payload["conditions"][0]["value_path"].endswith("value.json"))
+        self.assertEqual(detail_payload["conditions"][0]["events"], ["PLC-FTS", "vul_tech1", "defense1"])
+        self.assertEqual(detail_payload["conditions"][0]["sample_count"], 1)
+        self.assertEqual(detail_payload["conditions"][0]["graph_default_state"], "Abnormal")
+        self.assertEqual(len(detail_payload["conditions"][0]["graphs"]), 2)
+        abnormal_graph = next(
+            graph_variant for graph_variant in detail_payload["conditions"][0]["graphs"] if graph_variant["state"] == "Abnormal"
+        )
+        self.assertEqual(abnormal_graph["scenario"], "Historian.Nominal")
+        self.assertTrue(any(node["type"] == "top_event" and node["label"] == "Abnormal" for node in abnormal_graph["graph"]["nodes"]))
+        self.assertTrue(any(node["type"] == "or_gate" for node in abnormal_graph["graph"]["nodes"]))
+        self.assertTrue(any(node["type"] == "basic_event" and node["label"] == "PLC-FTS" for node in abnormal_graph["graph"]["nodes"]))
+        self.assertEqual(
+            detail_payload["conditions"][0]["value_preview"]["values"][0]["Historian.Nominal"]["probabilities"]["Nominal"],
+            0.99,
+        )
+        self.assertEqual(detail_payload["conditions"][0]["event_count"], 3)
 
 
 class AgentVersionTests(TestCase):

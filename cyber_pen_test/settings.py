@@ -193,7 +193,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CELERY_RESULT_BACKEND = 'redis://redis:6379/0'
 # CELERY_BROKER_URL = 'redis://localhost:6379/0'  # or 'redis://redis:6379/0'
-STATIC_URL = '/static/'
 STATICFILES_DIRS = [
     BASE_DIR / "dashboard/static",
 ]
@@ -207,9 +206,19 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Sliver implant artifact storage (override with SLIVER_ARTIFACT_DIR env var)
 SLIVER_ARTIFACT_DIR = os.environ.get('SLIVER_ARTIFACT_DIR', str(BASE_DIR / 'sliver_artifacts'))
 
-# ICS Risk Assessment API
+# ICS Risk Assessment API / repo integration
+_DEFAULT_ICS_RISK_REPO_PATH = BASE_DIR.parent / "ics-risk-assessment"
+ICS_RISK_ASSESSMENT_REPO_PATH = os.environ.get(
+    'ICS_RISK_ASSESSMENT_REPO_PATH',
+    str(_DEFAULT_ICS_RISK_REPO_PATH) if _DEFAULT_ICS_RISK_REPO_PATH.exists() else '',
+)
+_DEFAULT_RISK_SIM_SYSTEM_PATH = (
+    str(Path(ICS_RISK_ASSESSMENT_REPO_PATH) / 'upload' / 'sim_system.json')
+    if ICS_RISK_ASSESSMENT_REPO_PATH
+    else ''
+)
 RISK_ASSESSMENT_API_URL = os.environ.get('RISK_ASSESSMENT_API_URL', 'http://127.0.0.1:7890')
-RISK_ASSESSMENT_SIM_SYSTEM_PATH = os.environ.get('RISK_ASSESSMENT_SIM_SYSTEM_PATH', '')
+RISK_ASSESSMENT_SIM_SYSTEM_PATH = os.environ.get('RISK_ASSESSMENT_SIM_SYSTEM_PATH', _DEFAULT_RISK_SIM_SYSTEM_PATH)
 RISK_ASSESSMENT_UPLOAD_URL = os.environ.get('RISK_ASSESSMENT_UPLOAD_URL', '')
 RISK_ASSESSMENT_UPLOAD_TOKEN = read_secret("RISK_ASSESSMENT_UPLOAD_TOKEN", "")
 PID_DRAWIO_OUTPUT_DIR = os.environ.get('PID_DRAWIO_OUTPUT_DIR', str(BASE_DIR / 'out' / 'pid_drawio'))

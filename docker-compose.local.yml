@@ -5,6 +5,8 @@ services:
       DJANGO_LIVE_RELOAD: "1"
     volumes:
       - .:/code
+      - ../ics-risk-assessment:/opt/ics-risk-assessment
   celery:
     volumes:
       - .:/code
+      - ../ics-risk-assessment:/opt/ics-risk-assessment

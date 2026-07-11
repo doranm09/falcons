@@ -1,4 +1,3 @@
-# dashboard/utils.py
 import heapq
 import psutil
 
@@ -23,8 +22,12 @@ def dijkstra(nodes, links, start_id):
 
     return distances
 
-def list_interfaces():
+def get_if_list():
     try:
         return list(psutil.net_if_addrs().keys())
     except Exception:
         return []
+
+
+def list_interfaces():
+    return get_if_list()

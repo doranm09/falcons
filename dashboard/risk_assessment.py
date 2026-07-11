@@ -318,9 +318,10 @@ def build_cyber_data_for_risk_nodes(
                 "source": "node",
             })
 
-        # Scan-specific vulnerabilities tied by host IP
-        if node.ip_address:
-            scan_vulns = ScanVulnerability.objects.filter(host_ip=node.ip_address)
+        # Scan-specific vulnerabilities tied by any known interface IP for the asset.
+        scan_candidate_ips = risk_candidate_node_ips(node, include_oob=True)
+        if scan_candidate_ips:
+            scan_vulns = ScanVulnerability.objects.filter(host_ip__in=scan_candidate_ips)
             if scan_run_id is not None:
                 scan_vulns = scan_vulns.filter(scan_run_id=scan_run_id)
             for scan_vuln in scan_vulns:

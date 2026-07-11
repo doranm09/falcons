@@ -107,9 +107,67 @@
     gap: 0.35rem;
     flex-wrap: wrap;
   }
+  .agent-topology-shell {
+    display: grid;
+    gap: 1rem;
+  }
+  .agent-topology-columns {
+    display: grid;
+    gap: 1rem;
+  }
+  .agent-topology-grid {
+    display: grid;
+    gap: 0.85rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+  .agent-topology-card {
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 0.9rem;
+    background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94));
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  }
+  .agent-topology-card__header {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    align-items: flex-start;
+    margin-bottom: 0.6rem;
+  }
+  .agent-topology-card__title {
+    font-weight: 600;
+    line-height: 1.25;
+    word-break: break-word;
+  }
+  .agent-topology-card__meta {
+    display: grid;
+    gap: 0.35rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+  .agent-topology-flow-list {
+    display: grid;
+    gap: 0.65rem;
+  }
+  .agent-topology-flow {
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 0.75rem;
+    background: rgba(248, 250, 252, 0.92);
+  }
+  .agent-topology-flow__route {
+    font-family: var(--bs-font-monospace, monospace);
+    font-size: 0.82rem;
+    word-break: break-word;
+  }
   @media (min-width: 768px) {
     .purdue-topology-board {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (min-width: 992px) {
+    .agent-topology-columns {
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
     }
   }
   @media (min-width: 900px) {
@@ -470,8 +528,14 @@
     function renderNetworkTopology(data) {
         const container = document.getElementById('networkTopology');
         const layers = Array.isArray(data.layers) ? data.layers : [];
+        const nodes = Array.isArray(data.nodes) ? data.nodes : [];
+        const edges = Array.isArray(data.edges) ? data.edges : [];
 
         if (!layers.length || !layers.some(layer => Array.isArray(layer.nodes) && layer.nodes.length > 0)) {
+            if (nodes.length) {
+                renderLegacyAgentTopology(container, nodes, edges);
+                return;
+            }
             container.innerHTML = `
                 <div class="text-center text-muted">
                     <i class="bi bi-diagram-3" style="font-size: 3rem; margin-bottom: 1rem;"></i>
@@ -540,6 +604,73 @@
               <div class="text-muted small">Layout uses a compact board on wide screens and collapses to stacked layers on smaller displays.</div>
               <div class="purdue-topology-board">
               ${layerHtml}
+              </div>
+            </div>
+            </div>
+        `;
+    }
+
+    function renderLegacyAgentTopology(container, nodes, edges) {
+        const nodeCards = nodes.map(node => {
+            const statusClass = node.status === 'online' ? 'success' : (node.status === 'offline' ? 'danger' : 'secondary');
+            const content = `
+              <div class="agent-topology-card">
+                <div class="agent-topology-card__header">
+                  <div>
+                    <div class="agent-topology-card__title">${escapeHtml(node.label || node.hostname || node.name || node.id || 'Agent')}</div>
+                    <div class="text-muted small">${escapeHtml(node.ip_address || 'Unknown IP')}</div>
+                  </div>
+                  <span class="badge bg-${statusClass}">${escapeHtml(node.status || 'unknown')}</span>
+                </div>
+                <div class="agent-topology-card__meta">
+                  <div><strong>Type:</strong> ${escapeHtml(node.type || 'asset')}</div>
+                  <div><strong>OS:</strong> ${escapeHtml(node.os_type || 'Unknown')}</div>
+                  <div><strong>Last heartbeat:</strong> ${escapeHtml(node.last_heartbeat || 'Never')}</div>
+                </div>
+              </div>
+            `;
+            if (node.node_url) {
+                return `<a class="text-decoration-none text-reset" href="${escapeHtml(node.node_url)}">${content}</a>`;
+            }
+            return content;
+        }).join('');
+
+        const flowCards = edges.length ? edges.map(edge => `
+            <div class="agent-topology-flow">
+              <div class="d-flex justify-content-between gap-2 align-items-start mb-2">
+                <span class="badge text-bg-light border">${escapeHtml(edge.protocol || 'flow')}</span>
+                <span class="badge bg-info">${escapeHtml(String(edge.connection_count || 0))} conn</span>
+              </div>
+              <div class="agent-topology-flow__route">${escapeHtml(edge.from || 'unknown')} &rarr; ${escapeHtml(edge.to || 'unknown')}</div>
+            </div>
+        `).join('') : '<div class="text-muted small">No observed flows in the current window.</div>';
+
+        container.innerHTML = `
+          <div class="p-3">
+            <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3">
+              <div>
+                <h6 class="mb-1">Agent Topology Cards</h6>
+                <div class="text-muted small">Legacy agent-centric view restored when layered Purdue data is unavailable.</div>
+              </div>
+              <div class="d-flex gap-2 flex-wrap">
+                <span class="badge text-bg-light border">${nodes.length} mapped agents</span>
+                <span class="badge text-bg-light border">${edges.length} observed flows</span>
+              </div>
+            </div>
+            <div class="agent-topology-shell">
+              <div class="agent-topology-columns">
+                <div>
+                  <div class="text-muted small mb-2">Observed agents</div>
+                  <div class="agent-topology-grid">
+                    ${nodeCards}
+                  </div>
+                </div>
+                <div>
+                  <div class="text-muted small mb-2">Observed flows</div>
+                  <div class="agent-topology-flow-list">
+                    ${flowCards}
+                  </div>
+                </div>
               </div>
             </div>
           </div>

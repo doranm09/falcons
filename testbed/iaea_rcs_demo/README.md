@@ -7,9 +7,11 @@ This lab turns your diagram into a runnable Docker Compose environment that appr
 - Layer 4: `metasploit`, `database`, `historian-db` (InfluxDB archive), `postgres`
 - Layer 3: `historian`
 - Firewalls: `firewall-2`, `firewall-1`, `firewall-0`, `firewall-main-cell`, `firewall-backup-cell`
-- Layer 2: `hmi`, `ignition`, `engineer-ws`, `l2-jump`
+- Layer 2: `hmi`, `engineer-ws`, `l2-jump`
 - Layer 1: `plc-main`, `plc-backup`
 - Layer 0: `pt-455`, `pt-456`, `pt-457`, `pt-458`, `vc-hv455a`, `vc-pv455b`, `vc-pv455c`, `heat-ctrl`
+
+The list above uses the runtime container names. The Mermaid diagram below keeps the higher-level Purdue-style roles from the source drawing, and the mapping between the two is called out immediately after the diagram.
 
 ## Topology Diagram
 
@@ -21,7 +23,7 @@ subgraph Enterprise_Layer
     PG["Postgres 10.4.50.20"]
 end
 
-FW2["Firewall-2 L3:10.4.50.254 L2:10.3.50.254"]
+FW2["Firewall-2 L4:10.4.50.254 L3:10.3.50.254"]
 
 subgraph Operations_Layer
     HIST["Historian 10.3.50.10"]
@@ -44,6 +46,22 @@ subgraph Control_Layer
     CHB["Channel B 10.1.1.11 / 10.1.2.11"]
     CHC["Channel C 10.1.1.12 / 10.1.2.12"]
     CHD["Channel D 10.1.1.13 / 10.1.2.13"]
+end
+
+subgraph OOB_Management
+    OOB["OOB Management 172.31.250.0/24"]
+    OOBPLCM["plc-main 172.31.250.14"]
+    OOBPLCB["plc-backup 172.31.250.15"]
+    OOBCHA["channel-a 172.31.250.10"]
+    OOBCHB["channel-b 172.31.250.11"]
+    OOBCHC["channel-c 172.31.250.12"]
+    OOBCHD["channel-d 172.31.250.13"]
+    OOBS1["span-l1a 172.31.250.250"]
+    OOBS2["span-l1b 172.31.250.251"]
+    FW0A["firewall-0 agent"]
+    FW1A["firewall-1 agent"]
+    FW2A["firewall-2 agent"]
+    DASH["Dashboard / host.docker.internal:8000"]
 end
 
 subgraph Field_Layer
@@ -91,12 +109,33 @@ CHD -->|Analog| PT458
 CHC -->|Analog| HC
 CHC -->|Analog| VC1
 CHC -->|Analog| VC2
-CHD -->|Anaog| VC3
+CHD -->|Analog| VC3
 CHD -->|Analog| VC4
 VC1 --> SPR1
 VC2 --> SPR2
 VC3 --> PR1
 VC4 --> PR2
+PLCM -. OOB .-> OOBPLCM
+PLCB -. OOB .-> OOBPLCB
+CHA -. OOB .-> OOBCHA
+CHB -. OOB .-> OOBCHB
+CHC -. OOB .-> OOBCHC
+CHD -. OOB .-> OOBCHD
+OOBS1 -. Sniff + report .-> DASH
+OOBS2 -. Sniff + report .-> DASH
+OOBPLCM -. Agent heartbeat .-> DASH
+OOBPLCB -. Agent heartbeat .-> DASH
+OOBCHA -. Agent heartbeat .-> DASH
+OOBCHB -. Agent heartbeat .-> DASH
+OOBCHC -. Agent heartbeat .-> DASH
+OOBCHD -. Agent heartbeat .-> DASH
+FW0 -. Shared netns .-> FW0A
+FW1 -. Shared netns .-> FW1A
+FW2 -. Shared netns .-> FW2A
+FW0A -. Agent heartbeat .-> DASH
+FW1A -. Agent heartbeat .-> DASH
+FW2A -. Agent heartbeat .-> DASH
+OOB --> DASH
 
 style WS4A fill:#dce8f7,stroke:#7ea6d8
 style PG fill:#dce8f7,stroke:#7ea6d8
@@ -127,34 +166,29 @@ style PR1 fill:#dce8f7,stroke:#7ea6d8
 style PR2 fill:#dce8f7,stroke:#7ea6d8
 style PT455 fill:#dcefd8,stroke:#7cb66b
 style PT456 fill:#dcefd8,stroke:#7cb66b
+style OOB fill:#e8f4ff,stroke:#5a9bd5
+style DASH fill:#e8f4ff,stroke:#5a9bd5
+style OOBPLCM fill:#e8f4ff,stroke:#5a9bd5
+style OOBPLCB fill:#e8f4ff,stroke:#5a9bd5
+style OOBCHA fill:#e8f4ff,stroke:#5a9bd5
+style OOBCHB fill:#e8f4ff,stroke:#5a9bd5
+style OOBCHC fill:#e8f4ff,stroke:#5a9bd5
+style OOBCHD fill:#e8f4ff,stroke:#5a9bd5
+style OOBS1 fill:#e8f4ff,stroke:#5a9bd5
+style OOBS2 fill:#e8f4ff,stroke:#5a9bd5
+style FW0A fill:#e8f4ff,stroke:#5a9bd5
+style FW1A fill:#e8f4ff,stroke:#5a9bd5
+style FW2A fill:#e8f4ff,stroke:#5a9bd5
 ```
-
-Policy notes:
-
-- Allowed: `metasploit -> historian` on `443` and `4840`
-- Allowed: `metasploit -> database` on `5432`
-- Allowed: `metasploit -> postgres` on `5432`
-- Allowed: `database -> metasploit` on `4444`
-- Allowed: `hmi -> historian` and `engineer-ws -> historian` on `443` and `4840`
-- Allowed: `historian -> postgres` on `5432`
-- Allowed: `hmi -> plc-backup` and `engineer-ws -> plc-main` on `502` / `44818` through `firewall-0`
-- Allowed: `plc-main` and `plc-backup` talk to Layer 0 devices on `502` only through `firewall-main-cell` and `firewall-backup-cell`
-- Blocked: `metasploit -> hmi` on `443`
-- Blocked: `hmi -> database` on `5432`
-- Blocked: `hmi -> postgres` on `5432`
-- Blocked: `metasploit -> plc-main` on `502`
-- Blocked: `hmi -> pt-455` on `502`
-- Blocked: `hmi -> metasploit` on `4444`
-- Isolated: `mgmt13_net` and `mgmt23_net` remain unreachable from Layers 2-4; host-side PLC UI access still comes through the published Docker ports
 
 ## Layer-Oriented Network Inventory
 
 | Purdue layer | Purpose | Containers | Networks | Current reachability |
 |---|---|---|---|---|
-| Layer 4 | Enterprise IT | `metasploit`, `database`, `historian-db`, `postgres` | `l4_net` `10.4.50.0/24` | Same-segment access to `database` and `postgres`; routed access from `metasploit` to the InfluxDB historian through `firewall-2`; no explicit routes to Layer 1, Layer 0, or PLC management subnets |
-| Layer 3 | Operations / DMZ | `firewall-1`, `firewall-2` | `l3_net` `10.3.50.0/24` | `firewall-1` mediates Layer 2 traffic and `firewall-2` mediates Layer 4 traffic |
-| Layer 2 | Supervisory / operator access | `hmi`, `ignition`, `engineer-ws`, `l2-jump`, `firewall-0`, `firewall-1` | `l2_net` `10.2.50.0/24` | Same-segment access inside Layer 2; routed historian access on `443` and `4840`; routed PLC access on `502` and `44818`; no explicit routes to Layer 0 or PLC management subnets |
-| Layer 1 | Control | `plc-main`, `plc-backup`, `firewall-0`, `firewall-main-cell`, `firewall-backup-cell` | `l1_main` `10.1.13.0/24`, `l1_backup` `10.2.23.0/24`, `mgmt13_net` `10.0.13.0/24`, `mgmt23_net` `10.0.23.0/24` | PLCs are exposed to Layer 2 only through `firewall-0`; process traffic reaches Layer 0 only through the cell firewalls; management nets stay isolated from Layers 2-4 while the PLC web UIs are published to the host |
+| Layer 4 | Enterprise IT | `metasploit`, `database`, `historian-db`, `postgres` | `l4_net` `10.4.50.0/24` | Same-segment access inside the enterprise tier to `database`, `historian-db`, and `postgres`; routed access from `metasploit` to the Layer 3 `historian` through `firewall-2`; no explicit routes to Layer 1, Layer 0, or PLC management subnets |
+| Layer 3 | Operations / DMZ | `historian`, `firewall-1`, `firewall-2` | `l3_net` `10.3.50.0/24` | `historian` sits between the supervisory and enterprise zones: Layer 2 reaches it on `443` and `4840`, it reaches the PLC OPC bridges through `firewall-1` and `firewall-0`, and it reaches `historian-db` on `8086` through `firewall-2` |
+| Layer 2 | Supervisory / operator access | `hmi`, `engineer-ws`, `l2-jump`, `firewall-0`, `firewall-1` | `l2_net` `10.2.50.0/24` | Same-segment access inside Layer 2; routed historian access on `443` and `4840`; routed PLC access on `502` and `44818`; no explicit routes to Layer 0 or PLC management subnets |
+| Layer 1 | Control | `plc-main`, `plc-backup`, `channel-a`, `channel-b`, `channel-c`, `channel-d`, `span-l1a`, `span-l1b`, `firewall-0` | `net_10_1_1` `10.1.1.0/24`, `net_10_1_2` `10.1.2.0/24`, `oob_mgmt` `172.31.250.0/24` | PLCs and channels are exposed to Layer 2 only through `firewall-0`; L1 passive sensors observe in-band control traffic on the redundant control bridges; the OOB management net provides direct heartbeat and telemetry paths back to the dashboard without changing the in-band control topology |
 | Layer 0 | Process I/O | `pt-455`, `pt-456`, `pt-457`, `pt-458`, `vc-hv455a`, `vc-pv455b`, `vc-pv455c`, `heat-ctrl`, `firewall-main-cell`, `firewall-backup-cell` | `p13_net` `10.3.13.0/24`, `p23_net` `10.4.23.0/24` | Field devices are reachable only through their cell firewall allowlists; Layers 2-4 do not route directly into `p13_net`, `p23_net`, or the management nets |
 
 ## Device Address Inventory
@@ -162,7 +196,7 @@ Policy notes:
 | Layer | Device | Role | IP addresses |
 |---|---|---|---|
 | Layer 4 | `database` | Enterprise database | `l4_net 10.4.50.20` |
-| Layer 4 | `historian-db` | InfluxDB-based historian | `l4_net 10.4.50.30` |
+| Layer 4 | `historian-db` | InfluxDB archive / historian UI | `l4_net 10.4.50.30` |
 | Layer 4 | `metasploit` | Metasploit RPC service | `l4_net 10.4.50.10` |
 | Layer 4 | `postgres` | PostgreSQL server | `l4_net 10.4.50.41` |
 | Layer 3 | `historian` | DMZ historian | `l3_net 10.3.50.10` |
@@ -172,11 +206,14 @@ Policy notes:
 | Boundary | `firewall-main-cell` | Layer 1 ↔ Layer 0 main-cell firewall | `l1_main 10.1.13.252`, `p13_net 10.3.13.253` |
 | Boundary | `firewall-backup-cell` | Layer 1 ↔ Layer 0 backup-cell firewall | `l1_backup 10.2.23.252`, `p23_net 10.4.23.253` |
 | Layer 2 | `hmi` | Human-machine interface | `l2_net 10.2.50.10` |
-| Layer 2 | `ignition` | Ignition gateway / SCADA runtime | `l2_net 10.2.50.40` |
 | Layer 2 | `engineer-ws` | Engineering workstation | `l2_net 10.2.50.20` |
 | Layer 2 | `l2-jump` | Jumpbox / utility node | `l2_net 10.2.50.30` |
-| Layer 1 | `plc-main` | Primary PLC | `l1_main 10.1.13.10`, `mgmt13_net 10.0.13.10` |
-| Layer 1 | `plc-backup` | Backup PLC | `l1_backup 10.2.23.10`, `mgmt23_net 10.0.23.10` |
+| Layer 1 | `plc-main` | Primary PLC | `net_10_1_1 10.1.1.14`, `net_10_1_2 10.1.2.14`, `oob_mgmt 172.31.250.14` |
+| Layer 1 | `plc-backup` | Backup PLC | `net_10_1_1 10.1.1.15`, `net_10_1_2 10.1.2.15`, `oob_mgmt 172.31.250.15` |
+| Layer 1 | `channel-a` | Channel A bridge | `net_10_1_1 10.1.1.10`, `net_10_1_2 10.1.2.10`, `oob_mgmt 172.31.250.10` |
+| Layer 1 | `channel-b` | Channel B bridge | `net_10_1_1 10.1.1.11`, `net_10_1_2 10.1.2.11`, `oob_mgmt 172.31.250.11` |
+| Layer 1 | `channel-c` | Channel C hybrid bridge | `net_10_1_1 10.1.1.12`, `net_10_1_2 10.1.2.12`, `oob_mgmt 172.31.250.12` |
+| Layer 1 | `channel-d` | Channel D hybrid bridge | `net_10_1_1 10.1.1.13`, `net_10_1_2 10.1.2.13`, `oob_mgmt 172.31.250.13` |
 | Layer 0 | `pt-455` | Pressure transmitter | `p13_net 10.3.13.11` |
 | Layer 0 | `pt-456` | Pressure transmitter | `p13_net 10.3.13.12`, `p23_net 10.4.23.12` |
 | Layer 0 | `pt-457` | Pressure transmitter | `p13_net 10.3.13.13`, `p23_net 10.4.23.13` |
@@ -190,11 +227,12 @@ Policy notes:
 
 | Network | CIDR | Members |
 |---|---|---|
-| `l2_net` | `10.2.50.0/24` | `hmi .10`, `engineer-ws .20`, `l2-jump .30`, `ignition .40`, `firewall-0 .253`, `firewall-1 .254` |
+| `l2_net` | `10.2.50.0/24` | `hmi .10`, `engineer-ws .20`, `l2-jump .30`, `firewall-0 .253`, `firewall-1 .254` |
 | `l3_net` | `10.3.50.0/24` | `historian .10`, `firewall-1 .253`, `firewall-2 .254` |
 | `l4_net` | `10.4.50.0/24` | `metasploit .10`, `database .20`, `historian-db .30`, `postgres .41`, `firewall-2 .254` |
-| `l1_main` | `10.1.13.0/24` | `plc-main .10`, `firewall-main-cell .252`, `firewall-0 .253` |
-| `l1_backup` | `10.2.23.0/24` | `plc-backup .10`, `firewall-backup-cell .252`, `firewall-0 .253` |
+| `net_10_1_1` | `10.1.1.0/24` | `pt-456 .8`, `pt-455 .9`, `channel-a .10`, `channel-b .11`, `channel-c .12`, `channel-d .13`, `plc-main .14`, `plc-backup .15`, `span-l1a .250`, `firewall-0 .253` |
+| `net_10_1_2` | `10.1.2.0/24` | `pt-456 .8`, `pt-455 .9`, `channel-a .10`, `channel-b .11`, `channel-c .12`, `channel-d .13`, `plc-main .14`, `plc-backup .15`, `span-l1b .250`, `firewall-0 .253` |
+| `oob_mgmt` | `172.31.250.0/24` | `channel-a .10`, `channel-b .11`, `channel-c .12`, `channel-d .13`, `plc-main .14`, `plc-backup .15`, `span-l1a .250`, `span-l1b .251` |
 | `p13_net` | `10.3.13.0/24` | `vc-hv455a .1`, `vc-pv455b .2`, `vc-pv455c .3`, `heat-ctrl .5`, `pt-455 .11`, `pt-456 .12`, `pt-457 .13`, `firewall-main-cell .253` |
 | `p23_net` | `10.4.23.0/24` | `vc-hv455a .1`, `vc-pv455b .2`, `vc-pv455c .3`, `heat-ctrl .5`, `pt-456 .12`, `pt-457 .13`, `pt-458 .14`, `firewall-backup-cell .253` |
 | `mgmt13_net` | `10.0.13.0/24` | `plc-main .10` |
@@ -207,14 +245,13 @@ Policy notes:
 - HTTP/HTTPS --> `80`, `443`
 - Database --> container `5432`, published on host as `15432`
 - PostgreSQL --> container `5432`, published on host as `25432`
-- Historian UI --> container `8086`, published on host as `8086` (InfluxDB 2.x)
+- `historian-db` UI --> container `8086`, published on host as `8086` (InfluxDB 2.x)
 - Metasploit RPC --> container `4444`, published on host as `4444`
 
 ### Layer 3 (DMZ/Historian)
 
-- OPC UA --> `4840`
-- MQTT --> `1883`/`8883`
-- HTTPS API --> `443`
+- Historian status / health --> `443`
+- Historian status / path checks --> `4840`
 
 ### Layer 2 (HMI/Engineering)
 
@@ -222,7 +259,6 @@ Policy notes:
 - VNC --> `5900`
 - OPC UA Client --> `4840`
 - SMB --> `445`
-- Ignition gateway --> container `8088` / `8043`, published on host as `9088` / `9043`
 
 ### Layer 1 (PLCs)
 
@@ -236,7 +272,7 @@ Policy notes:
 
 ## Service behavior note
 
-Most containers in this stack are still built from `services/sim-endpoint` and expose the same JSON-over-HTTP simulator on the ports listed in `SERVICE_PORTS`. That still includes `database`, `historian`, and `l2-jump`; the Layer 4 `metasploit` service occupies the former workstation slot.
+Most containers in this stack are still built from `services/sim-endpoint` and expose the same JSON-over-HTTP simulator on the ports listed in `SERVICE_PORTS`. That still includes `database` and `l2-jump`; the Layer 4 `metasploit` service occupies the former workstation slot.
 
 An actual PostgreSQL 15 server now runs under the `postgres` service, stores the `iaea_rcs` database on a persistent volume, and accepts connections on port `5432` from the host (`127.0.0.1:25432`) and the Layer 4 Metasploit host; credentials are `iaea`/`iaea-demo-password`.
 
@@ -253,8 +289,8 @@ The Layer 4 `metasploit` service runs `msfrpcd` on port `4444` (exposed to the h
 - Each PLC also runs a small OPC UA bridge on `4840`. The demo uses anonymous, no-security OPC UA sessions and exposes fixed string node IDs so the Layer 2 HMI and engineering workstation can read stable tags.
 - `plc-main` serves `opc.tcp://10.1.13.10:4840/main` with namespace URI `urn:iaea-rcs-demo:main`.
 - `plc-backup` serves `opc.tcp://10.2.23.10:4840/backup` with namespace URI `urn:iaea-rcs-demo:backup`.
-- The new historian pair (`historian` on `l2_net` and the dual-homed `historian-db`) polls the OPC bridges every ~6 s and writes the values into InfluxDB; the historian UI is reachable on the host at `http://127.0.0.1:8086/` with the credentials `admin` / `iaea-demo-password` and the token `iaea-historian-token`.
-- `firewall-0` now allows the Layer 4 historian (`10.4.50.31` and `10.2.50.31`) to reach both PLC OPC UA endpoints on `4840` so the collector can fetch Layer 0 tag data.
+- The historian pair is now split cleanly across Layer 3 and Layer 4: `historian` lives on `l3_net` at `10.3.50.10`, polls the PLC OPC bridges every ~6 s, exposes a JSON status payload on `443` and `4840`, and writes the samples into `historian-db` on `l4_net`.
+- `firewall-1` and `firewall-0` now allow the Layer 3 historian at `10.3.50.10` to reach both PLC OPC UA endpoints on `4840`, while `firewall-2` allows it to push data into `historian-db` on `8086`.
 
 ### Prebuilt historian dashboard
 
@@ -273,11 +309,8 @@ The Layer 2 operator services are now different as well:
 
 - `hmi` builds from `services/hmi` and serves a live dashboard on `80` and `443`.
 - The HMI acts as an OPC UA client to both PLC bridges and exposes its current merged state on `http://127.0.0.1:8081/api/state`.
-- `ignition` builds from `services/ignition`, which derives from `inductiveautomation/ignition:8.1.39`, adds `iproute2`, installs the same Layer 2 static routes as the HMI, and then hands control back to the official `/usr/local/bin/docker-entrypoint.sh`.
-- The Ignition gateway is auto-commissioned on first start from Compose environment variables: `GATEWAY_ADMIN_USERNAME`, `GATEWAY_ADMIN_PASSWORD`, and `IGNITION_EDITION`.
 - `engineer-ws` builds from `services/eng-ws` on top of `ubuntu:24.04`.
-- The engineering workstation includes `opc-read`, `curl`, `ip`, `nc`, `ping`, and `tcpdump`, autostarts the Ignition Designer Launcher in its noVNC desktop, and serves a small status page on `80` and `443`.
-- The engineering workstation image does not include a graphical web browser, so `xdg-open http://ignition:8088` will not open the gateway UI inside the desktop without adding one.
+- The engineering workstation includes `opc-read`, `curl`, `ip`, `nc`, `ping`, and `tcpdump`, exposes a noVNC desktop for terminal-based checks, and serves a small status page on `80` and `443`.
 - A shell on the engineering workstation is available with `docker exec -it engineer-ws bash`.
 - The Python host-oriented container images now include the host agent bundle from `host_agent/` and start it automatically when the container comes up. If `AGENT_SERVER_URL` is not set explicitly, the entrypoint prefers `http://host.docker.internal:8000` and falls back to the container gateway on port `8000`; the agent uses the shared lab token `iaea-demo-agent-token` unless you override `AGENT_API_TOKEN`.
 - Non-Python services that cannot embed the agent directly use a companion `testbed/ot/agent` sidecar in the same Docker network so they still report to the dashboard.
@@ -292,7 +325,7 @@ The Layer 0 field devices are now different as well:
 - Actuator writes target holding registers `0`-`1`: the caller writes its controller ID into register `0` and its requested command into register `1`.
 - Controller ID `1` is `plc-main` and controller ID `2` is `plc-backup`. Ownership uses a 2-second lease, and the primary PLC can preempt the backup when both are alive.
 
-Build note: the OpenPLC image downloads the pinned upstream source tarball from GitHub during `docker compose build`, and the local Ignition wrapper image installs `iproute2` with `apt-get`, so the build host needs outbound internet access.
+Build note: the OpenPLC image downloads the pinned upstream source tarball from GitHub during `docker compose build`, so the build host needs outbound internet access.
 
 ## Important limitation
 
@@ -322,14 +355,7 @@ PLC access note:
 
 - `http://127.0.0.1:18080/` reaches the `plc-main` OpenPLC web UI.
 - `http://127.0.0.1:18081/` reaches the `plc-backup` OpenPLC web UI.
-- `http://127.0.0.1:8086/` reaches the new Layer 4 historian UI (InfluxDB 2.x). Use `admin` / `iaea-demo-password` for the UI login and `iaea-historian-token` for API calls.
-- From the host, `http://127.0.0.1:9088/web/login` and `https://127.0.0.1:9043/` reach the Layer 2 Ignition gateway.
-- From the host, the generated Perspective project is available at `http://127.0.0.1:9088/data/perspective/client/iaea_rcs_scada`.
-- From other containers on the Docker network, use `http://ignition:8088/web/login` for the gateway UI and `http://ignition:8088/data/perspective/client/iaea_rcs_scada` for the Perspective client.
-- The hostname `ignition` is only resolvable inside the Docker network. It will not resolve from the host browser unless you add your own DNS or `/etc/hosts` entry.
-- The `engineer-ws` desktop includes the Ignition Designer Launcher but no browser, so browse to the host-mapped `127.0.0.1:9088` URLs from your host machine unless you extend the image with one.
-- On a fresh `ignition_data` volume, Compose auto-commissions Ignition with `IGNITION_GATEWAY_ADMIN_USERNAME` (default `admin`), `IGNITION_GATEWAY_ADMIN_PASSWORD` (default `iaea-demo-password`), and `IGNITION_EDITION` (default `standard`).
-- Those bootstrap variables only affect the first launch against an empty `ignition_data` volume. To re-run commissioning from Compose, remove the volume first.
+- `http://127.0.0.1:8086/` reaches the Layer 4 `historian-db` UI (InfluxDB 2.x). Use `admin` / `iaea-demo-password` for the UI login and `iaea-historian-token` for API calls.
 - Port `502` on the PLC containers is no longer HTTP, so validate it with a Modbus client or a TCP connect test rather than `urllib.request`.
 - `plc-main` publishes a local summary on holding registers `10`-`22`: `PT-455`, `PT-456`, `PT-457`, average pressure, health code, then owner/command pairs for `vc-hv455a`, `vc-pv455b`, `vc-pv455c`, and `heat-ctrl`.
 - `plc-backup` publishes the same shape on holding registers `10`-`22`, using `PT-456`, `PT-457`, and `PT-458` for the sensor half of the summary.
@@ -745,7 +771,6 @@ Routing and firewall diagnostics:
 
 ```bash
 docker exec hmi ip route
-docker exec ignition ip route
 docker exec engineer-ws ip route
 docker exec plc-main ip route
 docker exec pt-456 ip route
@@ -770,12 +795,14 @@ Observed on `2026-04-04`:
 
 - `l2_net`, `l3_net`, and `l4_net` still use Docker bridge gateways `10.2.50.1`, `10.3.50.1`, and `10.4.50.1` as their default gateways.
 - `l1_main`, `l1_backup`, `p13_net`, and `p23_net` remain internal Docker bridges with gateways `10.1.13.254`, `10.2.23.254`, `10.3.13.254`, and `10.4.23.254`.
-- `hmi`, `ignition`, and `engineer-ws` now install explicit routes to `10.1.13.0/24` and `10.2.23.0/24` via `firewall-0` at `10.2.50.253`, but they do not install direct routes to `p13_net`, `p23_net`, or either management subnet.
+- `historian` installs explicit routes to `10.2.50.0/24`, `10.1.13.0/24`, and `10.2.23.0/24` through `firewall-1` at `10.3.50.253`, plus a route to `10.4.50.0/24` through `firewall-2` at `10.3.50.254`.
+- `hmi` and `engineer-ws` now install explicit routes to `10.1.13.0/24` and `10.2.23.0/24` via `firewall-0` at `10.2.50.253`, but they do not install direct routes to `p13_net`, `p23_net`, or either management subnet.
 - `plc-main` installs `10.2.50.0/24` via `firewall-0` at `10.1.13.253` and `10.3.13.0/24` via `firewall-main-cell` at `10.1.13.252`.
 - `pt-456` installs `10.1.13.0/24` via `firewall-main-cell` at `10.3.13.253` and `10.2.23.0/24` via `firewall-backup-cell` at `10.4.23.253`.
-- `firewall-0` allows `hmi` and `engineer-ws` to reach the PLCs on `502`, `44818`, and `4840`, and allows `ignition` to reach both PLCs on `4840` only.
+- `firewall-0` allows `hmi` and `engineer-ws` to reach the PLCs on `502`, `44818`, and `4840`, and allows the Layer 3 historian to reach both PLC OPC bridges on `4840`.
 - `firewall-main-cell` and `firewall-backup-cell` only allow bidirectional `502` traffic between a PLC and its own cell's Layer 0 devices.
-- `firewall-1` still allows `443` and `4840` to `historian`, and `firewall-2` still allows `443` and `4840` to `historian` plus `5432` to `database`.
+- `firewall-1` allows `hmi` and `engineer-ws` to reach `historian` on `443` and `4840`, and it forwards historian OPC traffic toward the PLCs on `4840`.
+- `firewall-2` allows `metasploit` to reach `historian` on `443` and `4840`, and allows `historian` to reach `historian-db` on `8086` plus the enterprise databases on `5432`.
 
 Host port checks that passed:
 
@@ -836,9 +863,9 @@ Generated from [`docker-compose.yml`](./docker-compose.yml) by [`generate_valida
 
 - Full matrix: [`validation_matrix.md`](./validation_matrix.md)
 - CSV export: [`validation_matrix.csv`](./validation_matrix.csv)
-- Service/interface permutations: `330` total, `118` allow, `212` blocked
+- Service/interface permutations: `360` total, `119` allow, `241` blocked
 - Route-isolation checks: `5`
-- Host published-port checks: `11`
+- Host published-port checks: `12`
 <!-- END GENERATED VALIDATION SUMMARY -->
 
 ## Remove Docker Networks

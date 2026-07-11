@@ -43,6 +43,7 @@ DEBUG = True
 ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
+    '172.17.0.1',
     'host.docker.internal',
     '10.2.50.1',
     '10.3.50.1',

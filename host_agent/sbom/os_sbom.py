@@ -2,6 +2,7 @@
 import os
 import re
 import platform
+import shutil
 import subprocess
 from datetime import datetime
 from urllib.parse import quote as urlquote
@@ -31,7 +32,7 @@ def detect_os_metadata():
 
 def collect_linux_packages():
     """
-    Returns list of dicts: {"name": str, "version": str, "type": "deb"|"rpm"}
+    Returns list of dicts: {"name": str, "version": str, "type": "deb"|"rpm"|"apk"}
     """
     packages = []
     try:
@@ -53,6 +54,31 @@ def collect_linux_packages():
                 parts = line.strip().split(maxsplit=1)
                 if len(parts) == 2:
                     packages.append({"name": parts[0], "version": parts[1], "type": "rpm"})
+        else:
+            apk_path = shutil.which("apk")
+            if not apk_path:
+                for candidate in ("/sbin/apk", "/usr/sbin/apk", "/bin/apk", "/usr/bin/apk"):
+                    if os.path.exists(candidate):
+                        apk_path = candidate
+                        break
+            if not apk_path:
+                return packages
+            result = subprocess.run(
+                [apk_path, "info", "-v"],
+                capture_output=True, text=True, check=True
+            )
+            for line in result.stdout.splitlines():
+                package_text = line.strip()
+                if not package_text or package_text.startswith("WARNING:"):
+                    continue
+                match = re.match(r"^(?P<name>.+)-(?P<version>\d[^\\s]*)$", package_text)
+                if not match:
+                    continue
+                packages.append({
+                    "name": match.group("name"),
+                    "version": match.group("version"),
+                    "type": "apk",
+                })
     except Exception as e:
         print(f"[sbom] Linux package collection error: {e}")
     return packages
@@ -101,6 +127,7 @@ def collect_packages():
 
 _RPM_DISTROS = {"rhel", "centos", "rocky", "almalinux", "fedora", "sles", "opensuse", "opensuse-leap"}
 _DEB_DISTROS = {"debian", "ubuntu", "raspbian", "linuxmint", "kali"}
+_APK_DISTROS = {"alpine"}
 
 def _slugify_name_for_purl(name: str) -> str:
     """
@@ -116,6 +143,7 @@ def make_purl(pkg: dict, os_info: dict) -> str:
     Create a best-effort valid purl for the package and host OS.
     - deb:   pkg:deb/<distro>/<name>@<version>
     - rpm:   pkg:rpm/<distro>/<name>@<version>   (distro optional if unknown)
+    - apk:   pkg:apk/<distro>/<name>@<version>
     - windows/other: pkg:generic/<name>@<version>
     """
     name = _slugify_name_for_purl(pkg.get("name", "unknown"))
@@ -130,6 +158,9 @@ def make_purl(pkg: dict, os_info: dict) -> str:
     elif ptype == "rpm":
         ns = distro if distro in _RPM_DISTROS else None
         return f"pkg:rpm/{ns + '/' if ns else ''}{name}@{urlquote(version, safe='')}"
+    elif ptype == "apk":
+        ns = distro if distro in _APK_DISTROS else None
+        return f"pkg:apk/{ns + '/' if ns else ''}{name}@{urlquote(version, safe='')}"
     else:
         # Windows and anything else -> generic
         return f"pkg:generic/{name}@{urlquote(version, safe='')}"

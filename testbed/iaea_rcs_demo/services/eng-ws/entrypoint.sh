@@ -31,7 +31,6 @@ prepare_home() {
   mkdir -p \
     "${RUNTIME_LOG_DIR}" \
     "${ENGINEER_HOME}/.config/openbox" \
-    "${ENGINEER_HOME}/.ignition/clientlauncher-data" \
     "${ENGINEER_HOME}/.vnc" \
     "${ENGINEER_HOME}/Desktop"
   chown -R engineer:engineer "${ENGINEER_HOME}"

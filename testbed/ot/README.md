@@ -13,10 +13,19 @@ docker compose -f docker-compose.yml -f docker-compose.testbed.yml up -d --build
 To let OpenVAS scan all OT zones, start Greenbone with the OT network override:
 ```bash
 docker compose \
-  -f greenbone-community-container/docker-compose.yml \
-  -f greenbone-community-container/docker-compose.ot-networks.yml \
+  -f greenbone-community-container/compose.yaml \
+  -f greenbone-community-container/docker-compose.iaea-networks.yml \
   up -d
 ```
+
+For the current IAEA hybrid topology this places `ospd-openvas` on:
+
+- `10.4.50.250` in Layer 4
+- `10.3.50.250` in Layer 3
+- `10.2.50.250` in Layer 2
+- `10.1.1.249` on the main control network
+- `10.1.2.249` on the backup control network
+- `172.31.250.249` on out-of-band management
 
 ### Bring Up With Kali Attacker
 Kali is optional and runs behind a compose profile so normal testbed startup remains fast.

@@ -456,19 +456,11 @@ class DashboardViewTests(TestCase):
         """Test home view renders correctly."""
         response = self.client.get(reverse('dashboard:dashboard-home'))
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'dashboard/home.html')
+        self.assertTemplateUsed(response, 'dashboard/network_monitoring.html')
 
     def test_home_view_with_data(self):
-        """Test home view with nodes and agent data."""
-        # Create test node
-        scan = ScanRun.objects.create(cidr="192.168.1.0/24")
-        node = Node.objects.create(
-            scan_run=scan,
-            ip_address="192.168.1.1",
-            name="test-node"
-        )
-
-        # Create agent with processes
+        """Test home view includes network monitoring summary context."""
+        scan = ScanRun.objects.create(cidr="192.168.1.0/24", status="RUNNING")
         agent = AgentStatus.objects.create(
             agent_id="test-agent-001",
             hostname="test-host",
@@ -479,14 +471,32 @@ class DashboardViewTests(TestCase):
                 {"pid": 5678, "name": "python", "status": "running"}
             ]
         )
+        metadata = NetworkMetadata.objects.create(
+            agent=agent,
+            total_connections=1,
+            total_interfaces=1,
+        )
+        NetworkConnection.objects.create(
+            metadata=metadata,
+            agent=agent,
+            protocol="TCP",
+            local_address="192.168.1.100",
+            local_port=8080,
+            remote_address="8.8.8.8",
+            remote_port=443,
+            status="ESTABLISHED",
+        )
 
         response = self.client.get(reverse('dashboard:dashboard-home'))
         self.assertEqual(response.status_code, 200)
-
-        # Check context data
-        self.assertIn('nodes', response.context)
-        self.assertIn('current_processes', response.context)
         self.assertIn('scan_history', response.context)
+        self.assertIn('recent_metadata', response.context)
+        self.assertIn('recent_connections', response.context)
+        self.assertEqual(response.context['running_scans'], 1)
+        self.assertEqual(response.context['pending_scans'], 0)
+        self.assertEqual(response.context['total_agents'], 1)
+        self.assertEqual(response.context['total_connections'], 1)
+        self.assertEqual(response.context['total_metadata_records'], 1)
 
 
 class ScanViewTests(TransactionTestCase):
@@ -918,6 +928,71 @@ class NetworkMonitoringViewTests(TestCase):
         response = self.client.get(reverse('dashboard:network_monitoring'))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'dashboard/network_monitoring.html')
+
+    def test_network_monitoring_dashboard_counts_full_recent_telemetry(self):
+        metadata_records = [
+            NetworkMetadata.objects.create(
+                agent=self.agent,
+                total_connections=idx + 1,
+                total_interfaces=2,
+            )
+            for idx in range(25)
+        ]
+        stale_metadata = NetworkMetadata.objects.create(
+            agent=self.agent,
+            total_connections=999,
+            total_interfaces=1,
+        )
+        NetworkMetadata.objects.filter(id=stale_metadata.id).update(
+            timestamp=timezone.now() - timedelta(minutes=20)
+        )
+
+        for idx, metadata in enumerate(metadata_records):
+            connection = NetworkConnection.objects.create(
+                metadata=metadata,
+                agent=self.agent,
+                protocol="TCP",
+                local_address="192.168.1.100",
+                local_port=8000 + idx,
+                remote_address="10.0.0.1",
+                remote_port=443,
+                status="ESTABLISHED",
+            )
+            if idx >= 5:
+                NetworkConnection.objects.filter(id=connection.id).update(
+                    last_seen=timezone.now() - timedelta(hours=2)
+                )
+
+        response = self.client.get(reverse('dashboard:network_monitoring'))
+
+        self.assertEqual(response.context['total_agents'], 1)
+        self.assertEqual(response.context['total_metadata_records'], 25)
+        self.assertEqual(response.context['total_connections'], 5)
+        self.assertEqual(len(response.context['recent_metadata']), 20)
+        self.assertEqual(len(response.context['recent_connections']), 5)
+
+    def test_network_monitoring_dashboard_includes_agents_with_recent_metadata(self):
+        stale_agent = AgentStatus.objects.create(
+            agent_id="stale-agent-net",
+            hostname="stale-host-net",
+            ip_address="192.168.1.101",
+            status="online",
+        )
+        AgentStatus.objects.filter(id=stale_agent.id).update(
+            last_heartbeat=timezone.now() - timedelta(minutes=5)
+        )
+        NetworkMetadata.objects.create(
+            agent=stale_agent,
+            total_connections=2,
+            total_interfaces=1,
+        )
+
+        response = self.client.get(reverse('dashboard:network_monitoring'))
+
+        agent_ids = {agent.agent_id for agent in response.context['agents']}
+        self.assertIn(self.agent.agent_id, agent_ids)
+        self.assertIn(stale_agent.agent_id, agent_ids)
+        self.assertEqual(response.context['total_agents'], 2)
 
     def test_network_metadata_api(self):
         """Test network metadata API."""
@@ -1728,8 +1803,9 @@ class NetworkTopologyTests(TestCase):
         self.client = Client()
         self.agent = AgentStatus.objects.create(
             agent_id="topo-agent",
-            hostname="topo-host",
-            ip_address="192.168.1.100",
+            hostname="hmi",
+            ip_address="10.2.50.10",
+            interfaces=[{"name": "eth0", "ip": "10.2.50.10", "mac": "00:11:22:33:44:55"}],
             status="online"
         )
         self.scan = ScanRun.objects.create(cidr="10.2.50.0/24")
@@ -1740,6 +1816,12 @@ class NetworkTopologyTests(TestCase):
             hostname="hmi",
             agent_id=self.agent.agent_id,
             status="online",
+        )
+        NodeInterface.objects.create(
+            node=self.node,
+            name="eth0",
+            ip="10.2.50.10",
+            mac="00:11:22:33:44:55",
         )
 
     def test_network_topology_api(self):
@@ -1758,36 +1840,371 @@ class NetworkTopologyTests(TestCase):
         l2_nodes = next(layer['nodes'] for layer in data['layers'] if layer['slug'] == 'L2')
         self.assertTrue(any(node['node_url'].endswith(f"/node/{self.node.id}/") for node in l2_nodes))
 
-    def test_network_topology_api_includes_iaea_static_assets(self):
-        """Test that the IAEA topology includes historian, firewalls, and Layer 0 assets."""
+    def test_network_topology_api_shows_only_observed_assets(self):
+        """Test that the topology excludes retired modeled-only assets while keeping Level 0 context."""
+        response = self.client.get(reverse('dashboard:network_topology_api'))
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        labels = {node['label'] for node in data['nodes']}
+        self.assertIn('hmi', labels)
+        self.assertIn('engineer-ws', labels)
+        self.assertIn('pt-455', labels)
+        self.assertIn('pt-456', labels)
+        self.assertNotIn('ignition', labels)
+        self.assertNotIn('l2-jump', labels)
+        self.assertNotIn('historian', labels)
+
+    def test_network_topology_api_excludes_retired_observed_assets(self):
+        """Test that stale observed assets from the retired layout do not render."""
+        retired_agent = AgentStatus.objects.create(
+            agent_id="ignition-agent",
+            hostname="ignition",
+            ip_address="10.2.50.31",
+            interfaces=[{"name": "eth0", "ip": "10.2.50.31", "mac": "00:11:22:33:44:99"}],
+            status="online",
+        )
+        retired_node = Node.objects.create(
+            scan_run=self.scan,
+            ip_address="10.2.50.31",
+            name="ignition",
+            hostname="ignition",
+            agent_id=retired_agent.agent_id,
+            status="online",
+        )
+        NodeInterface.objects.create(
+            node=retired_node,
+            name="eth0",
+            ip="10.2.50.31",
+            mac="00:11:22:33:44:99",
+        )
+        stale_time = timezone.now() - timedelta(hours=2)
+        AgentStatus.objects.filter(id=retired_agent.id).update(
+            last_heartbeat=stale_time,
+            status="offline",
+        )
+        Node.objects.filter(id=retired_node.id).update(last_heartbeat=stale_time)
+
+        response = self.client.get(reverse('dashboard:network_topology_api'))
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        labels = {node['label'] for node in data['nodes']}
+        self.assertNotIn('ignition', labels)
+
+    def test_network_topology_api_merges_multi_ip_static_assets(self):
+        """Test that dual-homed observed assets are returned as single logical nodes."""
+        plc_agent = AgentStatus.objects.create(
+            agent_id="plc-main-agent",
+            hostname="plc-main",
+            ip_address="10.1.1.14",
+            interfaces=[
+                {"name": "eth0", "ip": "10.1.1.14", "mac": "00:aa:bb:cc:dd:01"},
+                {"name": "eth1", "ip": "10.1.2.14", "mac": "00:aa:bb:cc:dd:02"},
+            ],
+            status="online",
+        )
+        plc_node = Node.objects.create(
+            scan_run=self.scan,
+            ip_address="10.1.1.14",
+            name="plc-main",
+            hostname="plc-main",
+            agent_id=plc_agent.agent_id,
+            status="online",
+        )
+        NodeInterface.objects.create(node=plc_node, name="eth0", ip="10.1.1.14", mac="00:aa:bb:cc:dd:01")
+        NodeInterface.objects.create(node=plc_node, name="eth1", ip="10.1.2.14", mac="00:aa:bb:cc:dd:02")
+
+        response = self.client.get(reverse('dashboard:network_topology_api'))
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        plc_main = next(node for node in data['nodes'] if node['label'] == 'plc-main')
+        self.assertEqual(plc_main['purdue_level'], 'L1')
+        self.assertEqual(plc_main['ip_address'], '10.1.1.14')
+        self.assertEqual(plc_main['ip_addresses'], ['10.1.1.14', '10.1.2.14'])
+
+    def test_network_topology_api_resolves_observed_flows_to_logical_nodes(self):
+        """Test that observed agent traffic resolves to logical source/target topology nodes."""
+        historian_agent = AgentStatus.objects.create(
+            agent_id="historian-agent",
+            hostname="historian",
+            ip_address="10.3.50.10",
+            interfaces=[{"name": "eth0", "ip": "10.3.50.10", "mac": "00:11:22:33:44:77"}],
+            status="online",
+        )
+        historian_node = Node.objects.create(
+            scan_run=self.scan,
+            ip_address="10.3.50.10",
+            name="historian",
+            hostname="historian",
+            agent_id=historian_agent.agent_id,
+            status="online",
+        )
+        NodeInterface.objects.create(node=historian_node, name="eth0", ip="10.3.50.10", mac="00:11:22:33:44:77")
+        metadata = NetworkMetadata.objects.create(agent=self.agent, total_connections=1, total_interfaces=1)
+        NetworkConnection.objects.create(
+            metadata=metadata,
+            agent=self.agent,
+            protocol="TCP",
+            local_address="10.2.50.10",
+            local_port=49152,
+            remote_address="10.3.50.10",
+            remote_port=443,
+            status="ESTABLISHED",
+        )
+
+        response = self.client.get(reverse('dashboard:network_topology_api'))
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        self.assertTrue(any(edge['from'] == 'static:hmi' and edge['to'] == 'static:historian' for edge in data['edges']))
+
+    def test_network_topology_api_infers_remote_observed_assets_without_persisted_nodes(self):
+        """Test that remote peers seen only in flow evidence still become logical topology nodes."""
+        metadata = NetworkMetadata.objects.create(agent=self.agent, total_connections=1, total_interfaces=1)
+        NetworkConnection.objects.create(
+            metadata=metadata,
+            agent=self.agent,
+            protocol="TCP",
+            local_address="10.2.50.10",
+            local_port=49152,
+            remote_address="10.3.50.10",
+            remote_port=4840,
+            status="ESTABLISHED",
+        )
+
         response = self.client.get(reverse('dashboard:network_topology_api'))
         self.assertEqual(response.status_code, 200)
 
         data = response.json()
         historian = next(node for node in data['nodes'] if node['label'] == 'historian')
+        self.assertEqual(historian['id'], 'static:historian')
         self.assertEqual(historian['purdue_level'], 'L3')
+        self.assertTrue(any(edge['from'] == 'static:hmi' and edge['to'] == 'static:historian' for edge in data['edges']))
 
-        self.assertTrue(any(node['label'] == 'firewall-1' for node in data['nodes']))
-        self.assertTrue(any(node['label'] == 'pt-455' for node in data['nodes']))
+    def test_network_topology_api_infers_pt455_and_pt456_from_span_modbus_traffic(self):
+        """Test that passive span-observed Modbus traffic surfaces the L0 pressure transmitters as online."""
+        span_agent = AgentStatus.objects.create(
+            agent_id="span-l1a",
+            hostname="span-l1a",
+            ip_address="172.31.250.250",
+            interfaces=[
+                {"name": "eth0", "ip": "172.31.250.250", "mac": "00:11:22:33:44:60"},
+                {"name": "eth1", "ip": "10.1.1.250", "mac": "00:11:22:33:44:61"},
+            ],
+            status="online",
+        )
+        metadata = NetworkMetadata.objects.create(agent=span_agent, total_connections=2, total_interfaces=2)
+        NetworkConnection.objects.create(
+            metadata=metadata,
+            agent=span_agent,
+            protocol="TCP",
+            local_address="10.1.1.10",
+            local_port=502,
+            remote_address="10.1.1.9",
+            remote_port=502,
+            status="OBSERVED",
+            process_name="passive-sniffer",
+        )
+        NetworkConnection.objects.create(
+            metadata=metadata,
+            agent=span_agent,
+            protocol="TCP",
+            local_address="10.1.1.11",
+            local_port=502,
+            remote_address="10.1.1.8",
+            remote_port=502,
+            status="OBSERVED",
+            process_name="passive-sniffer",
+        )
 
-        l0_nodes = next(layer['nodes'] for layer in data['layers'] if layer['slug'] == 'L0')
-        self.assertTrue(any(node['label'] == 'pt-455' for node in l0_nodes))
+        response = self.client.get(reverse('dashboard:network_topology_api'))
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        pt455 = next(node for node in data['nodes'] if node['label'] == 'pt-455')
+        pt456 = next(node for node in data['nodes'] if node['label'] == 'pt-456')
+        self.assertEqual(pt455['id'], 'static:pt-455')
+        self.assertEqual(pt455['purdue_level'], 'L0')
+        self.assertEqual(pt455['status'], 'online')
+        self.assertEqual(pt456['id'], 'static:pt-456')
+        self.assertEqual(pt456['purdue_level'], 'L0')
+        self.assertEqual(pt456['status'], 'online')
+        self.assertTrue(any(edge['from'] == 'static:channel-a' and edge['to'] == 'static:pt-455' for edge in data['edges']))
+        self.assertTrue(any(edge['from'] == 'static:channel-b' and edge['to'] == 'static:pt-456' for edge in data['edges']))
+
+    def test_network_topology_api_promotes_pt455_and_pt456_from_span_arp_observation(self):
+        """Test that passive ARP observation can promote known L0 assets without rendering ARP noise edges."""
+        span_agent = AgentStatus.objects.create(
+            agent_id="span-l1a",
+            hostname="span-l1a",
+            ip_address="10.1.1.250",
+            interfaces=[
+                {"name": "eth0", "ip": "172.31.250.250", "mac": "00:11:22:33:44:60"},
+                {"name": "eth1", "ip": "10.1.1.250", "mac": "00:11:22:33:44:61"},
+            ],
+            status="online",
+        )
+        metadata = NetworkMetadata.objects.create(agent=span_agent, total_connections=2, total_interfaces=2)
+        NetworkConnection.objects.create(
+            metadata=metadata,
+            agent=span_agent,
+            protocol="ARP",
+            local_address="10.1.1.249",
+            remote_address="10.1.1.9",
+            status="OBSERVED",
+            process_name="passive-sniffer",
+        )
+        NetworkConnection.objects.create(
+            metadata=metadata,
+            agent=span_agent,
+            protocol="ARP",
+            local_address="10.1.1.249",
+            remote_address="10.1.1.8",
+            status="OBSERVED",
+            process_name="passive-sniffer",
+        )
+
+        response = self.client.get(reverse('dashboard:network_topology_api'))
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        pt455 = next(node for node in data['nodes'] if node['label'] == 'pt-455')
+        pt456 = next(node for node in data['nodes'] if node['label'] == 'pt-456')
+        self.assertEqual(pt455['status'], 'online')
+        self.assertEqual(pt456['status'], 'online')
+        self.assertFalse(any(edge['protocol'] == 'ARP' for edge in data['edges']))
+
+    def test_network_topology_api_maps_firewall_companion_agent_to_firewall_asset(self):
+        """Test that firewall companion agents resolve to the modeled firewall asset identity."""
+        firewall_agent = AgentStatus.objects.create(
+            agent_id="firewall-1",
+            hostname="firewall-1-agent",
+            ip_address="10.2.50.254",
+            interfaces=[{"name": "eth0", "ip": "10.2.50.254", "mac": "00:11:22:33:44:70"}],
+            status="online",
+        )
+
+        response = self.client.get(reverse('dashboard:network_topology_api'))
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        firewall = next(node for node in data['nodes'] if node['label'] == 'firewall-1')
+        self.assertEqual(firewall['id'], 'static:firewall-1')
+        self.assertEqual(firewall['status'], 'online')
+        self.assertEqual(firewall['agent_id'], firewall_agent.agent_id)
+
+    def test_network_topology_api_suppresses_noisy_passive_bridge_peers(self):
+        """Test that passive bridge noise does not create inferred Purdue assets."""
+        span_agent = AgentStatus.objects.create(
+            agent_id="span-l1a",
+            hostname="span-l1a",
+            ip_address="172.31.250.250",
+            interfaces=[
+                {"name": "eth0", "ip": "172.31.250.250", "mac": "00:11:22:33:44:60"},
+                {"name": "eth1", "ip": "10.1.1.250", "mac": "00:11:22:33:44:61"},
+            ],
+            status="online",
+        )
+        metadata = NetworkMetadata.objects.create(agent=span_agent, total_connections=3, total_interfaces=2)
+        NetworkConnection.objects.create(
+            metadata=metadata,
+            agent=span_agent,
+            protocol="ICMP",
+            local_address="10.1.1.250",
+            remote_address="10.1.1.249",
+            status="OBSERVED",
+            process_name="passive-sniffer",
+        )
+        NetworkConnection.objects.create(
+            metadata=metadata,
+            agent=span_agent,
+            protocol="UDP",
+            local_address="10.1.1.249",
+            local_port=36218,
+            remote_address="10.1.1.250",
+            remote_port=1216,
+            status="OBSERVED",
+            process_name="passive-sniffer",
+        )
+        NetworkConnection.objects.create(
+            metadata=metadata,
+            agent=span_agent,
+            protocol="ARP",
+            local_address="10.1.1.1",
+            remote_address="10.1.1.250",
+            status="OBSERVED",
+            process_name="passive-sniffer",
+        )
+
+        response = self.client.get(reverse('dashboard:network_topology_api'))
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        labels = {node['label'] for node in data['nodes']}
+        self.assertNotIn('10.1.1.249', labels)
+        self.assertNotIn('10.1.1.1', labels)
+
+    def test_network_topology_api_suppresses_openvas_scan_noise(self):
+        """Test that OpenVAS-marked connections do not create inferred Purdue assets."""
+        scanner_agent = AgentStatus.objects.create(
+            agent_id="scanner-agent",
+            hostname="metasploit",
+            ip_address="10.4.50.10",
+            interfaces=[{"name": "eth0", "ip": "10.4.50.10", "mac": "00:11:22:33:44:80"}],
+            status="online",
+        )
+        metadata = NetworkMetadata.objects.create(agent=scanner_agent, total_connections=2, total_interfaces=1)
+        NetworkConnection.objects.create(
+            metadata=metadata,
+            agent=scanner_agent,
+            protocol="TCP",
+            local_address="10.4.50.10",
+            local_port=46321,
+            remote_address="10.1.1.1",
+            remote_port=502,
+            status="ESTABLISHED",
+            process_name="openvas",
+            process_cmdline="/usr/sbin/ospd-openvas --scan 10.1.1.1",
+        )
+        NetworkConnection.objects.create(
+            metadata=metadata,
+            agent=scanner_agent,
+            protocol="TCP",
+            local_address="10.4.50.10",
+            local_port=46322,
+            remote_address="10.1.1.2",
+            remote_port=502,
+            status="ESTABLISHED",
+            process_name="openvas",
+            process_cmdline="/usr/sbin/ospd-openvas --scan 10.1.1.2",
+        )
+
+        response = self.client.get(reverse('dashboard:network_topology_api'))
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        labels = {node['label'] for node in data['nodes']}
+        self.assertNotIn('10.1.1.1', labels)
+        self.assertNotIn('10.1.1.2', labels)
+        self.assertFalse(any(edge['target_ip'] in {'10.1.1.1', '10.1.1.2'} for edge in data['edges']))
+        self.assertFalse(any(edge['from'] == 'static:metasploit' for edge in data['edges']))
 
 
+@override_settings(AGENT_API_TOKEN="test-token", AGENT_API_TOKEN_REQUIRED=True)
 class AgentNetworkMetadataTests(TestCase):
     def setUp(self):
         self.client = Client()
+        self.agent_headers = {"HTTP_X_AGENT_TOKEN": "test-token"}
         self.agent = AgentStatus.objects.create(
             agent_id="net-md-agent",
             hostname="net-md-host",
             ip_address="192.168.1.100"
         )
 
-    @patch('dashboard.views.timezone.now')
-    def test_agent_network_metadata(self, mock_now):
+    def test_agent_network_metadata(self):
         """Test agent network metadata endpoint."""
-        mock_now.return_value = timezone.now()
-
         metadata_data = {
             'agent_id': self.agent.agent_id,
             'network_connections': [
@@ -1811,7 +2228,8 @@ class AgentNetworkMetadataTests(TestCase):
         response = self.client.post(
             reverse('dashboard:agent_network_metadata'),
             json.dumps(metadata_data),
-            content_type='application/json'
+            content_type='application/json',
+            **self.agent_headers
         )
 
         self.assertEqual(response.status_code, 200)
@@ -1827,6 +2245,78 @@ class AgentNetworkMetadataTests(TestCase):
         connection = NetworkConnection.objects.get(metadata=metadata)
         self.assertEqual(connection.protocol, 'TCP')
         self.assertEqual(connection.status, 'ESTABLISHED')
+
+    def test_agent_network_metadata_parses_endpoint_ports(self):
+        """Test that endpoint strings are normalized into address and port fields."""
+        metadata_data = {
+            'agent_id': self.agent.agent_id,
+            'network_connections': [
+                {
+                    'protocol': 'TCP',
+                    'local_address': '192.168.1.100:8080',
+                    'remote_address': '10.3.50.10:443',
+                    'status': 'ESTABLISHED',
+                    'process': {'name': 'curl', 'pid': 4321, 'username': 'demo'}
+                }
+            ],
+            'interface_statistics': [],
+            'active_ports': [],
+            'interfaces': [{'name': 'eth0', 'ip': '192.168.1.100', 'mac': '00:11:22:33:44:55'}]
+        }
+
+        response = self.client.post(
+            reverse('dashboard:agent_network_metadata'),
+            json.dumps(metadata_data),
+            content_type='application/json',
+            **self.agent_headers
+        )
+
+        self.assertEqual(response.status_code, 200)
+        connection = NetworkConnection.objects.latest('id')
+        self.assertEqual(connection.local_address, '192.168.1.100')
+        self.assertEqual(connection.local_port, 8080)
+        self.assertEqual(connection.remote_address, '10.3.50.10')
+        self.assertEqual(connection.remote_port, 443)
+
+    def test_agent_network_metadata_updates_agent_inventory_for_topology_enumeration(self):
+        """Test that metadata ingestion updates agent and node interface inventory."""
+        self.agent.hostname = "plc-main"
+        self.agent.ip_address = "10.1.1.14"
+        self.agent.save(update_fields=["hostname", "ip_address"])
+
+        metadata_data = {
+            'agent_id': self.agent.agent_id,
+            'network_connections': [],
+            'interface_statistics': [],
+            'active_ports': [{'port': 44818, 'protocol': 'tcp', 'state': 'LISTEN'}],
+            'interfaces': [
+                {'name': 'eth0', 'ip': '10.1.1.14', 'mac': '00:aa:bb:cc:dd:01'},
+                {'name': 'eth1', 'ip': '10.1.2.14', 'mac': '00:aa:bb:cc:dd:02'},
+            ],
+        }
+
+        response = self.client.post(
+            reverse('dashboard:agent_network_metadata'),
+            json.dumps(metadata_data),
+            content_type='application/json',
+            **self.agent_headers
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.agent.refresh_from_db()
+        self.assertEqual(self.agent.interfaces, metadata_data['interfaces'])
+        self.assertEqual(self.agent.active_ports, metadata_data['active_ports'])
+
+        node = Node.objects.get(agent_id=self.agent.agent_id)
+        self.assertEqual(node.hostname, 'plc-main')
+        self.assertEqual(node.interfaces.count(), 2)
+
+        topology = self.client.get(reverse('dashboard:network_topology_api'))
+        self.assertEqual(topology.status_code, 200)
+        plc_main = next(item for item in topology.json()['nodes'] if item['label'] == 'plc-main')
+        self.assertEqual(plc_main['id'], 'static:plc-main')
+        self.assertEqual(plc_main['ip_addresses'], ['10.1.1.14', '10.1.2.14'])
 
 
 class AgentVersionTests(TestCase):

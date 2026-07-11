@@ -1,0 +1,745 @@
+x-endpoint: &endpoint
+  build:
+    context: ../..
+    dockerfile: testbed/iaea_rcs_demo/services/sim-endpoint/Dockerfile
+  restart: unless-stopped
+  cap_drop: ["ALL"]
+  cap_add: ["NET_ADMIN", "NET_BIND_SERVICE"]
+  read_only: true
+  tmpfs:
+    - /tmp
+  volumes:
+    - ./simulated_data:/app/simulated_data:ro
+
+x-firewall: &firewall
+  build:
+    context: ./firewall
+  restart: unless-stopped
+  cap_add: ["NET_ADMIN", "NET_RAW"]
+  sysctls:
+    net.ipv4.ip_forward: '1'
+
+x-openplc: &openplc
+  build:
+    context: ../..
+    dockerfile: testbed/iaea_rcs_demo/services/openplc-v3/Dockerfile
+  restart: unless-stopped
+  cap_drop: ["ALL"]
+  cap_add: ["NET_ADMIN", "NET_BIND_SERVICE", "SYS_NICE", "SYS_RESOURCE"]
+  tmpfs:
+    - /tmp
+
+x-agent-env: &agent_env
+  AGENT_SERVER_URL: "http://host.docker.internal:8000"
+  AGENT_API_TOKEN: "${AGENT_API_TOKEN:-iaea-demo-agent-token}"
+
+x-agent-extra-hosts: &agent_extra_hosts
+  - "host.docker.internal:host-gateway"
+
+x-agent-sensor: &agent_sensor
+  build:
+    context: ../..
+    dockerfile: testbed/iaea_rcs_demo/services/sim-endpoint/Dockerfile
+  restart: unless-stopped
+  cap_drop: ["ALL"]
+  cap_add: ["NET_ADMIN", "NET_RAW"]
+  read_only: true
+  tmpfs:
+    - /tmp
+
+services:
+  # ----------------Docker Bridge Hardening -------------
+  bridge-hardening:
+    image: alpine:3.20
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      channel-a:
+        condition: service_healthy
+      channel-b:
+        condition: service_healthy
+      channel-c:
+        condition: service_healthy
+      channel-d:
+        condition: service_healthy
+    command: >
+      sh -c "
+      apk add --no-cache iptables ip6tables &&
+      iptables -C INPUT  -i net_10_1_1 -p udp --dport 5353 -j DROP || iptables -I INPUT  -i net_10_1_1 -p udp --dport 5353 -j DROP &&
+      iptables -C OUTPUT -o net_10_1_1 -p udp --sport 5353 -j DROP || iptables -I OUTPUT -o net_10_1_1 -p udp --sport 5353 -j DROP &&
+      iptables -C INPUT  -i net_10_1_1 -p udp --dport 1900 -j DROP || iptables -I INPUT  -i net_10_1_1 -p udp --dport 1900 -j DROP &&
+      iptables -C OUTPUT -o net_10_1_1 -p udp --sport 1900 -j DROP || iptables -I OUTPUT -o net_10_1_1 -p udp --sport 1900 -j DROP &&
+      iptables -C INPUT  -i net_10_1_2 -p udp --dport 5353 -j DROP || iptables -I INPUT  -i net_10_1_2 -p udp --dport 5353 -j DROP &&
+      iptables -C OUTPUT -o net_10_1_2 -p udp --sport 5353 -j DROP || iptables -I OUTPUT -o net_10_1_2 -p udp --sport 5353 -j DROP &&
+      iptables -C INPUT  -i net_10_1_2 -p udp --dport 1900 -j DROP || iptables -I INPUT  -i net_10_1_2 -p udp --dport 1900 -j DROP &&
+      iptables -C OUTPUT -o net_10_1_2 -p udp --sport 1900 -j DROP || iptables -I OUTPUT -o net_10_1_2 -p udp --sport 1900 -j DROP &&
+      iptables -C INPUT -i net_10_1_1 -p udp --dport 5353 -j DROP 2>/dev/null || iptables -I INPUT -i net_10_1_1 -p udp --dport 5353 -j DROP &&
+      tail -f /dev/null
+      "
+
+  # ---------------------- Layer 4 ----------------------
+  metasploit:
+    build:
+      context: ../..
+      dockerfile: testbed/iaea_rcs_demo/services/metasploit/Dockerfile
+    container_name: metasploit
+    hostname: metasploit
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    cap_add: ["NET_ADMIN"]
+    environment:
+      DEVICE_NAME: Metasploit
+      DEVICE_ROLE: Layer4 metasploit host
+      SERVICE_PORTS: "4444"
+      DEVICE_DESC: Metasploit exploitation host for Layer 4 testing
+      STATIC_ROUTES: "10.2.50.0/24 via 10.4.50.254;10.3.50.0/24 via 10.4.50.254"
+      AGENT_SERVER_URL: "http://host.docker.internal:8000"
+      AGENT_API_TOKEN: "${AGENT_API_TOKEN:-iaea-demo-agent-token}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      l4_net:
+        ipv4_address: 10.4.50.10
+        aliases:
+          - ws4a
+    ports:
+      - "4444:4444"
+    command:
+      - ./msfrpcd
+      - -U
+      - msfadmin
+      - -P
+      - msfadmin
+      - -S
+      - -f
+      - -a
+      - 0.0.0.0
+      - -p
+      - "4444"
+
+  postgres:
+    build:
+      context: ../..
+      dockerfile: testbed/iaea_rcs_demo/services/postgres/Dockerfile
+    container_name: postgres
+    hostname: postgres
+    restart: unless-stopped
+    cap_add: ["NET_ADMIN"]
+    environment:
+      POSTGRES_USER: iaea
+      POSTGRES_PASSWORD: iaea-demo-password
+      POSTGRES_DB: iaea_rcs
+      STATIC_ROUTES: "10.3.50.0/24 via 10.4.50.254;10.2.50.0/24 via 10.4.50.254"
+      AGENT_SERVER_URL: "http://host.docker.internal:8000"
+      AGENT_API_TOKEN: "${AGENT_API_TOKEN:-iaea-demo-agent-token}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      l4_net:
+        ipv4_address: 10.4.50.20
+        aliases:
+          - pg
+    ports:
+      - "25432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iaea"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------- Layer 3 ----------------------
+  historian:
+    <<: *endpoint
+    build:
+      context: ../..
+      dockerfile: testbed/iaea_rcs_demo/services/historian/Dockerfile
+    restart: unless-stopped
+    container_name: historian
+    hostname: historian
+    environment:
+      <<: *agent_env
+      DEVICE_NAME: Historian
+      DEVICE_ROLE: Layer3 historian
+      SERVICE_PORTS: "443,4840"
+      DEVICE_DESC: DMZ historian that exposes status on 443/4840 and polls PLC telemetry
+      STATIC_ROUTES: "10.2.50.0/24 via 10.3.50.253;10.4.50.0/24 via 10.3.50.254;10.1.1.0/24 via 10.3.50.253;10.1.2.0/24 via 10.3.50.253"
+      MAIN_OPC_URL: "opc.tcp://10.1.1.14:4840/main"
+      BACKUP_OPC_URL: "opc.tcp://10.1.2.15:4840/backup"
+      HISTORIAN_POLL_INTERVAL: "6"
+    extra_hosts: *agent_extra_hosts
+    networks:
+      l3_net:
+        ipv4_address: 10.3.50.10
+    ports:
+      - "127.0.0.1:4840:4840"
+
+  # ---------------------- Firewalls ----------------------
+  firewall-2:
+    <<: *firewall
+    container_name: firewall-2
+    hostname: firewall-2
+    environment:
+      FIREWALL_NAME: firewall-2
+      ALLOW_TCP: "10.4.50.10|10.3.50.10|443,4840;10.4.50.10|10.4.50.20|5432;10.3.50.10|10.4.50.20|5432"
+      STATIC_ROUTES: "10.2.50.0/24 via 10.3.50.253"
+    networks:
+      l3_net:
+        ipv4_address: 10.3.50.254
+      l4_net:
+        ipv4_address: 10.4.50.254
+
+  firewall-2-agent:
+    build:
+      context: ../..
+      dockerfile: testbed/ot/agent/Dockerfile
+    container_name: firewall-2-agent
+    restart: unless-stopped
+    depends_on:
+      firewall-2:
+        condition: service_started
+    environment:
+      AGENT_SERVER_URL: "http://host.docker.internal:8000"
+      AGENT_API_TOKEN: "${AGENT_API_TOKEN:-iaea-demo-agent-token}"
+      AGENT_ID: "firewall-2"
+    command: ["--url", "http://172.17.0.1:8000", "run"]
+    network_mode: "service:firewall-2"
+
+  firewall-1:
+    <<: *firewall
+    container_name: firewall-1
+    hostname: firewall-1
+    environment:
+      FIREWALL_NAME: firewall-1
+      ALLOW_TCP: "10.2.50.10|10.3.50.10|443,4840;10.2.50.20|10.3.50.10|443,4840;10.3.50.10|10.1.1.14|4840;10.3.50.10|10.1.2.15|4840"
+      STATIC_ROUTES: "10.4.50.0/24 via 10.3.50.254;10.1.1.0/24 via 10.2.50.253;10.1.2.0/24 via 10.2.50.253"
+    networks:
+      l2_net:
+        ipv4_address: 10.2.50.254
+      l3_net:
+        ipv4_address: 10.3.50.253
+
+  firewall-1-agent:
+    build:
+      context: ../..
+      dockerfile: testbed/ot/agent/Dockerfile
+    container_name: firewall-1-agent
+    restart: unless-stopped
+    depends_on:
+      firewall-1:
+        condition: service_started
+    environment:
+      AGENT_SERVER_URL: "http://host.docker.internal:8000"
+      AGENT_API_TOKEN: "${AGENT_API_TOKEN:-iaea-demo-agent-token}"
+      AGENT_ID: "firewall-1"
+    command: ["--url", "http://172.17.0.1:8000", "run"]
+    network_mode: "service:firewall-1"
+
+  firewall-0:
+    <<: *firewall
+    container_name: firewall-0
+    hostname: firewall-0
+    environment:
+      FIREWALL_NAME: firewall-0
+      ALLOW_TCP: "10.2.50.10|10.1.1.14|502,44818,4840;10.2.50.10|10.1.2.15|502,44818,4840;10.2.50.20|10.1.1.14|502,44818,4840;10.2.50.20|10.1.2.15|502,44818,4840;10.3.50.10|10.1.1.14|4840;10.3.50.10|10.1.2.15|4840"
+      STATIC_ROUTES: "10.3.50.0/24 via 10.2.50.254;10.4.50.0/24 via 10.2.50.254"
+    networks:
+      l2_net:
+        ipv4_address: 10.2.50.253
+      net_10_1_1:
+        ipv4_address: 10.1.1.253
+      net_10_1_2:
+        ipv4_address: 10.1.2.253
+
+  firewall-0-agent:
+    build:
+      context: ../..
+      dockerfile: testbed/ot/agent/Dockerfile
+    container_name: firewall-0-agent
+    restart: unless-stopped
+    depends_on:
+      firewall-0:
+        condition: service_started
+    environment:
+      AGENT_SERVER_URL: "http://host.docker.internal:8000"
+      AGENT_API_TOKEN: "${AGENT_API_TOKEN:-iaea-demo-agent-token}"
+      AGENT_ID: "firewall-0"
+    command: ["--url", "http://172.17.0.1:8000", "run"]
+    network_mode: "service:firewall-0"
+
+  # ---------------------- Layer 2 ----------------------
+  hmi:
+    build:
+      context: ../..
+      dockerfile: testbed/iaea_rcs_demo/services/hmi/Dockerfile
+    restart: unless-stopped
+    cap_drop: ["ALL"]
+    cap_add: ["NET_ADMIN", "NET_BIND_SERVICE"]
+    read_only: true
+    tmpfs:
+      - /tmp
+    container_name: hmi
+    hostname: hmi
+    environment:
+      <<: *agent_env
+      DEVICE_NAME: HMI
+      DEVICE_ROLE: Layer2 HMI
+      SERVICE_PORTS: "80,443"
+      DEVICE_DESC: Human machine interface
+      PLC_MAIN_OPC_ENDPOINT: "opc.tcp://10.1.1.14:4840/main"
+      PLC_MAIN_OPC_NAMESPACE: "urn:iaea-rcs-demo:main"
+      PLC_BACKUP_OPC_ENDPOINT: "opc.tcp://10.1.2.15:4840/backup"
+      PLC_BACKUP_OPC_NAMESPACE: "urn:iaea-rcs-demo:backup"
+      STATIC_ROUTES: "10.3.50.0/24 via 10.2.50.254;10.4.50.0/24 via 10.2.50.254;10.1.1.0/24 via 10.2.50.253;10.1.2.0/24 via 10.2.50.253"
+    extra_hosts: *agent_extra_hosts
+    networks:
+      l2_net:
+        ipv4_address: 10.2.50.10
+    ports:
+      - "8081:80"
+      - "8445:443"
+
+  engineer-ws:
+    build:
+      context: ../..
+      dockerfile: testbed/iaea_rcs_demo/services/eng-ws/Dockerfile
+    restart: unless-stopped
+    cap_add: ["NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"]
+    tty: true
+    stdin_open: true
+    container_name: engineer-ws
+    hostname: engineer-ws
+    environment:
+      <<: *agent_env
+      DEVICE_NAME: Engineer-Workstation
+      DEVICE_ROLE: Layer2 engineering workstation
+      SERVICE_PORTS: "80,443"
+      DEVICE_DESC: Engineering workstation for PLC management and network verification
+      ENGINEER_WS_NOVNC_PORT: "6080"
+      ENGINEER_WS_VNC_PORT: "5900"
+      ENGINEER_WS_VNC_PASSWORD: "${ENGINEER_WS_VNC_PASSWORD:-engwsdemo}"
+      STATIC_ROUTES: "10.3.50.0/24 via 10.2.50.254;10.4.50.0/24 via 10.2.50.254;10.1.1.0/24 via 10.2.50.253;10.1.2.0/24 via 10.2.50.253"
+    extra_hosts: *agent_extra_hosts
+    networks:
+      l2_net:
+        ipv4_address: 10.2.50.20
+        aliases:
+          - ws2
+    volumes:
+      - eng_ws_home:/home/engineer
+    ports:
+      - "8082:80"
+      - "8446:443"
+      - "6080:6080"
+
+  # ---------------------- Layer 0 ----------------------
+
+  # Channel endpoints
+  pt-455:
+    <<: *endpoint
+    container_name: pt-455
+    hostname: pt-455.iaea.ifan.com
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+    environment:
+      <<: *agent_env
+      DEVICE_NAME: PT-455
+      DEVICE_ROLE: Pressure Transmitter
+      DEVICE_DESC: Digital pressure transmitter for Channel A path
+      SERVICE_PORTS: "502"
+      MODBUS_PORT: "502"
+      MODBUS_PROFILE: pressure_transmitter
+      MODBUS_CSV_PATH: /app/simulated_data/PZRData_demo.csv
+      MODBUS_CSV_SENSOR_COLUMN: PT-455
+      MODBUS_BASE_VALUE: "4550"
+      MODBUS_AMPLITUDE: "35"
+      MODBUS_PERIOD_SEC: "60"
+      MODBUS_PHASE_DEG: "0"
+      MODBUS_STATUS_VALUE: "1"
+    extra_hosts: *agent_extra_hosts
+    networks:
+      net_10_1_1:
+        ipv4_address: 10.1.1.9
+      net_10_1_2:
+        ipv4_address: 10.1.2.9
+    healthcheck:
+      test: ["CMD-SHELL", "ss -lnt | grep -q ':502'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  pt-456:
+    <<: *endpoint
+    container_name: pt-456
+    hostname: pt-456.iaea.ifan.com
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+    environment:
+      <<: *agent_env
+      DEVICE_NAME: PT-456
+      DEVICE_ROLE: Pressure Transmitter
+      DEVICE_DESC: Digital pressure transmitter for Channel B path
+      SERVICE_PORTS: "502"
+      MODBUS_PORT: "502"
+      MODBUS_PROFILE: pressure_transmitter
+      MODBUS_CSV_PATH: /app/simulated_data/PZRData_demo.csv
+      MODBUS_CSV_SENSOR_COLUMN: PT-456
+      MODBUS_BASE_VALUE: "4560"
+      MODBUS_AMPLITUDE: "30"
+      MODBUS_PERIOD_SEC: "75"
+      MODBUS_PHASE_DEG: "90"
+      MODBUS_STATUS_VALUE: "1"
+    extra_hosts: *agent_extra_hosts
+    networks:
+      net_10_1_1:
+        ipv4_address: 10.1.1.8
+      net_10_1_2:
+        ipv4_address: 10.1.2.8
+    healthcheck:
+      test: ["CMD-SHELL", "ss -lnt | grep -q ':502'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  channel-a:
+    <<: *endpoint
+    container_name: channel-a
+    hostname: channel-a.iaea.ifan.com
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+    environment:
+      <<: *agent_env
+      DEVICE_NAME: Channel-A
+      DEVICE_ROLE: Layer0 Channel
+      DEVICE_DESC: Channel A process signal
+      SERVICE_PORTS: "502"
+      MODBUS_PORT: "502"
+      MODBUS_PROFILE: analog_passthrough
+      MODBUS_UPSTREAM_HOST: "10.1.1.9"
+      MODBUS_UPSTREAM_PORT: "502"
+      MODBUS_UPSTREAM_UNIT_ID: "1"
+      MODBUS_UPSTREAM_FUNCTION: "4"
+      MODBUS_UPSTREAM_START: "0"
+      MODBUS_UPSTREAM_COUNT: "2"
+      MODBUS_UPSTREAM_CACHE_SEC: "0.2"
+    extra_hosts: *agent_extra_hosts
+    networks:
+      net_10_1_1:
+        ipv4_address: 10.1.1.10
+      net_10_1_2:
+        ipv4_address: 10.1.2.10
+      oob_mgmt:
+        ipv4_address: 172.31.250.10
+    healthcheck:
+      test: ["CMD-SHELL", "ss -lnt | grep -q ':502'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  channel-b:
+    <<: *endpoint
+    container_name: channel-b
+    hostname: channel-b.iaea.ifan.com
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+    environment:
+      <<: *agent_env
+      DEVICE_NAME: Channel-B
+      DEVICE_ROLE: Layer0 Channel
+      DEVICE_DESC: Channel B process signal
+      SERVICE_PORTS: "502"
+      MODBUS_PORT: "502"
+      MODBUS_PROFILE: analog_passthrough
+      MODBUS_UPSTREAM_HOST: "10.1.1.8"
+      MODBUS_UPSTREAM_PORT: "502"
+      MODBUS_UPSTREAM_UNIT_ID: "2"
+      MODBUS_UPSTREAM_FUNCTION: "4"
+      MODBUS_UPSTREAM_START: "0"
+      MODBUS_UPSTREAM_COUNT: "2"
+      MODBUS_UPSTREAM_CACHE_SEC: "0.2"
+    extra_hosts: *agent_extra_hosts
+    networks:
+      net_10_1_1:
+        ipv4_address: 10.1.1.11
+      net_10_1_2:
+        ipv4_address: 10.1.2.11
+      oob_mgmt:
+        ipv4_address: 172.31.250.11
+    healthcheck:
+      test: ["CMD-SHELL", "ss -lnt | grep -q ':502'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  channel-c:
+    <<: *endpoint
+    container_name: channel-c
+    hostname: channel-c.iaea.ifan.com
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+    environment:
+      <<: *agent_env
+      DEVICE_NAME: Channel-C
+      DEVICE_ROLE: Layer0 Channel
+      DEVICE_DESC: Channel C analog signal and controller state
+      SERVICE_PORTS: "502"
+      MODBUS_PORT: "502"
+      MODBUS_PROFILE: hybrid_channel_c
+      MODBUS_CSV_PATH: /app/simulated_data/PZRData_demo.csv
+      MODBUS_CSV_SENSOR_COLUMN: PT-457
+      MODBUS_CSV_ACTUATOR_COLUMNS: VC-HV455A,VC-PV455B,Heat-Ctrl
+      MODBUS_BASE_VALUE: "4570"
+      MODBUS_AMPLITUDE: "25"
+      MODBUS_PERIOD_SEC: "90"
+      MODBUS_PHASE_DEG: "180"
+      MODBUS_STATUS_VALUE: "1"
+      MODBUS_CONTROLLER_MAP: "1|10.1.1.14|200;2|10.1.2.15|100"
+      MODBUS_OWNER_LEASE_SEC: "2.0"
+      MODBUS_COMMAND_MIN: "0"
+      MODBUS_COMMAND_MAX: "100"
+    extra_hosts: *agent_extra_hosts
+    networks:
+      net_10_1_1:
+        ipv4_address: 10.1.1.12
+      net_10_1_2:
+        ipv4_address: 10.1.2.12
+      oob_mgmt:
+        ipv4_address: 172.31.250.12
+    healthcheck:
+      test: ["CMD-SHELL", "ss -lnt | grep -q ':502'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  channel-d:
+    <<: *endpoint
+    container_name: channel-d
+    hostname: channel-d.iaea.ifan.com
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+    environment:
+      <<: *agent_env
+      DEVICE_NAME: Channel-D
+      DEVICE_ROLE: Layer0 Channel
+      DEVICE_DESC: Channel D analog signal and controller state
+      SERVICE_PORTS: "502"
+      MODBUS_PORT: "502"
+      MODBUS_PROFILE: hybrid_channel_d
+      MODBUS_CSV_PATH: /app/simulated_data/PZRData_demo.csv
+      MODBUS_CSV_SENSOR_COLUMN: PT-458
+      MODBUS_CSV_ACTUATOR_COLUMNS: VC-PV455C
+      MODBUS_BASE_VALUE: "4580"
+      MODBUS_AMPLITUDE: "20"
+      MODBUS_PERIOD_SEC: "105"
+      MODBUS_PHASE_DEG: "270"
+      MODBUS_STATUS_VALUE: "1"
+      MODBUS_CONTROLLER_MAP: "1|10.1.1.14|200;2|10.1.2.15|100"
+      MODBUS_OWNER_LEASE_SEC: "2.0"
+      MODBUS_COMMAND_MIN: "0"
+      MODBUS_COMMAND_MAX: "100"
+    extra_hosts: *agent_extra_hosts
+    networks:
+      net_10_1_1:
+        ipv4_address: 10.1.1.13
+      net_10_1_2:
+        ipv4_address: 10.1.2.13
+      oob_mgmt:
+        ipv4_address: 172.31.250.13
+    healthcheck:
+      test: ["CMD-SHELL", "ss -lnt | grep -q ':502'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # ---------------------- Layer 1 ----------------------
+
+  # PLC-MAIN
+  plc-main:
+    <<: *openplc
+    container_name: plc-main
+    hostname: plc-main.iaea.ifan.com
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+    environment:
+      <<: *agent_env
+      DEVICE_NAME: PLC-Main
+      DEVICE_ROLE: Layer1 controller
+      DEVICE_DESC: Primary PLC
+      COMPAT_HTTP_PORT: "44818"
+      PLC_PROGRAM_TEMPLATE: /opt/openplc-lab/programs/rcs_main_channel_polling_hybrid-model.st
+      PLC_PROGRAM_FILE: rcs_main_channel_polling_hybrid-model.st
+      PLC_PROGRAM_NAME: RCS Main Channel Polling Hybrid-Model
+      PLC_PROGRAM_DESCRIPTION: Poll Channel A, Channel B, Channel C, and Channel D over Modbus/TCP
+      PLC_MODBUS_PROFILE: /opt/openplc-lab/profiles/plc-main-channels-hybrid-model.json
+      PLC_OPC_PROFILE: main-hybrid-model
+      PLC_OPC_NAMESPACE: urn:iaea-rcs-demo:main
+      PLC_OPC_ENDPOINT_PATH: main
+      PLC_OPC_SERVER_NAME: PLC Main OPC Bridge
+      PLC_START_RUN_MODE: "true"
+      PLC_ENIP_PORT: disabled
+      STATIC_ROUTES: "10.2.50.0/24 via 10.1.1.253;10.3.50.0/24 via 10.1.1.253;10.4.50.0/24 via 10.1.1.253"
+    # Dual homed to both networks
+    extra_hosts: *agent_extra_hosts
+    volumes:
+      - plc_main_data:/docker_persistent
+    networks:
+      net_10_1_1:
+        ipv4_address: 10.1.1.14
+      net_10_1_2:
+        ipv4_address: 10.1.2.14
+      oob_mgmt:
+        ipv4_address: 172.31.250.14
+    ports:
+      - "127.0.0.1:18080:8080"
+
+  # PLC-Backup
+  plc-backup:
+    <<: *openplc
+    container_name: plc-backup
+    hostname: plc-backup.iaea.ifan.com
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+    environment:
+      <<: *agent_env
+      DEVICE_NAME: PLC-Backup
+      DEVICE_ROLE: Layer1 controller
+      DEVICE_DESC: Backup PLC
+      COMPAT_HTTP_PORT: "44818"
+      PLC_PROGRAM_TEMPLATE: /opt/openplc-lab/programs/rcs_backup_channel_polling_hybrid-model.st
+      PLC_PROGRAM_FILE: rcs_backup_channel_polling_hybrid-model.st
+      PLC_PROGRAM_NAME: RCS Backup Channel Polling Hybrid-Model
+      PLC_PROGRAM_DESCRIPTION: Poll Channel A, Channel B, Channel C, and Channel D over Modbus/TCP
+      PLC_MODBUS_PROFILE: /opt/openplc-lab/profiles/plc-backup-channels-hybrid-model.json
+      PLC_OPC_PROFILE: backup-hybrid-model
+      PLC_OPC_NAMESPACE: urn:iaea-rcs-demo:backup
+      PLC_OPC_ENDPOINT_PATH: backup
+      PLC_OPC_SERVER_NAME: PLC backup OPC Bridge
+      PLC_START_RUN_MODE: "true"
+      PLC_ENIP_PORT: disabled
+      STATIC_ROUTES: "10.2.50.0/24 via 10.1.2.253;10.3.50.0/24 via 10.1.2.253;10.4.50.0/24 via 10.1.2.253"
+    # Dual homed to both networks
+    extra_hosts: *agent_extra_hosts
+    volumes:
+      - plc_backup_data:/docker_persistent
+    networks:
+      net_10_1_1:
+        ipv4_address: 10.1.1.15
+      net_10_1_2:
+        ipv4_address: 10.1.2.15
+      oob_mgmt:
+        ipv4_address: 172.31.250.15
+    ports:
+      - "127.0.0.1:18081:8080"
+
+  span-l1a:
+    <<: *agent_sensor
+    container_name: span-l1a
+    hostname: span-l1a
+    command: ["sleep", "infinity"]
+    environment:
+      <<: *agent_env
+      AGENT_ID: span-l1a
+      DEVICE_NAME: Span-L1A
+      DEVICE_ROLE: Passive network sensor
+      DEVICE_DESC: SPAN-style passive sensor for the 10.1.1.0/24 bridge
+      SERVICE_PORTS: ""
+      HOST_AGENT_SNIFF_INTERFACES: "eth1"
+    extra_hosts: *agent_extra_hosts
+    networks:
+      net_10_1_1:
+        ipv4_address: 10.1.1.250
+      oob_mgmt:
+        ipv4_address: 172.31.250.250
+
+  span-l1b:
+    <<: *agent_sensor
+    container_name: span-l1b
+    hostname: span-l1b
+    command: ["sleep", "infinity"]
+    environment:
+      <<: *agent_env
+      AGENT_ID: span-l1b
+      DEVICE_NAME: Span-L1B
+      DEVICE_ROLE: Passive network sensor
+      DEVICE_DESC: SPAN-style passive sensor for the 10.1.2.0/24 bridge
+      SERVICE_PORTS: ""
+      # On span-l1b the 10.1.2.0/24 attachment enumerates as eth0 and the
+      # OOB network enumerates as eth1. Sniff eth0 so passive capture follows
+      # the control-network segment instead of the management uplink.
+      HOST_AGENT_SNIFF_INTERFACES: "eth0"
+    extra_hosts: *agent_extra_hosts
+    networks:
+      net_10_1_2:
+        ipv4_address: 10.1.2.250
+      oob_mgmt:
+        ipv4_address: 172.31.250.251
+
+networks:
+  l4_net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br_rcs_l4
+    ipam:
+      config:
+        - subnet: 10.4.50.0/24
+
+  l3_net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br_rcs_l3
+    ipam:
+      config:
+        - subnet: 10.3.50.0/24
+
+  l2_net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br_rcs_l2
+    ipam:
+      config:
+        - subnet: 10.2.50.0/24
+
+  net_10_1_1:
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.name: net_10_1_1
+    ipam:
+      config:
+        - subnet: 10.1.1.0/24
+  
+  net_10_1_2:
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.name: net_10_1_2
+    ipam:
+      config:
+        - subnet: 10.1.2.0/24
+
+  oob_mgmt:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br_rcs_oob
+    ipam:
+      config:
+        - subnet: 172.31.250.0/24
+
+volumes:
+  plc_main_data:
+  plc_backup_data:
+  eng_ws_home:
+  postgres_data:

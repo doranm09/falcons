@@ -425,9 +425,9 @@ def build_route_isolation_rows() -> list[dict[str, str]]:
         },
         {
             "check": "historian route table",
-            "command": "expect_no_l1_l0_or_mgmt_routes historian",
+            "command": "expect_no_l0_or_mgmt_routes historian",
             "expected": "no matching routes present",
-            "policy": "Layer 3 has no routes into Layer 1, Layer 0, or management nets",
+            "policy": "Layer 3 historian may route to Layer 2 and Layer 1 OPC endpoints, but it still has no direct routes into Layer 0 or the management nets",
         },
         {
             "check": "hmi route table",

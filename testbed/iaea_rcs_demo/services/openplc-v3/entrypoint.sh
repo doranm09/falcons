@@ -65,6 +65,9 @@ cleanup() {
   if [ -n "${HOST_AGENT_PID:-}" ]; then
     kill "$HOST_AGENT_PID" 2>/dev/null || true
   fi
+  for sniff_pid in ${HOST_AGENT_SNIFF_PIDS:-}; do
+    kill "$sniff_pid" 2>/dev/null || true
+  done
   wait "$openplc_pid" 2>/dev/null || true
   if [ -n "$compat_pid" ]; then
     wait "$compat_pid" 2>/dev/null || true
@@ -75,6 +78,9 @@ cleanup() {
   if [ -n "${HOST_AGENT_PID:-}" ]; then
     wait "$HOST_AGENT_PID" 2>/dev/null || true
   fi
+  for sniff_pid in ${HOST_AGENT_SNIFF_PIDS:-}; do
+    wait "$sniff_pid" 2>/dev/null || true
+  done
 }
 
 trap cleanup INT TERM

@@ -25,7 +25,7 @@ class OverrideTarget:
     unit_id: int
 
 
-COMMON_POINTS = [
+LEGACY_COMMON_POINTS = [
     Point("hv_owner", "actuators", 4, 106),
     Point("hv_applied", "actuators", 4, 107),
     Point("hv_last_writer", "actuators", 4, 108),
@@ -65,7 +65,7 @@ PROFILE_POINTS = {
         Point("exported_pt455", "summary", 3, 10),
         Point("exported_pt456", "summary", 3, 11),
         Point("exported_pt457", "summary", 3, 12),
-    ],
+    ] + LEGACY_COMMON_POINTS,
     "backup": [
         Point("pt456_pv", "sensors", 4, 100),
         Point("pt456_status", "sensors", 4, 101),
@@ -76,6 +76,100 @@ PROFILE_POINTS = {
         Point("exported_pt456", "summary", 3, 10),
         Point("exported_pt457", "summary", 3, 11),
         Point("exported_pt458", "summary", 3, 12),
+    ] + LEGACY_COMMON_POINTS,
+    "main-hybrid-model": [
+        Point("channel_a_pv", "channels", 4, 100),
+        Point("channel_a_status", "channels", 4, 101),
+        Point("pt455_pv", "sensors", 4, 100),
+        Point("pt455_status", "sensors", 4, 101),
+        Point("channel_b_pv", "channels", 4, 102),
+        Point("channel_b_status", "channels", 4, 103),
+        Point("pt456_pv", "sensors", 4, 102),
+        Point("pt456_status", "sensors", 4, 103),
+        Point("channel_c_pv", "channels", 4, 104),
+        Point("channel_c_status", "channels", 4, 105),
+        Point("pt457_pv", "sensors", 4, 104),
+        Point("pt457_status", "sensors", 4, 105),
+        Point("hv_owner", "actuators", 4, 106),
+        Point("hv_applied", "actuators", 4, 107),
+        Point("hv_last_writer", "actuators", 4, 108),
+        Point("hv_status", "actuators", 4, 109),
+        Point("pvb_owner", "actuators", 4, 110),
+        Point("pvb_applied", "actuators", 4, 111),
+        Point("pvb_last_writer", "actuators", 4, 112),
+        Point("pvb_status", "actuators", 4, 113),
+        Point("heat_owner", "actuators", 4, 114),
+        Point("heat_applied", "actuators", 4, 115),
+        Point("heat_last_writer", "actuators", 4, 116),
+        Point("heat_status", "actuators", 4, 117),
+        Point("channel_d_pv", "channels", 4, 118),
+        Point("channel_d_status", "channels", 4, 119),
+        Point("pt458_pv", "sensors", 4, 118),
+        Point("pt458_status", "sensors", 4, 119),
+        Point("pvc_owner", "actuators", 4, 120),
+        Point("pvc_applied", "actuators", 4, 121),
+        Point("pvc_last_writer", "actuators", 4, 122),
+        Point("pvc_status", "actuators", 4, 123),
+        Point("exported_channel_a", "summary", 3, 10),
+        Point("exported_channel_b", "summary", 3, 11),
+        Point("exported_channel_c", "summary", 3, 12),
+        Point("exported_channel_d", "summary", 3, 13),
+        Point("average_pressure", "summary", 3, 14),
+        Point("health_code", "summary", 3, 15),
+        Point("exported_hv_owner", "summary", 3, 16),
+        Point("exported_hv_command", "summary", 3, 17),
+        Point("exported_pvb_owner", "summary", 3, 18),
+        Point("exported_pvb_command", "summary", 3, 19),
+        Point("exported_pvc_owner", "summary", 3, 20),
+        Point("exported_pvc_command", "summary", 3, 21),
+        Point("exported_heat_owner", "summary", 3, 22),
+        Point("exported_heat_command", "summary", 3, 23),
+    ],
+    "backup-hybrid-model": [
+        Point("channel_a_pv", "channels", 4, 100),
+        Point("channel_a_status", "channels", 4, 101),
+        Point("channel_b_pv", "channels", 4, 102),
+        Point("channel_b_status", "channels", 4, 103),
+        Point("pt456_pv", "sensors", 4, 102),
+        Point("pt456_status", "sensors", 4, 103),
+        Point("channel_c_pv", "channels", 4, 104),
+        Point("channel_c_status", "channels", 4, 105),
+        Point("pt457_pv", "sensors", 4, 104),
+        Point("pt457_status", "sensors", 4, 105),
+        Point("hv_owner", "actuators", 4, 106),
+        Point("hv_applied", "actuators", 4, 107),
+        Point("hv_last_writer", "actuators", 4, 108),
+        Point("hv_status", "actuators", 4, 109),
+        Point("pvb_owner", "actuators", 4, 110),
+        Point("pvb_applied", "actuators", 4, 111),
+        Point("pvb_last_writer", "actuators", 4, 112),
+        Point("pvb_status", "actuators", 4, 113),
+        Point("heat_owner", "actuators", 4, 114),
+        Point("heat_applied", "actuators", 4, 115),
+        Point("heat_last_writer", "actuators", 4, 116),
+        Point("heat_status", "actuators", 4, 117),
+        Point("channel_d_pv", "channels", 4, 118),
+        Point("channel_d_status", "channels", 4, 119),
+        Point("pt458_pv", "sensors", 4, 118),
+        Point("pt458_status", "sensors", 4, 119),
+        Point("pvc_owner", "actuators", 4, 120),
+        Point("pvc_applied", "actuators", 4, 121),
+        Point("pvc_last_writer", "actuators", 4, 122),
+        Point("pvc_status", "actuators", 4, 123),
+        Point("exported_channel_a", "summary", 3, 10),
+        Point("exported_channel_b", "summary", 3, 11),
+        Point("exported_channel_c", "summary", 3, 12),
+        Point("exported_channel_d", "summary", 3, 13),
+        Point("average_pressure", "summary", 3, 14),
+        Point("health_code", "summary", 3, 15),
+        Point("exported_hv_owner", "summary", 3, 16),
+        Point("exported_hv_command", "summary", 3, 17),
+        Point("exported_pvb_owner", "summary", 3, 18),
+        Point("exported_pvb_command", "summary", 3, 19),
+        Point("exported_pvc_owner", "summary", 3, 20),
+        Point("exported_pvc_command", "summary", 3, 21),
+        Point("exported_heat_owner", "summary", 3, 22),
+        Point("exported_heat_command", "summary", 3, 23),
     ],
 }
 
@@ -102,9 +196,9 @@ DEFAULT_OVERRIDE_CONTROLLER_IDS = {
 PROFILE = os.getenv("PLC_OPC_PROFILE", "").strip().lower()
 POINTS = PROFILE_POINTS.get(PROFILE)
 if not POINTS:
-    raise SystemExit("PLC_OPC_PROFILE must be set to 'main' or 'backup'")
-
-POINTS = POINTS + COMMON_POINTS
+    raise SystemExit(
+        "PLC_OPC_PROFILE must be set to 'main', 'backup', 'main-hybrid-model', or 'backup-hybrid-model'"
+    )
 POINT_INDEX = {(point.function, point.address): point.name for point in POINTS}
 
 MODBUS_HOST = os.getenv("PLC_OPC_MODBUS_HOST", "127.0.0.1")
@@ -125,10 +219,10 @@ OVERRIDE_REAPPLY_SEC = max(float(os.getenv("PLC_OPC_OVERRIDE_REAPPLY_SEC", "0.1"
 OVERRIDE_CONTROLLER_ID = int(
     os.getenv(
         "PLC_OPC_OVERRIDE_CONTROLLER_ID",
-        str(DEFAULT_OVERRIDE_CONTROLLER_IDS[PROFILE]),
+        str(DEFAULT_OVERRIDE_CONTROLLER_IDS.get(PROFILE, 0)),
     )
 )
-OVERRIDE_TARGETS = {target.prefix: target for target in DEFAULT_OVERRIDE_TARGETS[PROFILE]}
+OVERRIDE_TARGETS = {target.prefix: target for target in DEFAULT_OVERRIDE_TARGETS.get(PROFILE, [])}
 LOOP_SLEEP_SEC = max(min(POLL_INTERVAL_SEC, OVERRIDE_REAPPLY_SEC, 0.1), 0.02)
 
 
@@ -214,6 +308,10 @@ def build_server() -> tuple[Server, dict[str, object], dict[str, object]]:
         ua.NodeId("telemetry.sensors", idx, ua.NodeIdType.String),
         "Sensors",
     )
+    channels = root.add_object(
+        ua.NodeId("telemetry.channels", idx, ua.NodeIdType.String),
+        "Channels",
+    )
     actuators = root.add_object(
         ua.NodeId("telemetry.actuators", idx, ua.NodeIdType.String),
         "Actuators",
@@ -233,6 +331,7 @@ def build_server() -> tuple[Server, dict[str, object], dict[str, object]]:
 
     parents = {
         "sensors": sensors,
+        "channels": channels,
         "actuators": actuators,
         "summary": summary,
     }

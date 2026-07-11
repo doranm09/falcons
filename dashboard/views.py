@@ -192,34 +192,29 @@ PURDUE_TOPOLOGY_LAYERS = [
     {"slug": "L3.5", "label": "Level 3.5 / DMZ & Firewalls", "accent": "warning"},
     {"slug": "L3", "label": "Level 3 / Operations", "accent": "info"},
     {"slug": "L2", "label": "Level 2 / Supervisory", "accent": "success"},
-    {"slug": "L1", "label": "Level 1 / Control", "accent": "secondary"},
-    {"slug": "L0", "label": "Level 0 / Process", "accent": "dark"},
+    {"slug": "L1", "label": "Level 1 / Control Network", "accent": "secondary"},
+    {"slug": "L0", "label": "Level 0 / Field & Process", "accent": "dark"},
 ]
 
 IAEA_TESTBED_STATIC_TOPOLOGY = [
-    {"hostname": "database", "label": "database", "ip_address": "10.4.50.20", "layer": "L4", "role_slug": "database", "role_label": "Database", "icon": "bi-database-fill", "segment_label": "Enterprise LAN"},
-    {"hostname": "metasploit", "label": "metasploit", "ip_address": "10.4.50.10", "layer": "L4", "role_slug": "offensive", "role_label": "Offensive Host", "icon": "bi-bug-fill", "segment_label": "Enterprise LAN"},
-    {"hostname": "postgres", "label": "postgres", "ip_address": "10.4.50.41", "layer": "L4", "role_slug": "database", "role_label": "Database", "icon": "bi-database-fill", "segment_label": "Enterprise LAN"},
-    {"hostname": "historian-db", "label": "historian-db", "ip_address": "10.4.50.30", "layer": "L4", "role_slug": "database", "role_label": "Database", "icon": "bi-database-fill", "segment_label": "Enterprise LAN"},
-    {"hostname": "firewall-2", "label": "firewall-2", "ip_address": "10.3.50.254", "layer": "L3.5", "role_slug": "firewall", "role_label": "Firewall", "icon": "bi-shield-lock-fill", "segment_label": "Operations LAN"},
-    {"hostname": "firewall-1", "label": "firewall-1", "ip_address": "10.2.50.254", "layer": "L3.5", "role_slug": "firewall", "role_label": "Firewall", "icon": "bi-shield-lock-fill", "segment_label": "Supervisory LAN"},
-    {"hostname": "historian", "label": "historian", "ip_address": "10.2.50.31", "layer": "L3", "role_slug": "server", "role_label": "Server", "icon": "bi-server", "segment_label": "Operations LAN"},
-    {"hostname": "hmi", "label": "hmi", "ip_address": "10.2.50.10", "layer": "L2", "role_slug": "supervisory", "role_label": "Supervisory", "icon": "bi-display-fill", "segment_label": "Supervisory LAN"},
-    {"hostname": "ignition", "label": "ignition", "ip_address": "10.2.50.40", "layer": "L2", "role_slug": "supervisory", "role_label": "Supervisory", "icon": "bi-display-fill", "segment_label": "Supervisory LAN"},
-    {"hostname": "engineer-ws", "label": "engineer-ws", "ip_address": "10.2.50.20", "layer": "L2", "role_slug": "workstation", "role_label": "Workstation", "icon": "bi-laptop-fill", "segment_label": "Supervisory LAN"},
-    {"hostname": "l2-jump", "label": "l2-jump", "ip_address": "10.2.50.30", "layer": "L2", "role_slug": "workstation", "role_label": "Workstation", "icon": "bi-laptop-fill", "segment_label": "Supervisory LAN"},
-    {"hostname": "firewall-0", "label": "firewall-0", "ip_address": "10.1.13.253", "layer": "L1", "role_slug": "firewall", "role_label": "Firewall", "icon": "bi-shield-lock-fill", "segment_label": "Main Control Cell"},
-    {"hostname": "firewall-main-cell", "label": "firewall-main-cell", "ip_address": "10.1.13.252", "layer": "L1", "role_slug": "firewall", "role_label": "Firewall", "icon": "bi-shield-lock-fill", "segment_label": "Main Control Cell"},
-    {"hostname": "firewall-backup-cell", "label": "firewall-backup-cell", "ip_address": "10.2.23.252", "layer": "L1", "role_slug": "firewall", "role_label": "Firewall", "icon": "bi-shield-lock-fill", "segment_label": "Backup Control Cell"},
-    {"hostname": "plc-backup", "label": "plc-backup", "ip_address": "10.2.23.10", "layer": "L1", "role_slug": "controller", "role_label": "Controller", "icon": "bi-cpu-fill", "segment_label": "Backup Control Cell"},
-    {"hostname": "vc-hv455a", "label": "vc-hv455a", "ip_address": "10.3.13.1", "layer": "L0", "role_slug": "actuator", "role_label": "Actuator", "icon": "bi-sliders", "segment_label": "Main Process Cell"},
-    {"hostname": "vc-pv455b", "label": "vc-pv455b", "ip_address": "10.3.13.2", "layer": "L0", "role_slug": "actuator", "role_label": "Actuator", "icon": "bi-sliders", "segment_label": "Main Process Cell"},
-    {"hostname": "vc-pv455c", "label": "vc-pv455c", "ip_address": "10.3.13.3", "layer": "L0", "role_slug": "actuator", "role_label": "Actuator", "icon": "bi-sliders", "segment_label": "Main Process Cell"},
-    {"hostname": "heat-ctrl", "label": "heat-ctrl", "ip_address": "10.3.13.5", "layer": "L0", "role_slug": "actuator", "role_label": "Actuator", "icon": "bi-sliders", "segment_label": "Main Process Cell"},
-    {"hostname": "pt-455", "label": "pt-455", "ip_address": "10.3.13.11", "layer": "L0", "role_slug": "sensor", "role_label": "Sensor", "icon": "bi-speedometer2", "segment_label": "Main Process Cell"},
-    {"hostname": "pt-456", "label": "pt-456", "ip_address": "10.3.13.12", "layer": "L0", "role_slug": "sensor", "role_label": "Sensor", "icon": "bi-speedometer2", "segment_label": "Main Process Cell"},
-    {"hostname": "pt-457", "label": "pt-457", "ip_address": "10.3.13.13", "layer": "L0", "role_slug": "sensor", "role_label": "Sensor", "icon": "bi-speedometer2", "segment_label": "Main Process Cell"},
-    {"hostname": "pt-458", "label": "pt-458", "ip_address": "10.4.23.14", "layer": "L0", "role_slug": "sensor", "role_label": "Sensor", "icon": "bi-speedometer2", "segment_label": "Backup Process Cell"},
+    {"hostname": "metasploit", "label": "metasploit", "ip_address": "10.4.50.10", "ip_addresses": ["10.4.50.10"], "aliases": ["ws4a"], "layer": "L4", "role_slug": "offensive", "role_label": "Offensive Host", "icon": "bi-bug-fill", "segment_label": "Enterprise LAN"},
+    {"hostname": "postgres", "label": "postgres", "ip_address": "10.4.50.20", "ip_addresses": ["10.4.50.20"], "aliases": ["pg"], "layer": "L4", "role_slug": "database", "role_label": "Database", "icon": "bi-database-fill", "segment_label": "Enterprise LAN"},
+    {"hostname": "firewall-2", "label": "firewall-2", "ip_address": "10.3.50.254", "ip_addresses": ["10.3.50.254", "10.4.50.254"], "aliases": ["firewall-2-agent", "firewall 2 agent"], "layer": "L3.5", "role_slug": "firewall", "role_label": "Firewall", "icon": "bi-shield-lock-fill", "segment_label": "Operations LAN"},
+    {"hostname": "firewall-1", "label": "firewall-1", "ip_address": "10.2.50.254", "ip_addresses": ["10.2.50.254", "10.3.50.253"], "aliases": ["firewall-1-agent", "firewall 1 agent"], "layer": "L3.5", "role_slug": "firewall", "role_label": "Firewall", "icon": "bi-shield-lock-fill", "segment_label": "Supervisory LAN"},
+    {"hostname": "historian", "label": "historian", "ip_address": "10.3.50.10", "ip_addresses": ["10.3.50.10"], "aliases": [], "layer": "L3", "role_slug": "server", "role_label": "Server", "icon": "bi-server", "segment_label": "Operations LAN"},
+    {"hostname": "hmi", "label": "hmi", "ip_address": "10.2.50.10", "ip_addresses": ["10.2.50.10"], "aliases": [], "layer": "L2", "role_slug": "supervisory", "role_label": "Supervisory", "icon": "bi-display-fill", "segment_label": "Supervisory LAN"},
+    {"hostname": "engineer-ws", "label": "engineer-ws", "ip_address": "10.2.50.20", "ip_addresses": ["10.2.50.20"], "aliases": ["ws2"], "layer": "L2", "role_slug": "workstation", "role_label": "Workstation", "icon": "bi-laptop-fill", "segment_label": "Supervisory LAN"},
+    {"hostname": "firewall-0", "label": "firewall-0", "ip_address": "10.2.50.253", "ip_addresses": ["10.2.50.253", "10.1.1.253", "10.1.2.253"], "aliases": ["firewall-0-agent", "firewall 0 agent"], "layer": "L1", "role_slug": "firewall", "role_label": "Firewall", "icon": "bi-shield-lock-fill", "segment_label": "Supervisory / Control Boundary"},
+    {"hostname": "plc-main", "label": "plc-main", "ip_address": "10.1.1.14", "ip_addresses": ["10.1.1.14", "10.1.2.14"], "aliases": ["plcm", "plc main"], "layer": "L1", "role_slug": "controller", "role_label": "Controller", "icon": "bi-cpu-fill", "segment_label": "Redundant Control Network"},
+    {"hostname": "plc-backup", "label": "plc-backup", "ip_address": "10.1.1.15", "ip_addresses": ["10.1.1.15", "10.1.2.15"], "aliases": ["plcb", "plc backup"], "layer": "L1", "role_slug": "controller", "role_label": "Controller", "icon": "bi-cpu-fill", "segment_label": "Redundant Control Network"},
+    {"hostname": "channel-a", "label": "channel-a", "ip_address": "10.1.1.10", "ip_addresses": ["10.1.1.10", "10.1.2.10"], "aliases": ["cha", "channel a"], "layer": "L1", "role_slug": "controller", "role_label": "Channel", "icon": "bi-bezier2", "segment_label": "Redundant Control Network"},
+    {"hostname": "channel-b", "label": "channel-b", "ip_address": "10.1.1.11", "ip_addresses": ["10.1.1.11", "10.1.2.11"], "aliases": ["chb", "channel b"], "layer": "L1", "role_slug": "controller", "role_label": "Channel", "icon": "bi-bezier2", "segment_label": "Redundant Control Network"},
+    {"hostname": "channel-c", "label": "channel-c", "ip_address": "10.1.1.12", "ip_addresses": ["10.1.1.12", "10.1.2.12"], "aliases": ["chc", "channel c"], "layer": "L1", "role_slug": "controller", "role_label": "Channel", "icon": "bi-bezier2", "segment_label": "Redundant Control Network"},
+    {"hostname": "channel-d", "label": "channel-d", "ip_address": "10.1.1.13", "ip_addresses": ["10.1.1.13", "10.1.2.13"], "aliases": ["chd", "channel d"], "layer": "L1", "role_slug": "controller", "role_label": "Channel", "icon": "bi-bezier2", "segment_label": "Redundant Control Network"},
+    {"hostname": "pt-455", "label": "pt-455", "ip_address": "10.1.1.9", "ip_addresses": ["10.1.1.9", "10.1.2.9"], "aliases": [], "layer": "L0", "role_slug": "sensor", "role_label": "Sensor", "icon": "bi-speedometer2", "segment_label": "Redundant Field Network"},
+    {"hostname": "pt-456", "label": "pt-456", "ip_address": "10.1.1.8", "ip_addresses": ["10.1.1.8", "10.1.2.8"], "aliases": [], "layer": "L0", "role_slug": "sensor", "role_label": "Sensor", "icon": "bi-speedometer2", "segment_label": "Redundant Field Network"},
+    {"hostname": "pt-457", "label": "pt-457", "ip_address": "", "ip_addresses": [], "aliases": ["analog sensor pt-457"], "layer": "L0", "role_slug": "sensor", "role_label": "Analog Sensor", "icon": "bi-speedometer2", "segment_label": "Channel C Analog Path"},
+    {"hostname": "pt-458", "label": "pt-458", "ip_address": "", "ip_addresses": [], "aliases": ["analog sensor pt-458"], "layer": "L0", "role_slug": "sensor", "role_label": "Analog Sensor", "icon": "bi-speedometer2", "segment_label": "Channel D Analog Path"},
 ]
 
 
@@ -229,6 +224,73 @@ def _topology_identity_text(*parts) -> str:
         if text:
             return text
     return ""
+
+
+def _parse_endpoint_address(value: str = "") -> tuple[str, int | None]:
+    text = str(value or "").strip()
+    if not text:
+        return "", None
+    if text.startswith("[") and "]:" in text:
+        host, _, port_text = text[1:].partition("]:")
+        try:
+            return host, int(port_text)
+        except ValueError:
+            return host, None
+    if text.count(":") == 1:
+        host, port_text = text.rsplit(":", 1)
+        try:
+            return host, int(port_text)
+        except ValueError:
+            return text, None
+    return text, None
+
+
+def _node_interface_ips(node_obj=None) -> list[str]:
+    if not node_obj:
+        return []
+    ips = []
+    primary = str(getattr(node_obj, "ip_address", "") or "").strip()
+    if primary:
+        ips.append(primary)
+    for iface in getattr(node_obj, "interfaces", []).all():
+        iface_ip = str(getattr(iface, "ip", "") or "").strip()
+        if iface_ip and iface_ip not in ips:
+            ips.append(iface_ip)
+    return ips
+
+
+def _agent_interface_ips(agent_obj=None) -> list[str]:
+    if not agent_obj:
+        return []
+    ips = []
+    primary = str(getattr(agent_obj, "ip_address", "") or "").strip()
+    if primary:
+        ips.append(primary)
+    for iface in getattr(agent_obj, "interfaces", []) or []:
+        iface_ip = str(iface.get("ip", "") or "").strip()
+        if iface_ip and iface_ip not in ips and not iface_ip.startswith("127.") and iface_ip != "::1":
+            ips.append(iface_ip)
+    return ips
+
+
+def _metadata_interface_ips(metadata_obj=None) -> list[str]:
+    if not metadata_obj:
+        return []
+    ips = []
+    for iface in getattr(metadata_obj, "interfaces", []) or []:
+        iface_ip = str(iface.get("ip", "") or "").strip()
+        if iface_ip and iface_ip not in ips and not iface_ip.startswith("127.") and iface_ip != "::1":
+            ips.append(iface_ip)
+    return ips
+
+
+def _resolve_iaea_override(hostname: str = "", name: str = "", ip_addresses=None) -> dict | None:
+    ip_addresses = ip_addresses or []
+    for ip_text in ip_addresses:
+        override = _iaea_topology_override(hostname, name, ip_text)
+        if override:
+            return override
+    return _iaea_topology_override(hostname, name, "")
 
 
 def _infer_topology_role(name: str = "", hostname: str = "", ip_address: str = "", description: str = "") -> tuple[str, str, str]:
@@ -259,6 +321,8 @@ def _infer_topology_role(name: str = "", hostname: str = "", ip_address: str = "
 def _infer_purdue_layer(name: str = "", hostname: str = "", ip_address: str = "", description: str = "") -> str:
     text = " ".join([str(name or ""), str(hostname or ""), str(description or "")]).upper()
     ip_text = str(ip_address or "").strip()
+    if any(token in text for token in ["PT-455", "PT-456", "PT-457", "PT-458", "SENSOR", "TRANSMITTER", "VALVE", "HEAT", "SPRAY", "PRESSURE RELIEF"]):
+        return "L0"
     if "HISTORIAN" in text and "DB" not in text and "DATABASE" not in text:
         return "L3"
     if any(token in text for token in ["FIREWALL", "DMZ", "GATEWAY"]):
@@ -269,7 +333,7 @@ def _infer_purdue_layer(name: str = "", hostname: str = "", ip_address: str = ""
         return "L3"
     if ip_text.startswith("10.2.50."):
         return "L2"
-    if any(ip_text.startswith(prefix) for prefix in ["10.1.13.", "10.2.23.", "10.0.13.", "10.0.23."]):
+    if any(ip_text.startswith(prefix) for prefix in ["10.1.1.", "10.1.2.", "10.1.13.", "10.2.23.", "10.0.13.", "10.0.23."]):
         return "L1"
     if any(ip_text.startswith(prefix) for prefix in ["10.3.13.", "10.4.23."]):
         return "L0"
@@ -292,6 +356,8 @@ def _topology_segment_label(ip_address: str = "") -> str:
         "10.4.50.": "Enterprise LAN",
         "10.3.50.": "Operations LAN",
         "10.2.50.": "Supervisory LAN",
+        "10.1.1.": "Redundant Control Network",
+        "10.1.2.": "Redundant Control Network",
         "10.1.13.": "Main Control Cell",
         "10.2.23.": "Backup Control Cell",
         "10.3.13.": "Main Process Cell",
@@ -312,8 +378,24 @@ def _topology_layer_meta(slug: str) -> dict:
     return {"slug": slug, "label": slug, "accent": "secondary"}
 
 
-IAEA_TOPOLOGY_BY_IP = {item["ip_address"]: item for item in IAEA_TESTBED_STATIC_TOPOLOGY}
-IAEA_TOPOLOGY_BY_HOSTNAME = {item["hostname"]: item for item in IAEA_TESTBED_STATIC_TOPOLOGY}
+def _iaea_identity_tokens(item: dict) -> list[str]:
+    tokens = [str(item.get("hostname", "")).strip().lower(), str(item.get("label", "")).strip().lower()]
+    for alias in item.get("aliases", []):
+        tokens.append(str(alias).strip().lower())
+    return [token for token in tokens if token]
+
+
+IAEA_TOPOLOGY_BY_IP = {
+    ip_text: item
+    for item in IAEA_TESTBED_STATIC_TOPOLOGY
+    for ip_text in item.get("ip_addresses", ([item["ip_address"]] if item.get("ip_address") else []))
+    if ip_text
+}
+IAEA_TOPOLOGY_BY_HOSTNAME = {
+    token: item
+    for item in IAEA_TESTBED_STATIC_TOPOLOGY
+    for token in _iaea_identity_tokens(item)
+}
 
 
 def _iaea_topology_override(hostname: str = "", name: str = "", ip_address: str = "") -> dict | None:
@@ -329,11 +411,126 @@ def _iaea_topology_override(hostname: str = "", name: str = "", ip_address: str 
     return None
 
 
+def _should_render_modeled_static_node(item: dict) -> bool:
+    # Keep Level 0 assets visible even before live evidence reaches them.
+    # Also keep the validated engineering workstation visible in L2 so the
+    # supervisory layer reflects the expected hybrid topology.
+    layer = str(item.get("layer") or "").strip()
+    hostname = str(item.get("hostname") or "").strip().lower()
+    return layer == "L0" or hostname == "engineer-ws"
+
+
+MEANINGFUL_PASSIVE_PORTS = {443, 4840, 502, 5432, 44818}
+NOISY_PASSIVE_PROTOCOLS = {"ARP", "ICMP"}
+TOPOLOGY_SCANNER_PROCESS_TOKENS = (
+    "openvas",
+    "ospd-openvas",
+    "gvmd",
+    "greenbone",
+    "gvm",
+    "nmap",
+    "masscan",
+)
+
+
+def _is_likely_docker_gateway(ip_text: str) -> bool:
+    text = str(ip_text or "").strip()
+    if not text:
+        return False
+    gateway_candidates = {
+        "10.1.1.1",
+        "10.1.2.1",
+        "10.2.50.1",
+        "10.3.50.1",
+        "10.4.50.1",
+        "172.17.0.1",
+        "172.31.250.1",
+    }
+    return text in gateway_candidates
+
+
+def _should_surface_inferred_flow_endpoint(
+    *,
+    host: str,
+    port: int | None,
+    protocol: str = "",
+    process_name: str = "",
+    process_cmdline: str = "",
+    override: dict | None = None,
+    known_node=None,
+) -> bool:
+    host = str(host or "").strip()
+    protocol = str(protocol or "").strip().upper()
+    process_name = str(process_name or "").strip().lower()
+    process_cmdline = str(process_cmdline or "").strip().lower()
+    if not host:
+        return False
+    if override or known_node is not None:
+        return True
+    if host in {"127.0.0.1", "::1", "localhost"} or _is_likely_docker_gateway(host):
+        return False
+    if any(token in f"{process_name} {process_cmdline}" for token in TOPOLOGY_SCANNER_PROCESS_TOKENS):
+        return False
+    if process_name == "passive-sniffer":
+        if protocol in NOISY_PASSIVE_PROTOCOLS:
+            return False
+        if protocol == "UDP" and port not in MEANINGFUL_PASSIVE_PORTS:
+            return False
+        if port is None:
+            return False
+        return port in MEANINGFUL_PASSIVE_PORTS
+    return True
+
+
+def _is_topology_noise_flow(
+    *,
+    protocol: str = "",
+    process_name: str = "",
+    process_cmdline: str = "",
+) -> bool:
+    protocol = str(protocol or "").strip().upper()
+    process_name = str(process_name or "").strip().lower()
+    process_cmdline = str(process_cmdline or "").strip().lower()
+    process_text = f"{process_name} {process_cmdline}"
+
+    if any(token in process_text for token in TOPOLOGY_SCANNER_PROCESS_TOKENS):
+        return True
+
+    if process_name == "passive-sniffer" and protocol in NOISY_PASSIVE_PROTOCOLS:
+        return True
+
+    return False
+
+
+def _promote_static_l0_from_passive_observation(conn, *, iaea_testbed_active: bool) -> list[str]:
+    if not iaea_testbed_active:
+        return []
+    if str(getattr(conn, "process_name", "") or "").strip().lower() != "passive-sniffer":
+        return []
+    if str(getattr(conn, "protocol", "") or "").strip().upper() != "ARP":
+        return []
+
+    promoted_ids = []
+    for candidate in (
+        _parse_endpoint_address(getattr(conn, "local_address", ""))[0],
+        _parse_endpoint_address(getattr(conn, "remote_address", ""))[0],
+    ):
+        override = _resolve_iaea_override("", "", [candidate]) if candidate else None
+        if not override:
+            continue
+        if str(override.get("layer") or "").strip() != "L0":
+            continue
+        promoted_ids.append(f"static:{override['hostname']}")
+    return promoted_ids
+
+
 def _is_iaea_testbed_active(node_candidates, agents) -> bool:
     known_ranges = (
         "10.4.50.",
         "10.3.50.",
         "10.2.50.",
+        "10.1.1.",
+        "10.1.2.",
         "10.1.13.",
         "10.2.23.",
         "10.3.13.",
@@ -354,6 +551,36 @@ def _is_iaea_testbed_active(node_candidates, agents) -> bool:
 
 def _normalize_host_identity_text(value: str = "") -> str:
     return str(value or "").strip()
+
+
+def _choose_primary_ip(interface_records=None, fallback_ip: str = "") -> str:
+    def _ip_rank(ip_text: str) -> tuple[int, str]:
+        try:
+            ip_obj = ipaddress.ip_address(ip_text)
+        except ValueError:
+            return (99, ip_text)
+        if ip_obj.version != 4:
+            return (98, ip_text)
+        if ip_text.startswith("10."):
+            return (0, ip_text)
+        if ip_text.startswith("192.168."):
+            return (1, ip_text)
+        if ip_obj.is_private:
+            return (2, ip_text)
+        return (3, ip_text)
+
+    candidates = []
+    for iface in interface_records or []:
+        iface_ip = str((iface or {}).get("ip", "") or "").strip()
+        if iface_ip and not iface_ip.startswith("127.") and iface_ip != "::1":
+            candidates.append(iface_ip)
+    if candidates:
+        return sorted(candidates, key=_ip_rank)[0]
+    return str(fallback_ip or "").strip()
+
+
+TOPOLOGY_METADATA_LOOKBACK = timedelta(minutes=15)
+TOPOLOGY_CONNECTION_LOOKBACK = timedelta(hours=1)
 
 
 def _rekey_agent_identity(old_agent_id: str, new_agent_id: str) -> None:
@@ -636,12 +863,15 @@ def home(request):
     running_scans = ScanRun.objects.filter(status="RUNNING").count()
     pending_scans = ScanRun.objects.filter(status="PENDING").count()
 
-    return render(request, "dashboard/network_monitoring.html", {
+    context = _build_network_monitoring_dashboard_context()
+    context.update({
         "scan_history": scan_history,
         "running_scans": running_scans,
         "pending_scans": pending_scans,
         "timestamp": now().timestamp(),
     })
+
+    return render(request, "dashboard/network_monitoring.html", context)
 
 
 def network_scans(request):
@@ -3913,31 +4143,75 @@ def agent_network_metadata(request):
     except AgentStatus.DoesNotExist:
         return JsonResponse({"error": "Agent not found"}, status=404)
 
-    # Create network metadata record
-    metadata = NetworkMetadata.objects.create(
-        agent=agent,
-        network_connections=network_connections,
-        interface_statistics=interface_statistics,
-        active_ports=active_ports,
-        interfaces=interfaces,
-        total_connections=len(network_connections),
-        total_interfaces=len(interface_statistics)
-    )
+    primary_ip = _choose_primary_ip(interfaces, fallback_ip=agent.ip_address)
 
-    # Create individual connection records for detailed analysis
-    for conn_data in network_connections:
-        NetworkConnection.objects.create(
-            metadata=metadata,
-            agent=agent,
-            protocol=conn_data.get("protocol", "TCP"),
-            local_address=conn_data.get("local_address"),
-            remote_address=conn_data.get("remote_address"),
-            status=conn_data.get("status", "UNKNOWN"),
-            process_pid=conn_data.get("process", {}).get("pid"),
-            process_name=conn_data.get("process", {}).get("name"),
-            process_username=conn_data.get("process", {}).get("username"),
-            process_cmdline=conn_data.get("process", {}).get("cmdline")
+    with transaction.atomic():
+        _claim_existing_agent_identity(agent_id, agent.hostname, primary_ip)
+        _claim_existing_node_identity(agent_id, agent.hostname, primary_ip)
+
+        agent.hostname = agent.hostname or str(data.get("hostname", "") or "").strip() or agent_id
+        agent.ip_address = primary_ip or agent.ip_address
+        agent.interfaces = interfaces or agent.interfaces
+        agent.active_ports = active_ports or agent.active_ports
+        agent.processes = data.get("processes", agent.processes)
+        agent.status = "online"
+        agent.save()
+
+        node, _ = Node.objects.update_or_create(
+            agent_id=agent_id,
+            defaults={
+                "name": agent.hostname,
+                "hostname": agent.hostname,
+                "ip_address": primary_ip or agent.ip_address,
+                "description": f"Observed network metadata from agent {agent_id}",
+                "status": "online",
+                "platform_info": agent.platform,
+                "cpu_count": agent.cpu_count,
+                "memory_total": agent.memory_total,
+                "last_heartbeat": now(),
+            },
         )
+
+        if interfaces:
+            node.interfaces.all().delete()
+            for iface in interfaces:
+                iface_ip = str(iface.get("ip", "") or "").strip()
+                if not iface_ip:
+                    continue
+                NodeInterface.objects.create(
+                    node=node,
+                    name=iface.get("name", "unknown"),
+                    ip=iface_ip,
+                    mac=iface.get("mac", "00:00:00:00:00:00"),
+                )
+
+        metadata = NetworkMetadata.objects.create(
+            agent=agent,
+            network_connections=network_connections,
+            interface_statistics=interface_statistics,
+            active_ports=active_ports,
+            interfaces=interfaces,
+            total_connections=len(network_connections),
+            total_interfaces=len(interfaces),
+        )
+
+        for conn_data in network_connections:
+            local_address, local_port = _parse_endpoint_address(conn_data.get("local_address"))
+            remote_address, remote_port = _parse_endpoint_address(conn_data.get("remote_address"))
+            NetworkConnection.objects.create(
+                metadata=metadata,
+                agent=agent,
+                protocol=conn_data.get("protocol", "TCP"),
+                local_address=local_address or conn_data.get("local_address"),
+                local_port=local_port,
+                remote_address=remote_address or conn_data.get("remote_address"),
+                remote_port=remote_port,
+                status=conn_data.get("status", "UNKNOWN"),
+                process_pid=conn_data.get("process", {}).get("pid"),
+                process_name=conn_data.get("process", {}).get("name"),
+                process_username=conn_data.get("process", {}).get("username"),
+                process_cmdline=conn_data.get("process", {}).get("cmdline", ""),
+            )
 
     return JsonResponse({
         "status": "network_metadata_received",
@@ -3946,17 +4220,38 @@ def agent_network_metadata(request):
         "interfaces_recorded": len(interface_statistics)
     })
 
+def _build_network_monitoring_dashboard_context():
+    """Shared context for network monitoring summary and recent telemetry."""
+    now_ts = now()
+    all_agents = list(AgentStatus.objects.order_by('-last_heartbeat'))
 
-@require_GET
-def network_monitoring_dashboard(request):
-    """Security Onion-like network monitoring dashboard."""
-    agents = AgentStatus.objects.filter(status='online').order_by('-last_heartbeat')
+    recent_metadata_qs = NetworkMetadata.objects.select_related("agent").filter(
+        timestamp__gte=now_ts - TOPOLOGY_METADATA_LOOKBACK
+    ).order_by('-timestamp')
 
-    # Get recent network metadata
-    recent_metadata = NetworkMetadata.objects.all().order_by('-timestamp')[:20]
+    recent_connections_qs = NetworkConnection.objects.select_related("agent").filter(
+        last_seen__gte=now_ts - TOPOLOGY_CONNECTION_LOOKBACK
+    ).order_by('-last_seen')
 
-    # Get active connections across all agents
-    recent_connections = NetworkConnection.objects.all().order_by('-last_seen')[:50]
+    active_agent_ids = {
+        str(agent.agent_id)
+        for agent in all_agents
+        if agent.is_online()
+    }
+    active_agent_ids.update(
+        str(agent_id)
+        for agent_id in recent_metadata_qs.values_list("agent__agent_id", flat=True).distinct()
+        if agent_id
+    )
+    active_agent_ids.update(
+        str(agent_id)
+        for agent_id in recent_connections_qs.values_list("agent__agent_id", flat=True).distinct()
+        if agent_id
+    )
+
+    agents = [agent for agent in all_agents if str(agent.agent_id) in active_agent_ids]
+    recent_metadata = list(recent_metadata_qs[:20])
+    recent_connections = list(recent_connections_qs[:50])
 
     # Gqet interface statistics
     interface_stats = []
@@ -3973,15 +4268,21 @@ def network_monitoring_dashboard(request):
                     'timestamp': metadata.timestamp
                 })
 
-    return render(request, 'dashboard/network_monitoring.html', {
+    return {
         'agents': agents,
         'recent_metadata': recent_metadata,
         'recent_connections': recent_connections,
         'interface_stats': interface_stats[:20],  # Limit to 20 for display
-        'total_agents': agents.count(),
-        'total_connections': recent_connections.count(),
-        'total_metadata_records': recent_metadata.count()
-    })
+        'total_agents': len(agents),
+        'total_connections': recent_connections_qs.count(),
+        'total_metadata_records': recent_metadata_qs.count()
+    }
+
+
+@require_GET
+def network_monitoring_dashboard(request):
+    """Security Onion-like network monitoring dashboard."""
+    return render(request, 'dashboard/network_monitoring.html', _build_network_monitoring_dashboard_context())
 
 
 # -----------------------------
@@ -5010,36 +5311,131 @@ def network_connections_api(request):
 @require_GET
 def network_topology_api(request):
     """API endpoint for network topology visualization."""
-    agents = list(AgentStatus.objects.filter(status='online').order_by('-last_heartbeat'))
-    node_candidates = list(Node.objects.exclude(ip_address__isnull=True).order_by('-id'))
+    all_agents = list(AgentStatus.objects.order_by('-last_heartbeat'))
+    now_ts = now()
+    recent_metadata = list(
+        NetworkMetadata.objects.select_related("agent").filter(
+            timestamp__gte=now_ts - TOPOLOGY_METADATA_LOOKBACK
+        ).order_by("-timestamp")[:200]
+    )
+    recent_connections = list(
+        NetworkConnection.objects.filter(
+            last_seen__gte=now_ts - TOPOLOGY_CONNECTION_LOOKBACK
+        ).select_related('agent')
+    )
+    latest_metadata_by_agent_id = {}
+    for metadata in recent_metadata:
+        if metadata.agent_id not in latest_metadata_by_agent_id:
+            latest_metadata_by_agent_id[metadata.agent_id] = metadata
+    current_agent_ids = {
+        str(agent.agent_id)
+        for agent in all_agents
+        if agent.is_online() or str(agent.agent_id) in latest_metadata_by_agent_id
+    }
+    recent_observed_ips = set()
+    for metadata in recent_metadata:
+        recent_observed_ips.update(_metadata_interface_ips(metadata))
+    for conn in recent_connections:
+        local_host, _ = _parse_endpoint_address(conn.local_address)
+        remote_host, _ = _parse_endpoint_address(conn.remote_address)
+        if local_host:
+            recent_observed_ips.add(local_host)
+        if remote_host:
+            recent_observed_ips.add(remote_host)
+    agents = [agent for agent in all_agents if str(agent.agent_id) in current_agent_ids]
+    node_candidates = []
+    for node in Node.objects.exclude(ip_address__isnull=True).order_by('-id'):
+        node_ips = set(_node_interface_ips(node))
+        if str(getattr(node, "agent_id", "") or "") in current_agent_ids or node_ips.intersection(recent_observed_ips):
+            node_candidates.append(node)
     iaea_testbed_active = _is_iaea_testbed_active(node_candidates, agents)
 
-    topology_nodes = []
+    topology_nodes = {}
     edges = []
-    seen_node_keys = set()
     node_by_agent_id = {str(node.agent_id): node for node in node_candidates if node.agent_id}
     node_by_ip = {}
     for node in node_candidates:
-        ip_text = str(node.ip_address or "").strip()
-        if ip_text and ip_text not in node_by_ip:
-            node_by_ip[ip_text] = node
+        for ip_text in _node_interface_ips(node):
+            if ip_text and ip_text not in node_by_ip:
+                node_by_ip[ip_text] = node
     layer_map = {layer["slug"]: {"slug": layer["slug"], "label": layer["label"], "accent": layer["accent"], "nodes": []} for layer in PURDUE_TOPOLOGY_LAYERS}
     layer_order = {layer["slug"]: index for index, layer in enumerate(PURDUE_TOPOLOGY_LAYERS)}
+    topology_id_by_agent_id = {}
+    topology_id_by_ip = {}
 
-    def _append_topology_node(node_obj=None, agent_obj=None):
-        ip_text = ""
-        if node_obj and node_obj.ip_address:
-            ip_text = str(node_obj.ip_address)
-        elif agent_obj and agent_obj.ip_address:
-            ip_text = str(agent_obj.ip_address)
-        key = str(node_obj.id) if node_obj else str(agent_obj.agent_id if agent_obj else ip_text)
-        if key in seen_node_keys:
+    def _payload_identity(override, node_obj, agent_obj, ip_text):
+        if override:
+            return f"static:{override['hostname']}"
+        return str(getattr(node_obj, "id", "") or getattr(agent_obj, "agent_id", "") or ip_text)
+
+    def _merge_ip_addresses(existing_payload, new_ips):
+        ip_values = [ip for ip in existing_payload.get("ip_addresses", []) if ip]
+        for ip in new_ips:
+            if ip and ip not in ip_values:
+                ip_values.append(ip)
+        existing_payload["ip_addresses"] = ip_values
+        if not existing_payload.get("ip_address") and ip_values:
+            existing_payload["ip_address"] = ip_values[0]
+
+    def _upsert_topology_payload(payload):
+        payload_id = payload["id"]
+        existing = topology_nodes.get(payload_id)
+        if not existing:
+            topology_nodes[payload_id] = payload
+            for ip_text in payload.get("ip_addresses", []):
+                if ip_text:
+                    topology_id_by_ip[ip_text] = payload_id
+            if payload.get("agent_id"):
+                topology_id_by_agent_id[str(payload["agent_id"])] = payload_id
+            layer_map.setdefault(payload["purdue_level"], {
+                "slug": payload["purdue_level"],
+                "label": _topology_layer_meta(payload["purdue_level"])["label"],
+                "accent": _topology_layer_meta(payload["purdue_level"])["accent"],
+                "nodes": [],
+            })
+            layer_map[payload["purdue_level"]]["nodes"].append(payload)
             return
-        seen_node_keys.add(key)
 
-        name = _topology_identity_text(getattr(node_obj, "name", ""), getattr(agent_obj, "hostname", ""))
-        hostname = _topology_identity_text(getattr(node_obj, "hostname", ""), getattr(agent_obj, "hostname", ""), name)
-        override = _iaea_topology_override(hostname, name, ip_text) if iaea_testbed_active else None
+        _merge_ip_addresses(existing, payload.get("ip_addresses", []))
+        for ip_text in existing.get("ip_addresses", []):
+            if ip_text:
+                topology_id_by_ip[ip_text] = payload_id
+        existing["status"] = "online" if "online" in {existing.get("status"), payload.get("status")} else (existing.get("status") or payload.get("status"))
+        existing["vulnerability_count"] = max(existing.get("vulnerability_count", 0), payload.get("vulnerability_count", 0))
+        existing["node_id"] = existing.get("node_id") or payload.get("node_id")
+        existing["node_url"] = existing.get("node_url") or payload.get("node_url")
+        existing["agent_id"] = existing.get("agent_id") or payload.get("agent_id")
+        if existing.get("agent_id"):
+            topology_id_by_agent_id[str(existing["agent_id"])] = payload_id
+        existing["os_type"] = existing.get("os_type") or payload.get("os_type")
+        existing["last_heartbeat"] = payload.get("last_heartbeat") if payload.get("last_heartbeat") not in ("", "Never", "N/A") else existing.get("last_heartbeat")
+        if existing.get("type") == "static" and payload.get("type") != "static":
+            existing["type"] = payload["type"]
+
+    def _mark_topology_node_online(payload_id: str):
+        payload = topology_nodes.get(str(payload_id or ""))
+        if not payload:
+            return
+        payload["status"] = "online"
+        if payload.get("type") == "static":
+            payload["type"] = "inferred"
+
+    def _append_topology_node(node_obj=None, agent_obj=None, metadata_obj=None, inferred_ip="", inferred_port=None, inferred_protocol=""):
+        observed_ips = []
+        observed_ips.extend(_node_interface_ips(node_obj))
+        for ip_text in _agent_interface_ips(agent_obj):
+            if ip_text not in observed_ips:
+                observed_ips.append(ip_text)
+        for ip_text in _metadata_interface_ips(metadata_obj):
+            if ip_text not in observed_ips:
+                observed_ips.append(ip_text)
+        if inferred_ip and inferred_ip not in observed_ips:
+            observed_ips.append(inferred_ip)
+        ip_text = observed_ips[0] if observed_ips else ""
+        agent_id_text = _topology_identity_text(getattr(agent_obj, "agent_id", ""), getattr(node_obj, "agent_id", ""))
+        name = _topology_identity_text(getattr(node_obj, "name", ""), getattr(agent_obj, "hostname", ""), agent_id_text)
+        hostname = _topology_identity_text(getattr(node_obj, "hostname", ""), getattr(agent_obj, "hostname", ""), agent_id_text, name, inferred_ip)
+        override = _resolve_iaea_override(hostname, name, observed_ips) if iaea_testbed_active else None
         if override:
             layer = override["layer"]
             role_slug = override["role_slug"]
@@ -5052,16 +5448,28 @@ def network_topology_api(request):
             role_slug, role_label, role_icon = _infer_topology_role(name, hostname, ip_text, getattr(node_obj, "description", ""))
             label = _topology_identity_text(hostname, name, ip_text)
             segment_label = _topology_segment_label(ip_text)
+            if inferred_port and role_slug == "asset":
+                if inferred_port in (443, 4840):
+                    role_slug, role_label, role_icon = ("server", "Server", "bi-server")
+                    layer = "L3" if inferred_port == 4840 else layer
+                elif inferred_port in (502, 44818):
+                    role_slug, role_label, role_icon = ("controller", "Controller", "bi-cpu-fill")
+                    layer = "L1"
         node_url = reverse("dashboard:node_detail_page", args=[node_obj.id]) if node_obj else ""
+        merged_ips = []
+        if override:
+            merged_ips.extend(override.get("ip_addresses", []))
+        merged_ips.extend(observed_ips)
         payload = {
-            "id": str(getattr(node_obj, "id", "") or getattr(agent_obj, "agent_id", "") or ip_text),
+            "id": _payload_identity(override, node_obj, agent_obj, ip_text),
             "node_id": getattr(node_obj, "id", None),
             "label": label,
-            "hostname": hostname,
+            "hostname": override["hostname"] if override else hostname,
             "name": name,
-            "ip_address": ip_text,
-            "type": "node" if node_obj else "agent",
-            "status": getattr(agent_obj, "status", getattr(node_obj, "status", "unknown")) or "unknown",
+            "ip_address": (override.get("ip_address") if override else ip_text) or ip_text,
+            "ip_addresses": [],
+            "type": "node" if node_obj else ("agent" if agent_obj else "inferred"),
+            "status": getattr(agent_obj, "status", getattr(node_obj, "status", "online" if inferred_ip else "unknown")) or ("online" if inferred_ip else "unknown"),
             "os_type": getattr(agent_obj, "os_type", ""),
             "last_heartbeat": (
                 getattr(agent_obj, "last_heartbeat", None).strftime('%Y-%m-%d %H:%M:%S')
@@ -5080,28 +5488,39 @@ def network_topology_api(request):
                 ScanVulnerability.objects.filter(host_ip=ip_text).count() if ip_text else 0
             ) + (node_obj.vulnerability_set.count() if node_obj else 0),
         }
-        topology_nodes.append(payload)
-        layer_map.setdefault(layer, {"slug": layer, "label": _topology_layer_meta(layer)["label"], "accent": _topology_layer_meta(layer)["accent"], "nodes": []})
-        layer_map[layer]["nodes"].append(payload)
+        _merge_ip_addresses(payload, merged_ips)
+        _upsert_topology_payload(payload)
+        return payload["id"]
 
     for node in node_candidates:
-        _append_topology_node(node_obj=node, agent_obj=None)
+        _append_topology_node(
+            node_obj=node,
+            agent_obj=None,
+            metadata_obj=latest_metadata_by_agent_id.get(str(node.agent_id or "")),
+        )
     for agent in agents:
-        _append_topology_node(node_obj=node_by_agent_id.get(str(agent.agent_id)) or node_by_ip.get(str(agent.ip_address)), agent_obj=agent)
+        _append_topology_node(
+            node_obj=node_by_agent_id.get(str(agent.agent_id)) or node_by_ip.get(str(agent.ip_address)),
+            agent_obj=agent,
+            metadata_obj=latest_metadata_by_agent_id.get(str(agent.agent_id)),
+        )
+
     if iaea_testbed_active:
         for static_node in IAEA_TESTBED_STATIC_TOPOLOGY:
-            if static_node["ip_address"] in node_by_ip:
+            if not _should_render_modeled_static_node(static_node):
                 continue
-            if static_node["ip_address"] in {item["ip_address"] for item in topology_nodes}:
+            static_id = f"static:{static_node['hostname']}"
+            if static_id in topology_nodes:
                 continue
             layer = static_node["layer"]
             payload = {
-                "id": f"static:{static_node['hostname']}",
+                "id": static_id,
                 "node_id": None,
                 "label": static_node["label"],
                 "hostname": static_node["hostname"],
                 "name": static_node["label"],
-                "ip_address": static_node["ip_address"],
+                "ip_address": static_node.get("ip_address", ""),
+                "ip_addresses": list(static_node.get("ip_addresses", [])),
                 "type": "static",
                 "status": "modeled",
                 "os_type": "",
@@ -5116,43 +5535,118 @@ def network_topology_api(request):
                 "agent_id": "",
                 "vulnerability_count": 0,
             }
-            topology_nodes.append(payload)
-            layer_map.setdefault(layer, {"slug": layer, "label": _topology_layer_meta(layer)["label"], "accent": _topology_layer_meta(layer)["accent"], "nodes": []})
-            layer_map[layer]["nodes"].append(payload)
+            _upsert_topology_payload(payload)
 
-    nodes = sorted(topology_nodes, key=lambda item: (layer_order.get(item["purdue_level"], 99), item["label"]))
-
-    # Get recent connections to build edges
-    recent_connections = NetworkConnection.objects.filter(
-        agent__status='online',
-        last_seen__gte=now() - timedelta(hours=1)  # Last hour
-    ).select_related('agent')
+    nodes = sorted(topology_nodes.values(), key=lambda item: (layer_order.get(item["purdue_level"], 99), item["label"]))
 
     # Group connections by source/destination to create flows
     flows = {}
     for conn in recent_connections:
+        if _is_topology_noise_flow(
+            protocol=conn.protocol,
+            process_name=conn.process_name,
+            process_cmdline=conn.process_cmdline,
+        ):
+            continue
         if conn.remote_address and conn.remote_address != '127.0.0.1' and conn.remote_address != 'localhost':
-            flow_key = (conn.agent.agent_id, conn.remote_address, conn.protocol)
+            flow_key = (
+                conn.agent.agent_id,
+                conn.local_address,
+                conn.remote_address,
+                conn.remote_port,
+                conn.protocol,
+                conn.process_name,
+                conn.process_cmdline,
+            )
             if flow_key not in flows:
                 flows[flow_key] = {
                     'source': conn.agent.agent_id,
+                    'local_address': conn.local_address,
                     'target': conn.remote_address,
+                    'remote_port': conn.remote_port,
                     'protocol': conn.protocol,
+                    'process_name': conn.process_name,
+                    'process_cmdline': conn.process_cmdline,
                     'connection_count': 0,
-                    'total_bytes': 0
                 }
             flows[flow_key]['connection_count'] += 1
 
     # Convert flows to edges
     for flow in flows.values():
+        local_host, _ = _parse_endpoint_address(flow.get("local_address"))
+        local_override = _resolve_iaea_override(local_host, "", [local_host]) if iaea_testbed_active and local_host else None
+        if (
+            local_host
+            and local_host not in topology_id_by_ip
+            and _should_surface_inferred_flow_endpoint(
+                host=local_host,
+                port=None,
+                protocol=flow.get("protocol", ""),
+                process_name=flow.get("process_name", ""),
+                process_cmdline=flow.get("process_cmdline", ""),
+                override=local_override,
+                known_node=node_by_ip.get(local_host),
+            )
+        ):
+            source_id = _append_topology_node(
+                node_obj=node_by_ip.get(local_host),
+                agent_obj=None,
+                metadata_obj=None,
+                inferred_ip=local_host,
+                inferred_protocol=flow.get("protocol", ""),
+            )
+        else:
+            source_id = topology_id_by_ip.get(local_host) or topology_id_by_agent_id.get(str(flow["source"]))
+        remote_host, _ = _parse_endpoint_address(flow["target"])
+        remote_override = _resolve_iaea_override(remote_host, "", [remote_host]) if iaea_testbed_active and remote_host else None
+        if (
+            remote_host
+            and remote_host not in topology_id_by_ip
+            and _should_surface_inferred_flow_endpoint(
+                host=remote_host,
+                port=flow.get("remote_port"),
+                protocol=flow.get("protocol", ""),
+                process_name=flow.get("process_name", ""),
+                process_cmdline=flow.get("process_cmdline", ""),
+                override=remote_override,
+                known_node=node_by_ip.get(remote_host),
+            )
+        ):
+            target_id = _append_topology_node(
+                node_obj=node_by_ip.get(remote_host),
+                agent_obj=None,
+                metadata_obj=None,
+                inferred_ip=remote_host,
+                inferred_port=flow.get("remote_port"),
+                inferred_protocol=flow.get("protocol", ""),
+            )
+        else:
+            target_id = topology_id_by_ip.get(remote_host)
+        if not source_id or not target_id:
+            continue
+        _mark_topology_node_online(source_id)
+        _mark_topology_node_online(target_id)
         edges.append({
-            'from': flow['source'],
-            'to': flow['target'],
+            'from': source_id,
+            'to': target_id,
             'label': f"{flow['protocol']} ({flow['connection_count']} conn)",
             'protocol': flow['protocol'],
-            'connection_count': flow['connection_count']
+            'connection_count': flow['connection_count'],
+            'target_ip': remote_host or flow['target'],
         })
 
+    # Passive bridge sensors often see ARP for the field devices even when the
+    # underlying Docker bridge does not mirror all peer TCP payload traffic into
+    # the span container. Promote those known static L0 assets to online without
+    # rendering noisy ARP edges.
+    for conn in recent_connections:
+        for payload_id in _promote_static_l0_from_passive_observation(
+            conn,
+            iaea_testbed_active=iaea_testbed_active,
+        ):
+            _mark_topology_node_online(payload_id)
+
+    nodes = sorted(topology_nodes.values(), key=lambda item: (layer_order.get(item["purdue_level"], 99), item["label"]))
     layers = []
     for layer in PURDUE_TOPOLOGY_LAYERS:
         layer_payload = layer_map.get(layer["slug"], {"nodes": []})

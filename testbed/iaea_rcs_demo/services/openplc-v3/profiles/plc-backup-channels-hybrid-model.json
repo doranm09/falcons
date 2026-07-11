@@ -1,0 +1,50 @@
+{
+  "polling_ms": 250,
+  "timeout_ms": 500,
+  "devices": [
+    {
+      "name": "Channel-A",
+      "type": "TCP",
+      "protocol": "TCP",
+      "slave_id": 1,
+      "ip_address": "10.1.2.10",
+      "ip_port": 502,
+      "ir_start": 0,
+      "ir_size": 2
+    },
+    {
+      "name": "Channel-B",
+      "type": "TCP",
+      "protocol": "TCP",
+      "slave_id": 2,
+      "ip_address": "10.1.2.11",
+      "ip_port": 502,
+      "ir_start": 0,
+      "ir_size": 2
+    },
+    {
+      "name": "Channel-C",
+      "type": "TCP",
+      "protocol": "TCP",
+      "slave_id": 3,
+      "ip_address": "10.1.2.12",
+      "ip_port": 502,
+      "ir_start": 0,
+      "ir_size": 14,
+      "hr_write_start": 0,
+      "hr_write_size": 6
+    },
+    {
+      "name": "Channel-D",
+      "type": "TCP",
+      "protocol": "TCP",
+      "slave_id": 4,
+      "ip_address": "10.1.2.13",
+      "ip_port": 502,
+      "ir_start": 0,
+      "ir_size": 6,
+      "hr_write_start": 0,
+      "hr_write_size": 2
+    }
+  ]
+}

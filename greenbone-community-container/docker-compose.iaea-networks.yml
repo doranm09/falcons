@@ -7,18 +7,12 @@ services:
         ipv4_address: 10.3.50.250
       l2_net:
         ipv4_address: 10.2.50.250
-      l1_main:
-        ipv4_address: 10.1.13.250
-      l1_backup:
-        ipv4_address: 10.2.23.250
-      p13_net:
-        ipv4_address: 10.3.13.250
-      p23_net:
-        ipv4_address: 10.4.23.250
-      mgmt13_net:
-        ipv4_address: 10.0.13.250
-      mgmt23_net:
-        ipv4_address: 10.0.23.250
+      net_10_1_1:
+        ipv4_address: 10.1.1.249
+      net_10_1_2:
+        ipv4_address: 10.1.2.249
+      oob_mgmt:
+        ipv4_address: 172.31.250.249
 
 networks:
   l4_net:
@@ -30,21 +24,12 @@ networks:
   l2_net:
     external: true
     name: iaea_rcs_demo_l2_net
-  l1_main:
+  net_10_1_1:
     external: true
-    name: iaea_rcs_demo_l1_main
-  l1_backup:
+    name: iaea_rcs_demo_net_10_1_1
+  net_10_1_2:
     external: true
-    name: iaea_rcs_demo_l1_backup
-  p13_net:
+    name: iaea_rcs_demo_net_10_1_2
+  oob_mgmt:
     external: true
-    name: iaea_rcs_demo_p13_net
-  p23_net:
-    external: true
-    name: iaea_rcs_demo_p23_net
-  mgmt13_net:
-    external: true
-    name: iaea_rcs_demo_mgmt13_net
-  mgmt23_net:
-    external: true
-    name: iaea_rcs_demo_mgmt23_net
+    name: iaea_rcs_demo_oob_mgmt

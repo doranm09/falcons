@@ -33,8 +33,13 @@ SERVER_URL = "http://localhost:8000"   # will be reassigned in __main__
 neighbor_table = {}
 tcp_syn_times = {}
 network_graph = {}
+observed_connections = {}
+observed_connections_lock = threading.Lock()
+observed_connections_last_flush = time.monotonic()
 
 REQ_TIMEOUT = (3.0, 10.0)  # (connect, read) seconds
+OBSERVED_CONNECTION_BATCH_SIZE = max(1, int(os.environ.get("HOST_AGENT_OBSERVED_BATCH_SIZE", "25")))
+OBSERVED_CONNECTION_FLUSH_SEC = max(1.0, float(os.environ.get("HOST_AGENT_OBSERVED_FLUSH_SEC", "5")))
 
 # Agent version information
 AGENT_VERSION = "1.0.0"
@@ -505,6 +510,105 @@ def send_network_metadata():
         return False
 
 
+def _endpoint_text(ip_address, port):
+    ip_text = str(ip_address or "").strip()
+    if not ip_text:
+        return ""
+    return f"{ip_text}:{port}" if port not in (None, "") else ip_text
+
+
+def _record_observed_connection(info, interface):
+    src_ip = str(info.get("src_ip") or "").strip()
+    dst_ip = str(info.get("dst_ip") or "").strip()
+    if not src_ip or not dst_ip:
+        return 0
+
+    protocol = str(info.get("proto") or "IP").strip().upper()[:10]
+    src_port = info.get("src_port")
+    dst_port = info.get("dst_port")
+    key = (interface, protocol, src_ip, src_port, dst_ip, dst_port)
+    timestamp = datetime.now().isoformat()
+
+    with observed_connections_lock:
+        record = observed_connections.get(key)
+        if not record:
+            observed_connections[key] = {
+                "protocol": protocol,
+                "local_address": _endpoint_text(src_ip, src_port),
+                "remote_address": _endpoint_text(dst_ip, dst_port),
+                "status": "OBSERVED",
+                "process": {
+                    "name": "passive-sniffer",
+                    "username": "sensor",
+                    "cmdline": f"sniff --interface {interface}",
+                },
+                "observation_type": "passive",
+                "observation_interface": interface,
+                "first_observed": timestamp,
+                "last_observed": timestamp,
+                "packet_count": 1,
+                "src_mac": info.get("src_mac"),
+                "dst_mac": info.get("dst_mac"),
+            }
+        else:
+            record["packet_count"] += 1
+            record["last_observed"] = timestamp
+        return len(observed_connections)
+
+
+def flush_observed_network_metadata(force=False):
+    global observed_connections_last_flush
+
+    now_monotonic = time.monotonic()
+    with observed_connections_lock:
+        if not observed_connections:
+            observed_connections_last_flush = now_monotonic
+            return False
+        if not force:
+            if len(observed_connections) < OBSERVED_CONNECTION_BATCH_SIZE:
+                if (now_monotonic - observed_connections_last_flush) < OBSERVED_CONNECTION_FLUSH_SEC:
+                    return False
+        snapshot = list(observed_connections.values())
+        observed_connections.clear()
+        observed_connections_last_flush = now_monotonic
+
+    try:
+        network_data = {
+            "agent_id": AGENT_ID,
+            "timestamp": datetime.now().isoformat(),
+            "network_connections": snapshot,
+            "interface_statistics": [],
+            "active_ports": [],
+            "interfaces": get_interfaces(),
+        }
+        url = f"{SERVER_URL.rstrip('/')}/agent/network_metadata/"
+        res = http_post_json(url, network_data, headers=agent_auth_headers())
+        if res:
+            print(f"[passive_network_metadata] status={res.status_code} connections={len(snapshot)}")
+            return True
+        print("[passive_network_metadata] failed to send")
+    except Exception as e:
+        print(f"[passive_network_metadata] error: {e}")
+
+    with observed_connections_lock:
+        for record in snapshot:
+            key = (
+                record.get("observation_interface"),
+                record.get("protocol"),
+                record.get("local_address"),
+                record.get("remote_address"),
+                record.get("status"),
+                record.get("process", {}).get("name"),
+            )
+            existing = observed_connections.get(key)
+            if existing:
+                existing["packet_count"] += record.get("packet_count", 0)
+                existing["last_observed"] = record.get("last_observed", existing.get("last_observed"))
+            else:
+                observed_connections[key] = record
+    return False
+
+
 def poll_for_commands():
     url = f"{SERVER_URL.rstrip('/')}/agent/commands/?agent_id={AGENT_ID}"
     res = http_get_json(url, headers=agent_auth_headers())
@@ -739,7 +843,7 @@ def dijkstra(graph, start, end):
 
 
 # ---- Packet capture ----
-def packet_callback(pkt):
+def packet_callback(pkt, interface=None):
     info = {
         "timestamp": datetime.now().isoformat(),
         "proto": "Unknown",
@@ -813,10 +917,17 @@ def packet_callback(pkt):
                 if path:
                     print(f"[autopath] {info['src_ip']} -> {target} ~{cost:.2f} ms via: {' -> '.join(path)}")
 
+    if interface:
+        _record_observed_connection(info, interface)
+        flush_observed_network_metadata(force=False)
+
 
 def sniff_interface(interface):
     print(f"[sniff] Starting sniff on {interface}")
-    sniff(iface=interface, prn=packet_callback, store=False)
+    try:
+        sniff(iface=interface, prn=lambda pkt: packet_callback(pkt, interface=interface), store=False)
+    finally:
+        flush_observed_network_metadata(force=True)
 
 
 # ---- Interactive path calc ----

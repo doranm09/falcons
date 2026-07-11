@@ -8,7 +8,6 @@ DEVICE_NAME = os.getenv("DEVICE_NAME", "Engineer-Workstation")
 DEVICE_ROLE = os.getenv("DEVICE_ROLE", "Layer2 engineering workstation")
 DEVICE_DESC = os.getenv("DEVICE_DESC", "")
 NO_VNC_PORT = int(os.getenv("ENGINEER_WS_NOVNC_PORT", "6080"))
-IGNITION_GATEWAY_URL = os.getenv("IGNITION_GATEWAY_URL", "http://ignition:8088")
 VNC_PASSWORD = os.getenv("ENGINEER_WS_VNC_PASSWORD", "engwsdemo")
 HTTP_PORTS = [
     int(item.strip())
@@ -45,7 +44,6 @@ def payload():
         "desktop": {
             "novnc": f"http://127.0.0.1:{NO_VNC_PORT}/vnc.html",
             "vnc_password": VNC_PASSWORD,
-            "gateway_url": IGNITION_GATEWAY_URL,
         },
     }
 
@@ -102,7 +100,7 @@ def render_html():
         <p>Ubuntu-based Layer 2 engineering node with OPC and network tooling.</p>
         <p>Open a shell with <code>docker exec -it engineer-ws bash</code>.</p>
         <p>Remote desktop: <code>http://127.0.0.1:%d/vnc.html</code> with password <code>%s</code>.</p>
-        <p>Inside the desktop, the Designer Launcher autostarts and should connect to the gateway at <code>%s</code>.</p>
+        <p>The desktop opens a Layer 2 shell for manual OPC, route, and packet-capture checks.</p>
         <ul>
           <li><code>opc-read opc.tcp://10.1.13.10:4840/main --namespace urn:iaea-rcs-demo:main</code></li>
           <li><code>opc-read opc.tcp://10.2.23.10:4840/backup --namespace urn:iaea-rcs-demo:backup</code></li>
@@ -112,7 +110,7 @@ def render_html():
     </main>
   </body>
 </html>
-""" % (NO_VNC_PORT, VNC_PASSWORD, IGNITION_GATEWAY_URL)
+""" % (NO_VNC_PORT, VNC_PASSWORD)
 
 
 class Handler(BaseHTTPRequestHandler):

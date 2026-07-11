@@ -39,5 +39,26 @@ start_host_agent() {
   HOST_AGENT_PID=$!
   export HOST_AGENT_PID
 
+  HOST_AGENT_SNIFF_PIDS=""
+  if [ -n "${HOST_AGENT_SNIFF_INTERFACES:-}" ]; then
+    old_ifs=$IFS
+    IFS=','
+    for iface in ${HOST_AGENT_SNIFF_INTERFACES}; do
+      iface="$(printf '%s' "${iface}" | xargs)"
+      [ -n "${iface}" ] || continue
+      "${HOST_AGENT_PYTHON}" "${HOST_AGENT_DIR}/agent.py" --url "${AGENT_SERVER_URL}" sniff --interface "${iface}" \
+        >"${HOST_AGENT_LOG_DIR}/sniff-${iface}.log" 2>&1 &
+      sniff_pid=$!
+      if [ -z "${HOST_AGENT_SNIFF_PIDS}" ]; then
+        HOST_AGENT_SNIFF_PIDS="${sniff_pid}"
+      else
+        HOST_AGENT_SNIFF_PIDS="${HOST_AGENT_SNIFF_PIDS} ${sniff_pid}"
+      fi
+      echo "host agent sniff started: pid=${sniff_pid} iface=${iface}"
+    done
+    IFS=$old_ifs
+    export HOST_AGENT_SNIFF_PIDS
+  fi
+
   echo "host agent started: pid=${HOST_AGENT_PID} url=${AGENT_SERVER_URL}"
 }

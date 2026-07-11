@@ -25,6 +25,7 @@ urlpatterns = [
     path('scan/history/', views.get_scan_history, name='scan-history'),
     path('agent/report/', views.agent_report, name='agent_report'),
     path('agent/cyber_report/', views.agent_cyber_report, name='agent_cyber_report'),
+    path('agent/network_metadata/', views.agent_network_metadata, name='agent_network_metadata'),
     path('sbom/', views.sbom_ingest, name='sbom_ingest'),
     path('siem/ingest/', views.siem_event_ingest, name='siem_event_ingest'),
     path('siem/pipeline/ingest/', views.siem_pipeline_ingest, name='siem_pipeline_ingest'),

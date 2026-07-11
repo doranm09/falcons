@@ -21,64 +21,6 @@
       "ip_port": 502,
       "ir_start": 0,
       "ir_size": 2
-    },
-    {
-      "name": "PT-458",
-      "type": "TCP",
-      "protocol": "TCP",
-      "slave_id": 4,
-      "ip_address": "10.4.23.14",
-      "ip_port": 502,
-      "ir_start": 0,
-      "ir_size": 2
-    },
-    {
-      "name": "VC-HV455A",
-      "type": "TCP",
-      "protocol": "TCP",
-      "slave_id": 11,
-      "ip_address": "10.4.23.1",
-      "ip_port": 502,
-      "hr_read_start": 0,
-      "hr_read_size": 4,
-      "hr_write_start": 0,
-      "hr_write_size": 2
-    },
-    {
-      "name": "VC-PV455B",
-      "type": "TCP",
-      "protocol": "TCP",
-      "slave_id": 12,
-      "ip_address": "10.4.23.2",
-      "ip_port": 502,
-      "hr_read_start": 0,
-      "hr_read_size": 4,
-      "hr_write_start": 0,
-      "hr_write_size": 2
-    },
-    {
-      "name": "VC-PV455C",
-      "type": "TCP",
-      "protocol": "TCP",
-      "slave_id": 13,
-      "ip_address": "10.4.23.3",
-      "ip_port": 502,
-      "hr_read_start": 0,
-      "hr_read_size": 4,
-      "hr_write_start": 0,
-      "hr_write_size": 2
-    },
-    {
-      "name": "HEAT-CTRL",
-      "type": "TCP",
-      "protocol": "TCP",
-      "slave_id": 14,
-      "ip_address": "10.4.23.5",
-      "ip_port": 502,
-      "hr_read_start": 0,
-      "hr_read_size": 4,
-      "hr_write_start": 0,
-      "hr_write_size": 2
     }
   ]
 }

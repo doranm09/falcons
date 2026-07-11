@@ -1,5 +1,7 @@
 source,destination,destination_interface,destination_ip,port,expected,layer_under_test,command,path
 database,metasploit,metasploit (l4_net),10.4.50.10,4444,allow,Intra-zone: Layer 4,probe_port database 10.4.50.10 4444,database -> metasploit
+database,historian,historian (l3_net),10.3.50.10,443,blocked (firewall-2),Layer 4 / Layer 3,expect_blocked_port database 10.3.50.10 443,database -> firewall-2 -> historian
+database,historian,historian (l3_net),10.3.50.10,4840,blocked (firewall-2),Layer 4 / Layer 3,expect_blocked_port database 10.3.50.10 4840,database -> firewall-2 -> historian
 database,hmi,hmi (l2_net),10.2.50.10,80,blocked (firewall-2),Layer 4 / Layer 3 + Layer 3 / Layer 2,expect_blocked_port database 10.2.50.10 80,database -> firewall-2 -> firewall-1 -> hmi
 database,hmi,hmi (l2_net),10.2.50.10,443,blocked (firewall-2),Layer 4 / Layer 3 + Layer 3 / Layer 2,expect_blocked_port database 10.2.50.10 443,database -> firewall-2 -> firewall-1 -> hmi
 database,engineer-ws,engineer-ws (l2_net),10.2.50.20,80,blocked (firewall-2),Layer 4 / Layer 3 + Layer 3 / Layer 2,expect_blocked_port database 10.2.50.20 80,database -> firewall-2 -> firewall-1 -> engineer-ws
@@ -21,6 +23,8 @@ database,pt-456,pt-456 (p23_net),10.4.23.12,502,blocked (no route),Layer 4 -> La
 database,pt-457,pt-457 (p23_net),10.4.23.13,502,blocked (no route),Layer 4 -> Layer 0 (backup cell) isolation,expect_blocked_port database 10.4.23.13 502,no route
 database,pt-458,pt-458 (p23_net),10.4.23.14,502,blocked (no route),Layer 4 -> Layer 0 (backup cell) isolation,expect_blocked_port database 10.4.23.14 502,no route
 metasploit,database,database (l4_net),10.4.50.20,5432,allow,Intra-zone: Layer 4,probe_port metasploit 10.4.50.20 5432,metasploit -> database
+metasploit,historian,historian (l3_net),10.3.50.10,443,allow,Layer 4 / Layer 3,probe_port metasploit 10.3.50.10 443,metasploit -> firewall-2 -> historian
+metasploit,historian,historian (l3_net),10.3.50.10,4840,allow,Layer 4 / Layer 3,probe_port metasploit 10.3.50.10 4840,metasploit -> firewall-2 -> historian
 metasploit,hmi,hmi (l2_net),10.2.50.10,80,blocked (firewall-2),Layer 4 / Layer 3 + Layer 3 / Layer 2,expect_blocked_port metasploit 10.2.50.10 80,metasploit -> firewall-2 -> firewall-1 -> hmi
 metasploit,hmi,hmi (l2_net),10.2.50.10,443,blocked (firewall-2),Layer 4 / Layer 3 + Layer 3 / Layer 2,expect_blocked_port metasploit 10.2.50.10 443,metasploit -> firewall-2 -> firewall-1 -> hmi
 metasploit,engineer-ws,engineer-ws (l2_net),10.2.50.20,80,blocked (firewall-2),Layer 4 / Layer 3 + Layer 3 / Layer 2,expect_blocked_port metasploit 10.2.50.20 80,metasploit -> firewall-2 -> firewall-1 -> engineer-ws
@@ -41,8 +45,32 @@ metasploit,heat-ctrl,heat-ctrl (p23_net),10.4.23.5,502,blocked (no route),Layer 
 metasploit,pt-456,pt-456 (p23_net),10.4.23.12,502,blocked (no route),Layer 4 -> Layer 0 (backup cell) isolation,expect_blocked_port metasploit 10.4.23.12 502,no route
 metasploit,pt-457,pt-457 (p23_net),10.4.23.13,502,blocked (no route),Layer 4 -> Layer 0 (backup cell) isolation,expect_blocked_port metasploit 10.4.23.13 502,no route
 metasploit,pt-458,pt-458 (p23_net),10.4.23.14,502,blocked (no route),Layer 4 -> Layer 0 (backup cell) isolation,expect_blocked_port metasploit 10.4.23.14 502,no route
+historian,metasploit,metasploit (l4_net),10.4.50.10,4444,blocked (firewall-2),Layer 4 / Layer 3,expect_blocked_port historian 10.4.50.10 4444,historian -> firewall-2 -> metasploit
+historian,database,database (l4_net),10.4.50.20,5432,allow,Layer 4 / Layer 3,probe_port historian 10.4.50.20 5432,historian -> firewall-2 -> database
+historian,hmi,hmi (l2_net),10.2.50.10,80,blocked (firewall-1),Layer 3 / Layer 2,expect_blocked_port historian 10.2.50.10 80,historian -> firewall-1 -> hmi
+historian,hmi,hmi (l2_net),10.2.50.10,443,blocked (firewall-1),Layer 3 / Layer 2,expect_blocked_port historian 10.2.50.10 443,historian -> firewall-1 -> hmi
+historian,engineer-ws,engineer-ws (l2_net),10.2.50.20,80,blocked (firewall-1),Layer 3 / Layer 2,expect_blocked_port historian 10.2.50.20 80,historian -> firewall-1 -> engineer-ws
+historian,engineer-ws,engineer-ws (l2_net),10.2.50.20,443,blocked (firewall-1),Layer 3 / Layer 2,expect_blocked_port historian 10.2.50.20 443,historian -> firewall-1 -> engineer-ws
+historian,l2-jump,l2-jump (l2_net),10.2.50.30,22,blocked (firewall-1),Layer 3 / Layer 2,expect_blocked_port historian 10.2.50.30 22,historian -> firewall-1 -> l2-jump
+historian,l2-jump,l2-jump (l2_net),10.2.50.30,443,blocked (firewall-1),Layer 3 / Layer 2,expect_blocked_port historian 10.2.50.30 443,historian -> firewall-1 -> l2-jump
+historian,vc-hv455a,vc-hv455a (p13_net),10.3.13.1,502,blocked (no route),Layer 3 -> Layer 0 (main cell) isolation,expect_blocked_port historian 10.3.13.1 502,no route
+historian,vc-pv455b,vc-pv455b (p13_net),10.3.13.2,502,blocked (no route),Layer 3 -> Layer 0 (main cell) isolation,expect_blocked_port historian 10.3.13.2 502,no route
+historian,vc-pv455c,vc-pv455c (p13_net),10.3.13.3,502,blocked (no route),Layer 3 -> Layer 0 (main cell) isolation,expect_blocked_port historian 10.3.13.3 502,no route
+historian,heat-ctrl,heat-ctrl (p13_net),10.3.13.5,502,blocked (no route),Layer 3 -> Layer 0 (main cell) isolation,expect_blocked_port historian 10.3.13.5 502,no route
+historian,pt-455,pt-455 (p13_net),10.3.13.11,502,blocked (no route),Layer 3 -> Layer 0 (main cell) isolation,expect_blocked_port historian 10.3.13.11 502,no route
+historian,pt-456,pt-456 (p13_net),10.3.13.12,502,blocked (no route),Layer 3 -> Layer 0 (main cell) isolation,expect_blocked_port historian 10.3.13.12 502,no route
+historian,pt-457,pt-457 (p13_net),10.3.13.13,502,blocked (no route),Layer 3 -> Layer 0 (main cell) isolation,expect_blocked_port historian 10.3.13.13 502,no route
+historian,vc-hv455a,vc-hv455a (p23_net),10.4.23.1,502,blocked (no route),Layer 3 -> Layer 0 (backup cell) isolation,expect_blocked_port historian 10.4.23.1 502,no route
+historian,vc-pv455b,vc-pv455b (p23_net),10.4.23.2,502,blocked (no route),Layer 3 -> Layer 0 (backup cell) isolation,expect_blocked_port historian 10.4.23.2 502,no route
+historian,vc-pv455c,vc-pv455c (p23_net),10.4.23.3,502,blocked (no route),Layer 3 -> Layer 0 (backup cell) isolation,expect_blocked_port historian 10.4.23.3 502,no route
+historian,heat-ctrl,heat-ctrl (p23_net),10.4.23.5,502,blocked (no route),Layer 3 -> Layer 0 (backup cell) isolation,expect_blocked_port historian 10.4.23.5 502,no route
+historian,pt-456,pt-456 (p23_net),10.4.23.12,502,blocked (no route),Layer 3 -> Layer 0 (backup cell) isolation,expect_blocked_port historian 10.4.23.12 502,no route
+historian,pt-457,pt-457 (p23_net),10.4.23.13,502,blocked (no route),Layer 3 -> Layer 0 (backup cell) isolation,expect_blocked_port historian 10.4.23.13 502,no route
+historian,pt-458,pt-458 (p23_net),10.4.23.14,502,blocked (no route),Layer 3 -> Layer 0 (backup cell) isolation,expect_blocked_port historian 10.4.23.14 502,no route
 engineer-ws,metasploit,metasploit (l4_net),10.4.50.10,4444,blocked (firewall-1),Layer 3 / Layer 2 + Layer 4 / Layer 3,expect_blocked_port engineer-ws 10.4.50.10 4444,engineer-ws -> firewall-1 -> firewall-2 -> metasploit
 engineer-ws,database,database (l4_net),10.4.50.20,5432,blocked (firewall-1),Layer 3 / Layer 2 + Layer 4 / Layer 3,expect_blocked_port engineer-ws 10.4.50.20 5432,engineer-ws -> firewall-1 -> firewall-2 -> database
+engineer-ws,historian,historian (l3_net),10.3.50.10,443,allow,Layer 3 / Layer 2,probe_port engineer-ws 10.3.50.10 443,engineer-ws -> firewall-1 -> historian
+engineer-ws,historian,historian (l3_net),10.3.50.10,4840,allow,Layer 3 / Layer 2,probe_port engineer-ws 10.3.50.10 4840,engineer-ws -> firewall-1 -> historian
 engineer-ws,hmi,hmi (l2_net),10.2.50.10,80,allow,Intra-zone: Layer 2,probe_port engineer-ws 10.2.50.10 80,engineer-ws -> hmi
 engineer-ws,hmi,hmi (l2_net),10.2.50.10,443,allow,Intra-zone: Layer 2,probe_port engineer-ws 10.2.50.10 443,engineer-ws -> hmi
 engineer-ws,l2-jump,l2-jump (l2_net),10.2.50.30,22,allow,Intra-zone: Layer 2,probe_port engineer-ws 10.2.50.30 22,engineer-ws -> l2-jump
@@ -61,30 +89,10 @@ engineer-ws,heat-ctrl,heat-ctrl (p23_net),10.4.23.5,502,blocked (no route),Layer
 engineer-ws,pt-456,pt-456 (p23_net),10.4.23.12,502,blocked (no route),Layer 2 -> Layer 0 (backup cell) isolation,expect_blocked_port engineer-ws 10.4.23.12 502,no route
 engineer-ws,pt-457,pt-457 (p23_net),10.4.23.13,502,blocked (no route),Layer 2 -> Layer 0 (backup cell) isolation,expect_blocked_port engineer-ws 10.4.23.13 502,no route
 engineer-ws,pt-458,pt-458 (p23_net),10.4.23.14,502,blocked (no route),Layer 2 -> Layer 0 (backup cell) isolation,expect_blocked_port engineer-ws 10.4.23.14 502,no route
-historian,metasploit,metasploit (l4_net),10.4.50.10,4444,blocked (no route),Layer 2 -> Layer 4 isolation,expect_blocked_port historian 10.4.50.10 4444,no route
-historian,database,database (l4_net),10.4.50.20,5432,blocked (no route),Layer 2 -> Layer 4 isolation,expect_blocked_port historian 10.4.50.20 5432,no route
-historian,hmi,hmi (l2_net),10.2.50.10,80,allow,Intra-zone: Layer 2,probe_port historian 10.2.50.10 80,historian -> hmi
-historian,hmi,hmi (l2_net),10.2.50.10,443,allow,Intra-zone: Layer 2,probe_port historian 10.2.50.10 443,historian -> hmi
-historian,engineer-ws,engineer-ws (l2_net),10.2.50.20,80,allow,Intra-zone: Layer 2,probe_port historian 10.2.50.20 80,historian -> engineer-ws
-historian,engineer-ws,engineer-ws (l2_net),10.2.50.20,443,allow,Intra-zone: Layer 2,probe_port historian 10.2.50.20 443,historian -> engineer-ws
-historian,l2-jump,l2-jump (l2_net),10.2.50.30,22,allow,Intra-zone: Layer 2,probe_port historian 10.2.50.30 22,historian -> l2-jump
-historian,l2-jump,l2-jump (l2_net),10.2.50.30,443,allow,Intra-zone: Layer 2,probe_port historian 10.2.50.30 443,historian -> l2-jump
-historian,vc-hv455a,vc-hv455a (p13_net),10.3.13.1,502,blocked (no route),Layer 2 -> Layer 0 (main cell) isolation,expect_blocked_port historian 10.3.13.1 502,no route
-historian,vc-pv455b,vc-pv455b (p13_net),10.3.13.2,502,blocked (no route),Layer 2 -> Layer 0 (main cell) isolation,expect_blocked_port historian 10.3.13.2 502,no route
-historian,vc-pv455c,vc-pv455c (p13_net),10.3.13.3,502,blocked (no route),Layer 2 -> Layer 0 (main cell) isolation,expect_blocked_port historian 10.3.13.3 502,no route
-historian,heat-ctrl,heat-ctrl (p13_net),10.3.13.5,502,blocked (no route),Layer 2 -> Layer 0 (main cell) isolation,expect_blocked_port historian 10.3.13.5 502,no route
-historian,pt-455,pt-455 (p13_net),10.3.13.11,502,blocked (no route),Layer 2 -> Layer 0 (main cell) isolation,expect_blocked_port historian 10.3.13.11 502,no route
-historian,pt-456,pt-456 (p13_net),10.3.13.12,502,blocked (no route),Layer 2 -> Layer 0 (main cell) isolation,expect_blocked_port historian 10.3.13.12 502,no route
-historian,pt-457,pt-457 (p13_net),10.3.13.13,502,blocked (no route),Layer 2 -> Layer 0 (main cell) isolation,expect_blocked_port historian 10.3.13.13 502,no route
-historian,vc-hv455a,vc-hv455a (p23_net),10.4.23.1,502,blocked (no route),Layer 2 -> Layer 0 (backup cell) isolation,expect_blocked_port historian 10.4.23.1 502,no route
-historian,vc-pv455b,vc-pv455b (p23_net),10.4.23.2,502,blocked (no route),Layer 2 -> Layer 0 (backup cell) isolation,expect_blocked_port historian 10.4.23.2 502,no route
-historian,vc-pv455c,vc-pv455c (p23_net),10.4.23.3,502,blocked (no route),Layer 2 -> Layer 0 (backup cell) isolation,expect_blocked_port historian 10.4.23.3 502,no route
-historian,heat-ctrl,heat-ctrl (p23_net),10.4.23.5,502,blocked (no route),Layer 2 -> Layer 0 (backup cell) isolation,expect_blocked_port historian 10.4.23.5 502,no route
-historian,pt-456,pt-456 (p23_net),10.4.23.12,502,blocked (no route),Layer 2 -> Layer 0 (backup cell) isolation,expect_blocked_port historian 10.4.23.12 502,no route
-historian,pt-457,pt-457 (p23_net),10.4.23.13,502,blocked (no route),Layer 2 -> Layer 0 (backup cell) isolation,expect_blocked_port historian 10.4.23.13 502,no route
-historian,pt-458,pt-458 (p23_net),10.4.23.14,502,blocked (no route),Layer 2 -> Layer 0 (backup cell) isolation,expect_blocked_port historian 10.4.23.14 502,no route
 hmi,metasploit,metasploit (l4_net),10.4.50.10,4444,blocked (firewall-1),Layer 3 / Layer 2 + Layer 4 / Layer 3,expect_blocked_port hmi 10.4.50.10 4444,hmi -> firewall-1 -> firewall-2 -> metasploit
 hmi,database,database (l4_net),10.4.50.20,5432,blocked (firewall-1),Layer 3 / Layer 2 + Layer 4 / Layer 3,expect_blocked_port hmi 10.4.50.20 5432,hmi -> firewall-1 -> firewall-2 -> database
+hmi,historian,historian (l3_net),10.3.50.10,443,allow,Layer 3 / Layer 2,probe_port hmi 10.3.50.10 443,hmi -> firewall-1 -> historian
+hmi,historian,historian (l3_net),10.3.50.10,4840,allow,Layer 3 / Layer 2,probe_port hmi 10.3.50.10 4840,hmi -> firewall-1 -> historian
 hmi,engineer-ws,engineer-ws (l2_net),10.2.50.20,80,allow,Intra-zone: Layer 2,probe_port hmi 10.2.50.20 80,hmi -> engineer-ws
 hmi,engineer-ws,engineer-ws (l2_net),10.2.50.20,443,allow,Intra-zone: Layer 2,probe_port hmi 10.2.50.20 443,hmi -> engineer-ws
 hmi,l2-jump,l2-jump (l2_net),10.2.50.30,22,allow,Intra-zone: Layer 2,probe_port hmi 10.2.50.30 22,hmi -> l2-jump
@@ -105,6 +113,8 @@ hmi,pt-457,pt-457 (p23_net),10.4.23.13,502,blocked (no route),Layer 2 -> Layer 0
 hmi,pt-458,pt-458 (p23_net),10.4.23.14,502,blocked (no route),Layer 2 -> Layer 0 (backup cell) isolation,expect_blocked_port hmi 10.4.23.14 502,no route
 l2-jump,metasploit,metasploit (l4_net),10.4.50.10,4444,blocked (firewall-1),Layer 3 / Layer 2 + Layer 4 / Layer 3,expect_blocked_port l2-jump 10.4.50.10 4444,l2-jump -> firewall-1 -> firewall-2 -> metasploit
 l2-jump,database,database (l4_net),10.4.50.20,5432,blocked (firewall-1),Layer 3 / Layer 2 + Layer 4 / Layer 3,expect_blocked_port l2-jump 10.4.50.20 5432,l2-jump -> firewall-1 -> firewall-2 -> database
+l2-jump,historian,historian (l3_net),10.3.50.10,443,blocked (firewall-1),Layer 3 / Layer 2,expect_blocked_port l2-jump 10.3.50.10 443,l2-jump -> firewall-1 -> historian
+l2-jump,historian,historian (l3_net),10.3.50.10,4840,blocked (firewall-1),Layer 3 / Layer 2,expect_blocked_port l2-jump 10.3.50.10 4840,l2-jump -> firewall-1 -> historian
 l2-jump,hmi,hmi (l2_net),10.2.50.10,80,allow,Intra-zone: Layer 2,probe_port l2-jump 10.2.50.10 80,l2-jump -> hmi
 l2-jump,hmi,hmi (l2_net),10.2.50.10,443,allow,Intra-zone: Layer 2,probe_port l2-jump 10.2.50.10 443,l2-jump -> hmi
 l2-jump,engineer-ws,engineer-ws (l2_net),10.2.50.20,80,allow,Intra-zone: Layer 2,probe_port l2-jump 10.2.50.20 80,l2-jump -> engineer-ws
@@ -125,6 +135,8 @@ l2-jump,pt-457,pt-457 (p23_net),10.4.23.13,502,blocked (no route),Layer 2 -> Lay
 l2-jump,pt-458,pt-458 (p23_net),10.4.23.14,502,blocked (no route),Layer 2 -> Layer 0 (backup cell) isolation,expect_blocked_port l2-jump 10.4.23.14 502,no route
 plc-backup,metasploit,metasploit (l4_net),10.4.50.10,4444,blocked (no route),Layer 1 (backup PLC segment) -> Layer 4 isolation,expect_blocked_port plc-backup 10.4.50.10 4444,no route
 plc-backup,database,database (l4_net),10.4.50.20,5432,blocked (no route),Layer 1 (backup PLC segment) -> Layer 4 isolation,expect_blocked_port plc-backup 10.4.50.20 5432,no route
+plc-backup,historian,historian (l3_net),10.3.50.10,443,blocked (no route),Layer 1 (backup PLC segment) -> Layer 3 isolation,expect_blocked_port plc-backup 10.3.50.10 443,no route
+plc-backup,historian,historian (l3_net),10.3.50.10,4840,blocked (no route),Layer 1 (backup PLC segment) -> Layer 3 isolation,expect_blocked_port plc-backup 10.3.50.10 4840,no route
 plc-backup,hmi,hmi (l2_net),10.2.50.10,80,blocked (firewall-0),Layer 2 / Layer 1,expect_blocked_port plc-backup 10.2.50.10 80,plc-backup -> firewall-0 -> hmi
 plc-backup,hmi,hmi (l2_net),10.2.50.10,443,blocked (firewall-0),Layer 2 / Layer 1,expect_blocked_port plc-backup 10.2.50.10 443,plc-backup -> firewall-0 -> hmi
 plc-backup,engineer-ws,engineer-ws (l2_net),10.2.50.20,80,blocked (firewall-0),Layer 2 / Layer 1,expect_blocked_port plc-backup 10.2.50.20 80,plc-backup -> firewall-0 -> engineer-ws
@@ -147,6 +159,8 @@ plc-backup,pt-457,pt-457 (p23_net),10.4.23.13,502,allow,Layer 1 / Layer 0 (backu
 plc-backup,pt-458,pt-458 (p23_net),10.4.23.14,502,allow,Layer 1 / Layer 0 (backup cell),probe_port plc-backup 10.4.23.14 502,plc-backup -> firewall-backup-cell -> pt-458
 plc-main,metasploit,metasploit (l4_net),10.4.50.10,4444,blocked (no route),Layer 1 (main PLC segment) -> Layer 4 isolation,expect_blocked_port plc-main 10.4.50.10 4444,no route
 plc-main,database,database (l4_net),10.4.50.20,5432,blocked (no route),Layer 1 (main PLC segment) -> Layer 4 isolation,expect_blocked_port plc-main 10.4.50.20 5432,no route
+plc-main,historian,historian (l3_net),10.3.50.10,443,blocked (no route),Layer 1 (main PLC segment) -> Layer 3 isolation,expect_blocked_port plc-main 10.3.50.10 443,no route
+plc-main,historian,historian (l3_net),10.3.50.10,4840,blocked (no route),Layer 1 (main PLC segment) -> Layer 3 isolation,expect_blocked_port plc-main 10.3.50.10 4840,no route
 plc-main,hmi,hmi (l2_net),10.2.50.10,80,blocked (firewall-0),Layer 2 / Layer 1,expect_blocked_port plc-main 10.2.50.10 80,plc-main -> firewall-0 -> hmi
 plc-main,hmi,hmi (l2_net),10.2.50.10,443,blocked (firewall-0),Layer 2 / Layer 1,expect_blocked_port plc-main 10.2.50.10 443,plc-main -> firewall-0 -> hmi
 plc-main,engineer-ws,engineer-ws (l2_net),10.2.50.20,80,blocked (firewall-0),Layer 2 / Layer 1,expect_blocked_port plc-main 10.2.50.20 80,plc-main -> firewall-0 -> engineer-ws
@@ -169,6 +183,8 @@ plc-main,pt-457,pt-457 (p23_net),10.4.23.13,502,blocked (no route),Layer 1 (main
 plc-main,pt-458,pt-458 (p23_net),10.4.23.14,502,blocked (no route),Layer 1 (main PLC segment) -> Layer 0 (backup cell) isolation,expect_blocked_port plc-main 10.4.23.14 502,no route
 heat-ctrl,metasploit,metasploit (l4_net),10.4.50.10,4444,blocked (no route),Layer 0 (main cell) -> Layer 4 isolation,expect_blocked_port heat-ctrl 10.4.50.10 4444,no route
 heat-ctrl,database,database (l4_net),10.4.50.20,5432,blocked (no route),Layer 0 (main cell) -> Layer 4 isolation,expect_blocked_port heat-ctrl 10.4.50.20 5432,no route
+heat-ctrl,historian,historian (l3_net),10.3.50.10,443,blocked (no route),Layer 0 (main cell) -> Layer 3 isolation,expect_blocked_port heat-ctrl 10.3.50.10 443,no route
+heat-ctrl,historian,historian (l3_net),10.3.50.10,4840,blocked (no route),Layer 0 (main cell) -> Layer 3 isolation,expect_blocked_port heat-ctrl 10.3.50.10 4840,no route
 heat-ctrl,hmi,hmi (l2_net),10.2.50.10,80,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port heat-ctrl 10.2.50.10 80,no route
 heat-ctrl,hmi,hmi (l2_net),10.2.50.10,443,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port heat-ctrl 10.2.50.10 443,no route
 heat-ctrl,engineer-ws,engineer-ws (l2_net),10.2.50.20,80,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port heat-ctrl 10.2.50.20 80,no route
@@ -189,6 +205,8 @@ heat-ctrl,pt-457,pt-457 (p23_net),10.4.23.13,502,allow,Intra-zone: Layer 0 (back
 heat-ctrl,pt-458,pt-458 (p23_net),10.4.23.14,502,allow,Intra-zone: Layer 0 (backup cell),probe_port heat-ctrl 10.4.23.14 502,heat-ctrl -> pt-458
 pt-455,metasploit,metasploit (l4_net),10.4.50.10,4444,blocked (no route),Layer 0 (main cell) -> Layer 4 isolation,expect_blocked_port pt-455 10.4.50.10 4444,no route
 pt-455,database,database (l4_net),10.4.50.20,5432,blocked (no route),Layer 0 (main cell) -> Layer 4 isolation,expect_blocked_port pt-455 10.4.50.20 5432,no route
+pt-455,historian,historian (l3_net),10.3.50.10,443,blocked (no route),Layer 0 (main cell) -> Layer 3 isolation,expect_blocked_port pt-455 10.3.50.10 443,no route
+pt-455,historian,historian (l3_net),10.3.50.10,4840,blocked (no route),Layer 0 (main cell) -> Layer 3 isolation,expect_blocked_port pt-455 10.3.50.10 4840,no route
 pt-455,hmi,hmi (l2_net),10.2.50.10,80,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port pt-455 10.2.50.10 80,no route
 pt-455,hmi,hmi (l2_net),10.2.50.10,443,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port pt-455 10.2.50.10 443,no route
 pt-455,engineer-ws,engineer-ws (l2_net),10.2.50.20,80,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port pt-455 10.2.50.20 80,no route
@@ -210,6 +228,8 @@ pt-455,pt-457,pt-457 (p23_net),10.4.23.13,502,blocked (no route),Layer 0 (main c
 pt-455,pt-458,pt-458 (p23_net),10.4.23.14,502,blocked (no route),Layer 0 (main cell) -> Layer 0 (backup cell) isolation,expect_blocked_port pt-455 10.4.23.14 502,no route
 pt-456,metasploit,metasploit (l4_net),10.4.50.10,4444,blocked (no route),Layer 0 (main cell) -> Layer 4 isolation,expect_blocked_port pt-456 10.4.50.10 4444,no route
 pt-456,database,database (l4_net),10.4.50.20,5432,blocked (no route),Layer 0 (main cell) -> Layer 4 isolation,expect_blocked_port pt-456 10.4.50.20 5432,no route
+pt-456,historian,historian (l3_net),10.3.50.10,443,blocked (no route),Layer 0 (main cell) -> Layer 3 isolation,expect_blocked_port pt-456 10.3.50.10 443,no route
+pt-456,historian,historian (l3_net),10.3.50.10,4840,blocked (no route),Layer 0 (main cell) -> Layer 3 isolation,expect_blocked_port pt-456 10.3.50.10 4840,no route
 pt-456,hmi,hmi (l2_net),10.2.50.10,80,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port pt-456 10.2.50.10 80,no route
 pt-456,hmi,hmi (l2_net),10.2.50.10,443,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port pt-456 10.2.50.10 443,no route
 pt-456,engineer-ws,engineer-ws (l2_net),10.2.50.20,80,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port pt-456 10.2.50.20 80,no route
@@ -230,6 +250,8 @@ pt-456,pt-457,pt-457 (p23_net),10.4.23.13,502,allow,Intra-zone: Layer 0 (backup 
 pt-456,pt-458,pt-458 (p23_net),10.4.23.14,502,allow,Intra-zone: Layer 0 (backup cell),probe_port pt-456 10.4.23.14 502,pt-456 -> pt-458
 pt-457,metasploit,metasploit (l4_net),10.4.50.10,4444,blocked (no route),Layer 0 (main cell) -> Layer 4 isolation,expect_blocked_port pt-457 10.4.50.10 4444,no route
 pt-457,database,database (l4_net),10.4.50.20,5432,blocked (no route),Layer 0 (main cell) -> Layer 4 isolation,expect_blocked_port pt-457 10.4.50.20 5432,no route
+pt-457,historian,historian (l3_net),10.3.50.10,443,blocked (no route),Layer 0 (main cell) -> Layer 3 isolation,expect_blocked_port pt-457 10.3.50.10 443,no route
+pt-457,historian,historian (l3_net),10.3.50.10,4840,blocked (no route),Layer 0 (main cell) -> Layer 3 isolation,expect_blocked_port pt-457 10.3.50.10 4840,no route
 pt-457,hmi,hmi (l2_net),10.2.50.10,80,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port pt-457 10.2.50.10 80,no route
 pt-457,hmi,hmi (l2_net),10.2.50.10,443,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port pt-457 10.2.50.10 443,no route
 pt-457,engineer-ws,engineer-ws (l2_net),10.2.50.20,80,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port pt-457 10.2.50.20 80,no route
@@ -250,6 +272,8 @@ pt-457,pt-456,pt-456 (p23_net),10.4.23.12,502,allow,Intra-zone: Layer 0 (backup 
 pt-457,pt-458,pt-458 (p23_net),10.4.23.14,502,allow,Intra-zone: Layer 0 (backup cell),probe_port pt-457 10.4.23.14 502,pt-457 -> pt-458
 pt-458,metasploit,metasploit (l4_net),10.4.50.10,4444,blocked (no route),Layer 0 (backup cell) -> Layer 4 isolation,expect_blocked_port pt-458 10.4.50.10 4444,no route
 pt-458,database,database (l4_net),10.4.50.20,5432,blocked (no route),Layer 0 (backup cell) -> Layer 4 isolation,expect_blocked_port pt-458 10.4.50.20 5432,no route
+pt-458,historian,historian (l3_net),10.3.50.10,443,blocked (no route),Layer 0 (backup cell) -> Layer 3 isolation,expect_blocked_port pt-458 10.3.50.10 443,no route
+pt-458,historian,historian (l3_net),10.3.50.10,4840,blocked (no route),Layer 0 (backup cell) -> Layer 3 isolation,expect_blocked_port pt-458 10.3.50.10 4840,no route
 pt-458,hmi,hmi (l2_net),10.2.50.10,80,blocked (no route),Layer 0 (backup cell) -> Layer 2 isolation,expect_blocked_port pt-458 10.2.50.10 80,no route
 pt-458,hmi,hmi (l2_net),10.2.50.10,443,blocked (no route),Layer 0 (backup cell) -> Layer 2 isolation,expect_blocked_port pt-458 10.2.50.10 443,no route
 pt-458,engineer-ws,engineer-ws (l2_net),10.2.50.20,80,blocked (no route),Layer 0 (backup cell) -> Layer 2 isolation,expect_blocked_port pt-458 10.2.50.20 80,no route
@@ -271,6 +295,8 @@ pt-458,pt-456,pt-456 (p23_net),10.4.23.12,502,allow,Intra-zone: Layer 0 (backup 
 pt-458,pt-457,pt-457 (p23_net),10.4.23.13,502,allow,Intra-zone: Layer 0 (backup cell),probe_port pt-458 10.4.23.13 502,pt-458 -> pt-457
 vc-hv455a,metasploit,metasploit (l4_net),10.4.50.10,4444,blocked (no route),Layer 0 (main cell) -> Layer 4 isolation,expect_blocked_port vc-hv455a 10.4.50.10 4444,no route
 vc-hv455a,database,database (l4_net),10.4.50.20,5432,blocked (no route),Layer 0 (main cell) -> Layer 4 isolation,expect_blocked_port vc-hv455a 10.4.50.20 5432,no route
+vc-hv455a,historian,historian (l3_net),10.3.50.10,443,blocked (no route),Layer 0 (main cell) -> Layer 3 isolation,expect_blocked_port vc-hv455a 10.3.50.10 443,no route
+vc-hv455a,historian,historian (l3_net),10.3.50.10,4840,blocked (no route),Layer 0 (main cell) -> Layer 3 isolation,expect_blocked_port vc-hv455a 10.3.50.10 4840,no route
 vc-hv455a,hmi,hmi (l2_net),10.2.50.10,80,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port vc-hv455a 10.2.50.10 80,no route
 vc-hv455a,hmi,hmi (l2_net),10.2.50.10,443,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port vc-hv455a 10.2.50.10 443,no route
 vc-hv455a,engineer-ws,engineer-ws (l2_net),10.2.50.20,80,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port vc-hv455a 10.2.50.20 80,no route
@@ -291,6 +317,8 @@ vc-hv455a,pt-457,pt-457 (p23_net),10.4.23.13,502,allow,Intra-zone: Layer 0 (back
 vc-hv455a,pt-458,pt-458 (p23_net),10.4.23.14,502,allow,Intra-zone: Layer 0 (backup cell),probe_port vc-hv455a 10.4.23.14 502,vc-hv455a -> pt-458
 vc-pv455b,metasploit,metasploit (l4_net),10.4.50.10,4444,blocked (no route),Layer 0 (main cell) -> Layer 4 isolation,expect_blocked_port vc-pv455b 10.4.50.10 4444,no route
 vc-pv455b,database,database (l4_net),10.4.50.20,5432,blocked (no route),Layer 0 (main cell) -> Layer 4 isolation,expect_blocked_port vc-pv455b 10.4.50.20 5432,no route
+vc-pv455b,historian,historian (l3_net),10.3.50.10,443,blocked (no route),Layer 0 (main cell) -> Layer 3 isolation,expect_blocked_port vc-pv455b 10.3.50.10 443,no route
+vc-pv455b,historian,historian (l3_net),10.3.50.10,4840,blocked (no route),Layer 0 (main cell) -> Layer 3 isolation,expect_blocked_port vc-pv455b 10.3.50.10 4840,no route
 vc-pv455b,hmi,hmi (l2_net),10.2.50.10,80,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port vc-pv455b 10.2.50.10 80,no route
 vc-pv455b,hmi,hmi (l2_net),10.2.50.10,443,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port vc-pv455b 10.2.50.10 443,no route
 vc-pv455b,engineer-ws,engineer-ws (l2_net),10.2.50.20,80,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port vc-pv455b 10.2.50.20 80,no route
@@ -311,6 +339,8 @@ vc-pv455b,pt-457,pt-457 (p23_net),10.4.23.13,502,allow,Intra-zone: Layer 0 (back
 vc-pv455b,pt-458,pt-458 (p23_net),10.4.23.14,502,allow,Intra-zone: Layer 0 (backup cell),probe_port vc-pv455b 10.4.23.14 502,vc-pv455b -> pt-458
 vc-pv455c,metasploit,metasploit (l4_net),10.4.50.10,4444,blocked (no route),Layer 0 (main cell) -> Layer 4 isolation,expect_blocked_port vc-pv455c 10.4.50.10 4444,no route
 vc-pv455c,database,database (l4_net),10.4.50.20,5432,blocked (no route),Layer 0 (main cell) -> Layer 4 isolation,expect_blocked_port vc-pv455c 10.4.50.20 5432,no route
+vc-pv455c,historian,historian (l3_net),10.3.50.10,443,blocked (no route),Layer 0 (main cell) -> Layer 3 isolation,expect_blocked_port vc-pv455c 10.3.50.10 443,no route
+vc-pv455c,historian,historian (l3_net),10.3.50.10,4840,blocked (no route),Layer 0 (main cell) -> Layer 3 isolation,expect_blocked_port vc-pv455c 10.3.50.10 4840,no route
 vc-pv455c,hmi,hmi (l2_net),10.2.50.10,80,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port vc-pv455c 10.2.50.10 80,no route
 vc-pv455c,hmi,hmi (l2_net),10.2.50.10,443,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port vc-pv455c 10.2.50.10 443,no route
 vc-pv455c,engineer-ws,engineer-ws (l2_net),10.2.50.20,80,blocked (no route),Layer 0 (main cell) -> Layer 2 isolation,expect_blocked_port vc-pv455c 10.2.50.20 80,no route

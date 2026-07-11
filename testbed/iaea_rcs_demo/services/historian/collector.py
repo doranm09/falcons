@@ -106,6 +106,16 @@ class HistorianStatusHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):  # noqa: A003
         return
 
+    def _write_cors_headers(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self._write_cors_headers()
+        self.end_headers()
+
     def do_GET(self):
         body = json.dumps(
             snapshot_state(self.server.server_port, self.path),
@@ -115,6 +125,7 @@ class HistorianStatusHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        self._write_cors_headers()
         self.end_headers()
         self.wfile.write(body)
 

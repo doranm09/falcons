@@ -276,10 +276,10 @@ Debugger port:
 docker compose -f docker-compose.yml -f docker-compose.testbed.yml up -d --build
 ```
 
-Optional Kali attacker profile:
+Kali attacker service is included by default in the testbed overlay:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.testbed.yml --profile kali up -d --build
+docker compose -f docker-compose.yml -f docker-compose.testbed.yml up -d --build
 ```
 
 ## Optional Host Agent

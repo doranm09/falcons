@@ -4,6 +4,13 @@ import os
 
 app = Flask(__name__)
 
+
+def _subprocess_json_result(result):
+    output = result.stdout if result.returncode == 0 else result.stderr
+    if result.returncode == 0:
+        return jsonify({"result": output})
+    return jsonify({"error": output or f"command exited with status {result.returncode}"}), 500
+
 @app.route("/attack/nmap", methods=["POST"])
 def attack_nmap():
     try:
@@ -12,8 +19,7 @@ def attack_nmap():
         scan_cidr = os.environ.get("ATTACK_SCAN_CIDR", "10.1.1.0/24")
         # -sS: TCP SYN scan (half-open), -F: fast, -Pn: skip ping
         result = subprocess.run(["nmap", "-sS", "-F", "-Pn", scan_cidr], capture_output=True, text=True, timeout=60)
-        output = result.stdout if result.returncode == 0 else result.stderr
-        return jsonify({"result": output})
+        return _subprocess_json_result(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -38,8 +44,7 @@ def attack_nmap():
 def attack_modbus():
     try:
         result = subprocess.run(["/opt/kali/modbus_inject.py"], capture_output=True, text=True, timeout=60)
-        output = result.stdout if result.returncode == 0 else result.stderr
-        return jsonify({"result": output})
+        return _subprocess_json_result(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

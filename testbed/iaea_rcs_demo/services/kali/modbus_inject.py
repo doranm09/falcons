@@ -29,8 +29,6 @@ from pymodbus.exceptions import ModbusException
 PLC_MAIN_IP = os.getenv("MODBUS_PLC_IP", "10.1.1.14")
 PLC_MAIN_PORT = int(os.getenv("MODBUS_PLC_PORT", "502"))
 AVERAGE_PRESSURE_REGISTER = 14  # Holding register address for average_pressure (hybrid)
-
-
 def _write_register(client, address: int, value: int, unit_id: int = 1):
     return client.write_register(address, value, device_id=unit_id)
 
@@ -164,7 +162,7 @@ Anomaly trigger: Values outside normal range will be detected by IDS process ser
         default=10.0,
         help='Injection duration in seconds (default: 10.0)'
     )
-    
+
     args = parser.parse_args()
     
     # Validate value range for 16-bit register
@@ -174,7 +172,6 @@ Anomaly trigger: Values outside normal range will be detected by IDS process ser
     if args.duration <= 0:
         print("[!] Error: --duration must be greater than 0")
         sys.exit(1)
-    
     print("=" * 60)
     print("PLC Modbus Injection Script")
     print("=" * 60)

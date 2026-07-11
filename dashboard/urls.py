@@ -45,6 +45,7 @@ urlpatterns = [
     path('siem/ids/network/updates/', views.siem_ids_network_live_updates, name='siem_ids_network_live_updates'),
     path('siem/ids/process/', views.siem_ids_process_live_page, name='siem_ids_process_live_page'),
     path('siem/ids/process/updates/', views.siem_ids_process_live_updates, name='siem_ids_process_live_updates'),
+    path('siem/ids/process/telemetry/', views.siem_ids_process_telemetry, name='siem_ids_process_telemetry'),
     path('siem/ids/', views.siem_ids_live_page, name='siem_ids_live_page'),
     path('siem/ids/updates/', views.siem_ids_live_updates, name='siem_ids_live_updates'),
     path('siem/adapters/agent/<str:agent_id>/', views.siem_adapter_agent, name='siem_adapter_agent'),

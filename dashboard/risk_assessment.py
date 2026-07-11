@@ -14,6 +14,33 @@ SEVERITY_EPSS = {
 }
 
 OOB_MANAGEMENT_PREFIXES = ("172.31.250.",)
+RISK_VULNERABILITY_BUCKET_ALIASES = {
+    "vul_tech": "vul_tech",
+    "vul_tech1": "vul_tech1",
+    "vul_tech2": "vul_tech2",
+    "vul_tech3": "vul_tech3",
+    "compromise": "vul_tech2",
+    "compromised": "vul_tech2",
+    "cyber": "vul_tech2",
+    "fault": "vul_tech3",
+    "faulty": "vul_tech3",
+    "availability": "vul_tech3",
+    "dos": "vul_tech3",
+}
+PLC_COMPROMISE_BUCKET_HINT = "vul_tech2"
+PLC_FAULT_BUCKET_HINT = "vul_tech3"
+PLC_FAULT_BUCKET_PATTERNS = (
+    r"\bdenial(?:[ -]?of[ -]?service)?\b",
+    r"\bdos\b",
+    r"\bcrash(?:es|ed|ing)?\b",
+    r"\bhang(?:s|ing)?\b",
+    r"\breboot(?:s|ed|ing)?\b",
+    r"\bdeadlock\b",
+    r"\bresource exhaustion\b",
+    r"\bavailability\b",
+    r"\bwatchdog\b",
+    r"\boutage\b",
+)
 
 
 def epss_from_cvss(score: float | None, fallback_severity: str | None = None) -> float:
@@ -26,6 +53,14 @@ def epss_from_cvss(score: float | None, fallback_severity: str | None = None) ->
 
 def _normalize_risk_identity(value: str = "") -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
+
+
+def normalize_risk_vulnerability_bucket_hint(value: str = "") -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    normalized = re.sub(r"[^a-z0-9]+", "_", text).strip("_")
+    return RISK_VULNERABILITY_BUCKET_ALIASES.get(normalized, "")
 
 
 def _is_oob_management_ip(ip_text: str = "") -> bool:
@@ -111,6 +146,50 @@ def _hybrid_record_for_identity(value: str = "") -> dict | None:
         if normalized and any(_normalize_risk_identity(token) == normalized for token in tokens):
             return record
     return None
+
+
+def _is_plc_risk_node(risk_node_id: str = "", node: Node | None = None) -> bool:
+    candidates = [str(risk_node_id or "").strip()]
+    record = _hybrid_record_for_identity(risk_node_id)
+    if record:
+        candidates.extend(_hybrid_record_tokens(record))
+        candidates.append(str(record.get("role_label") or "").strip())
+    if node is not None:
+        candidates.extend(
+            [
+                str(getattr(node, "name", "") or "").strip(),
+                str(getattr(node, "hostname", "") or "").strip(),
+                str(getattr(node, "description", "") or "").strip(),
+            ]
+        )
+    return any("plc" in str(candidate).lower() for candidate in candidates if str(candidate).strip())
+
+
+def classify_risk_finding_bucket(
+    risk_node_id: str = "",
+    vulnerability: dict | None = None,
+    *,
+    node: Node | None = None,
+) -> str | None:
+    record = vulnerability if isinstance(vulnerability, dict) else {}
+    explicit = normalize_risk_vulnerability_bucket_hint(
+        record.get("bucket_hint")
+        or record.get("bucket")
+        or record.get("risk_bucket")
+        or record.get("vulnerability_bucket")
+    )
+    if explicit:
+        return explicit
+    if not _is_plc_risk_node(risk_node_id, node=node):
+        return None
+
+    text = " ".join(
+        str(record.get(field_name) or "").strip()
+        for field_name in ("cve", "cve_id", "id", "name", "description", "severity")
+    ).lower()
+    if any(re.search(pattern, text) for pattern in PLC_FAULT_BUCKET_PATTERNS):
+        return PLC_FAULT_BUCKET_HINT
+    return PLC_COMPROMISE_BUCKET_HINT
 
 
 def _hybrid_record_ips(record: dict | None) -> set[str]:
@@ -271,13 +350,58 @@ def suggest_risk_node_mappings(risk_nodes: List[str], candidate_nodes: List[Node
 
 
 def _merge_vulnerability_rows(vulnerabilities: list[dict]) -> list[dict]:
+    def _coerce_float(value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
     vuln_map = {}
     for vuln in vulnerabilities:
         cve = str(vuln.get("id") or "").strip()
         if not cve:
             continue
-        entry = vuln_map.setdefault(cve, {"id": cve, "epss": 0.0, "sources": set()})
+        entry = vuln_map.setdefault(
+            cve,
+            {
+                "id": cve,
+                "epss": 0.0,
+                "cvss": None,
+                "severity": "",
+                "name": "",
+                "description": "",
+                "port": "",
+                "bucket_hint": "",
+                "sources": set(),
+            },
+        )
         entry["epss"] = max(entry["epss"], float(vuln.get("epss") or 0.0))
+        cvss_score = _coerce_float(vuln.get("cvss"))
+        if cvss_score is None:
+            cvss_score = _coerce_float(vuln.get("cvss_score"))
+        if cvss_score is not None:
+            if entry["cvss"] is None or cvss_score > float(entry["cvss"]):
+                entry["cvss"] = cvss_score
+        severity = str(vuln.get("severity") or "").strip()
+        if severity and not entry["severity"]:
+            entry["severity"] = severity
+        name = str(vuln.get("name") or "").strip()
+        if name and not entry["name"]:
+            entry["name"] = name
+        description = str(vuln.get("description") or "").strip()
+        if description and len(description) > len(entry["description"]):
+            entry["description"] = description
+        port = str(vuln.get("port") or "").strip()
+        if port and not entry["port"]:
+            entry["port"] = port
+        bucket_hint = normalize_risk_vulnerability_bucket_hint(
+            vuln.get("bucket_hint")
+            or vuln.get("bucket")
+            or vuln.get("risk_bucket")
+            or vuln.get("vulnerability_bucket")
+        )
+        if bucket_hint and not entry["bucket_hint"]:
+            entry["bucket_hint"] = bucket_hint
         source = vuln.get("source")
         if source:
             entry["sources"].add(str(source))
@@ -286,6 +410,12 @@ def _merge_vulnerability_rows(vulnerabilities: list[dict]) -> list[dict]:
         {
             "id": cve,
             "epss": entry["epss"],
+            "cvss": entry["cvss"],
+            "severity": entry["severity"],
+            "name": entry["name"],
+            "description": entry["description"],
+            "port": entry["port"],
+            "bucket_hint": entry["bucket_hint"],
             "sources": sorted(entry["sources"]),
         }
         for cve, entry in vuln_map.items()
@@ -385,11 +515,17 @@ def build_cyber_data_for_risk_nodes(
         # Global vulnerabilities tied to Node
         for vuln in Vulnerability.objects.filter(nodes=node):
             epss = epss_from_cvss(vuln.score, vuln.severity)
-            vulnerabilities.append({
-                "id": vuln.cve_id,
-                "epss": epss,
-                "source": "node",
-            })
+            vulnerabilities.append(
+                {
+                    "id": vuln.cve_id,
+                    "epss": epss,
+                    "cvss": vuln.score,
+                    "severity": vuln.severity,
+                    "name": vuln.package or vuln.cve_id,
+                    "description": vuln.description,
+                    "source": "node",
+                }
+            )
 
         # Scan-specific vulnerabilities tied by any known interface IP for the asset.
         scan_candidate_ips = scan_candidate_ips_by_node_id.get(node.id, [])
@@ -399,11 +535,17 @@ def build_cyber_data_for_risk_nodes(
                 scan_vulns = scan_vulns.filter(scan_run_id=scan_run_id)
             for scan_vuln in scan_vulns:
                 epss = epss_from_cvss(scan_vuln.cvss_score, scan_vuln.severity)
-                vulnerabilities.append({
-                    "id": scan_vuln.cve_id,
-                    "epss": epss,
-                    "source": "scan",
-                })
+                vulnerabilities.append(
+                    {
+                        "id": scan_vuln.cve_id,
+                        "epss": epss,
+                        "cvss": scan_vuln.cvss_score,
+                        "severity": scan_vuln.severity,
+                        "name": scan_vuln.name,
+                        "description": scan_vuln.description,
+                        "source": "scan",
+                    }
+                )
             for ip_text in scan_candidate_ips:
                 for gvmd_finding in gvmd_findings_by_ip.get(ip_text, []):
                     cve_id = str(gvmd_finding.get("cve_id") or "").strip()
@@ -413,6 +555,11 @@ def build_cyber_data_for_risk_nodes(
                         {
                             "id": cve_id,
                             "epss": epss_from_cvss(gvmd_finding.get("cvss_score"), gvmd_finding.get("severity")),
+                            "cvss": gvmd_finding.get("cvss_score"),
+                            "severity": gvmd_finding.get("severity"),
+                            "name": gvmd_finding.get("name"),
+                            "description": gvmd_finding.get("description"),
+                            "port": gvmd_finding.get("port"),
                             "source": "gvmd",
                         }
                     )
@@ -424,13 +571,21 @@ def build_cyber_data_for_risk_nodes(
         if not node_id:
             continue
 
+        enriched_top_vulns = []
+        for vulnerability in top_vulns:
+            enriched_vulnerability = dict(vulnerability)
+            bucket_hint = classify_risk_finding_bucket(node_id, enriched_vulnerability, node=node)
+            if bucket_hint:
+                enriched_vulnerability["bucket_hint"] = bucket_hint
+            enriched_top_vulns.append(enriched_vulnerability)
+
         entry = {
             "node_id": node.id,
             "name": node.name,
             "ip_address": preferred_risk_node_ip(node),
             "risk_node_id": node_id,
             "vulnerability_count": len(vuln_list),
-            "vulnerabilities": top_vulns,
+            "vulnerabilities": enriched_top_vulns,
             "has_vulnerabilities": bool(vuln_list),
         }
         rank = _mapped_node_rank(node, node_id, len(vuln_list))

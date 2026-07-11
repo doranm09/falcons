@@ -419,7 +419,6 @@ services:
     build:
       context: .
       dockerfile: testbed/ot/kali/Dockerfile
-    profiles: ["kali"]
     tty: true
     stdin_open: true
     command: ["/bin/bash", "-lc", "sleep infinity"]

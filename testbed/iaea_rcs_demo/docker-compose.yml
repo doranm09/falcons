@@ -109,7 +109,7 @@ services:
       IDS_PROCESS_DECISION_THRESHOLD: "${IDS_PROCESS_DECISION_THRESHOLD:-10}"
       IDS_PROCESS_POLL_INTERVAL: "${IDS_PROCESS_POLL_INTERVAL:-1}"
       IDS_PROCESS_WATCH_RANGE_START: "${IDS_PROCESS_WATCH_RANGE_START:--5s}"
-      IDS_PROCESS_WATCH_ANOMALY_ONLY: "${IDS_PROCESS_WATCH_ANOMALY_ONLY:-1}"
+      IDS_PROCESS_WATCH_ANOMALY_ONLY: "${IDS_PROCESS_WATCH_ANOMALY_ONLY:-0}"
     depends_on:
       - historian
     volumes:
@@ -141,7 +141,6 @@ services:
   kali-attacker:
     build:
       context: ./services/kali
-    profiles: ["kali"]
     tty: true
     stdin_open: true
     command: ["/bin/bash", "-lc", "python3 /opt/kali/kali_attack_api.py"]

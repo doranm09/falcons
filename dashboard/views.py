@@ -60,6 +60,12 @@ def _call_pentest_api(path: str) -> "JsonResponse":
     return JsonResponse(
         {
             "error": "Unable to reach the pentest backend",
+            "hint": (
+                "The pentest API is not running. In the IAEA hybrid stack, "
+                "start the attacker service with "
+                "`docker compose -f testbed/iaea_rcs_demo/docker-compose-hybrid.yml "
+                "up -d kali-attacker`."
+            ),
             "attempted_urls": attempted_urls,
             "details": errors,
         },
@@ -129,6 +135,7 @@ from .models import Link
 from .gvmd import fetch_gvmd_findings_for_ips
 from .risk_assessment import (
     build_cyber_data_for_risk_nodes,
+    classify_risk_finding_bucket,
     preferred_risk_node_ip,
     summarize_risk_results,
     suggest_risk_node_mappings,
@@ -174,7 +181,7 @@ from django.db.models import Count, Q
 from ipaddress import ip_network
 from pathlib import Path
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from functools import wraps
 from urllib.parse import urlencode
 from .siem import normalize_siem_event, SiemNormalizeError
@@ -1948,9 +1955,36 @@ def _risk_findings_from_cyber_data(cyber_data: dict) -> list[dict]:
             finding = dict(vulnerability)
             finding.setdefault("asset", node_id)
             finding.setdefault("cve", cve_id)
+            bucket_hint = classify_risk_finding_bucket(node_id, finding)
+            if bucket_hint:
+                finding["bucket_hint"] = bucket_hint
             findings.append(finding)
 
     return findings
+
+
+def _risk_enrich_explicit_findings(findings: list[dict]) -> list[dict]:
+    enriched_findings = []
+    for item in findings:
+        if not isinstance(item, dict):
+            continue
+        finding = dict(item)
+        node_id = str(
+            finding.get("asset")
+            or finding.get("node")
+            or finding.get("device")
+            or finding.get("node_id")
+            or finding.get("asset_id")
+            or finding.get("device_id")
+            or finding.get("host")
+            or ""
+        ).strip()
+        if node_id:
+            bucket_hint = classify_risk_finding_bucket(node_id, finding)
+            if bucket_hint:
+                finding["bucket_hint"] = bucket_hint
+        enriched_findings.append(finding)
+    return enriched_findings
 
 
 def _risk_post_mutation(path: str, payload: dict) -> dict:
@@ -2026,7 +2060,7 @@ def _risk_build_structured_prediction_payload(
     findings = []
     raw_findings = base_payload.get("findings")
     if isinstance(raw_findings, list):
-        findings.extend(raw_findings)
+        findings.extend(_risk_enrich_explicit_findings(raw_findings))
 
     cyber_data = base_payload.get("cyber_data")
     if cyber_data is None and base_payload.get("scanned_nodes") is not None:
@@ -4088,6 +4122,131 @@ def _build_ids_live_context(source: str) -> dict:
     }
 
 
+IDS_PROCESS_TELEMETRY_REQUEST_TIMEOUT_SEC = 2.5
+IDS_PROCESS_TELEMETRY_SERIES_META = {
+    "main": {"label": "Main PLC", "color": "#0d6efd"},
+    "backup": {"label": "Backup PLC", "color": "#fd7e14"},
+}
+
+
+def _historian_status_base_urls() -> list[str]:
+    explicit_base_url = str(os.environ.get("HISTORIAN_STATUS_URL", "")).strip()
+    configured_urls = [
+        item.strip().rstrip("/")
+        for item in str(os.environ.get("HISTORIAN_STATUS_URLS", "")).split(",")
+        if item.strip()
+    ]
+
+    default_urls = [
+        "http://historian:4840",
+        "http://127.0.0.1:4840",
+        "http://localhost:4840",
+    ]
+    if not os.path.exists("/.dockerenv"):
+        default_urls = [
+            "http://127.0.0.1:4840",
+            "http://localhost:4840",
+            "http://historian:4840",
+        ]
+
+    candidates: list[str] = []
+    for base_url in ([explicit_base_url] if explicit_base_url else []) + configured_urls + default_urls:
+        normalized = base_url.rstrip("/")
+        if normalized and normalized not in candidates:
+            candidates.append(normalized)
+    return candidates
+
+
+def _iso_timestamp_from_value(value) -> str:
+    if value in (None, ""):
+        return ""
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(float(value), tz=dt_timezone.utc).isoformat()
+    raw = str(value).strip()
+    if not raw:
+        return ""
+    try:
+        return datetime.fromtimestamp(float(raw), tz=dt_timezone.utc).isoformat()
+    except (TypeError, ValueError):
+        return raw
+
+
+def _fetch_historian_status_payload() -> tuple[dict | None, list[str], list[str]]:
+    attempted_urls: list[str] = []
+    errors: list[str] = []
+
+    for base_url in _historian_status_base_urls():
+        attempted_urls.append(base_url)
+        try:
+            response = requests.get(f"{base_url}/", timeout=IDS_PROCESS_TELEMETRY_REQUEST_TIMEOUT_SEC)
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                errors.append(f"{base_url}: historian payload must be a JSON object")
+                continue
+            return payload, attempted_urls, errors
+        except requests.RequestException as exc:
+            errors.append(f"{base_url}: {exc}")
+        except ValueError as exc:
+            errors.append(f"{base_url}: invalid JSON response ({exc})")
+
+    return None, attempted_urls, errors
+
+
+def _build_ids_process_telemetry_payload() -> tuple[dict, int]:
+    payload, attempted_urls, errors = _fetch_historian_status_payload()
+    if payload is None:
+        return (
+            {
+                "status": "error",
+                "error": "Unable to reach historian status telemetry",
+                "attempted_urls": attempted_urls,
+                "details": errors,
+                "series": [],
+            },
+            502,
+        )
+
+    profiles = payload.get("profiles") if isinstance(payload.get("profiles"), dict) else {}
+    series = []
+    sample_epoch = 0.0
+
+    for profile_key, meta in IDS_PROCESS_TELEMETRY_SERIES_META.items():
+        profile_payload = profiles.get(profile_key) if isinstance(profiles.get(profile_key), dict) else {}
+        values = profile_payload.get("values") if isinstance(profile_payload.get("values"), dict) else {}
+        updated_at_raw = profile_payload.get("updated_at") or payload.get("generated_at")
+        try:
+            updated_at_epoch = float(updated_at_raw or 0.0)
+        except (TypeError, ValueError):
+            updated_at_epoch = 0.0
+        sample_epoch = max(sample_epoch, updated_at_epoch)
+
+        series.append(
+            {
+                "key": profile_key,
+                "label": meta["label"],
+                "color": meta["color"],
+                "connected": bool(profile_payload.get("connected")),
+                "endpoint": profile_payload.get("endpoint", ""),
+                "updated_at": _iso_timestamp_from_value(updated_at_raw),
+                "metric": "average_pressure",
+                "value": values.get("average_pressure"),
+                "health_code": values.get("health_code"),
+                "bridge_online": values.get("bridge_online"),
+            }
+        )
+
+    return (
+        {
+            "status": "ok",
+            "historian_status": str(payload.get("status") or "unknown"),
+            "sample_time": _iso_timestamp_from_value(sample_epoch or payload.get("generated_at")),
+            "series": series,
+        },
+        200,
+    )
+
+
 @require_http_methods(["GET"])
 def siem_ids_live_page(request):
     # Backward-compatible route; default to network IDS live stream.
@@ -4149,6 +4308,12 @@ def siem_ids_network_live_updates(request):
 @require_http_methods(["GET"])
 def siem_ids_process_live_updates(request):
     return _siem_ids_live_updates_by_source(request, source="ids-process")
+
+
+@require_http_methods(["GET"])
+def siem_ids_process_telemetry(request):
+    payload, status_code = _build_ids_process_telemetry_payload()
+    return JsonResponse(payload, status=status_code)
 
 
 @require_http_methods(["GET"])

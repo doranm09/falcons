@@ -12,6 +12,7 @@ from django.test import override_settings
 from unittest.mock import patch, MagicMock
 from decimal import Decimal
 import ipaddress
+import requests
 from datetime import timedelta
 from .models import *
 from .tasks import scan_network_task, launch_openvas_scan_task, poll_openvas_results
@@ -528,6 +529,30 @@ class ScanViewTests(TransactionTestCase):
         response = self.client.get(reverse('dashboard:start-scan'))
         self.assertEqual(response.status_code, 405)
         self.assertJSONEqual(response.content, {"error": "Only POST allowed"})
+
+    @patch('dashboard.views.requests.post')
+    def test_pentest_modbus_unavailable_returns_kali_hint(self, mock_post):
+        mock_post.side_effect = requests.RequestException("connection refused")
+
+        response = self.client.post(reverse('dashboard:pentest_modbus'))
+
+        self.assertEqual(response.status_code, 502)
+        payload = response.json()
+        self.assertEqual(payload["error"], "Unable to reach the pentest backend")
+        self.assertIn("up -d kali-attacker", payload["hint"])
+        self.assertTrue(payload["attempted_urls"])
+
+    @patch('dashboard.views.requests.post')
+    def test_pentest_modbus_proxies_backend_error_status(self, mock_post):
+        backend_response = MagicMock()
+        backend_response.status_code = 500
+        backend_response.json.return_value = {"error": "restore failed"}
+        mock_post.return_value = backend_response
+
+        response = self.client.post(reverse('dashboard:pentest_modbus'))
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json()["error"], "restore failed")
 
 
 class GraphViewTests(TestCase):
@@ -2834,6 +2859,42 @@ class RiskAssessmentPredictionPayloadTests(TestCase):
         self.assertEqual(forwarded["findings"][0]["cvss"], 7.5)
 
     @patch("dashboard.views._risk_post_cyberpen")
+    def test_probability_api_preserves_explicit_plc_bucket_hint(self, mock_post_cyberpen):
+        mock_post_cyberpen.return_value = {
+            "status": "ok",
+            "updated_nodes": ["plc-main"],
+            "results": {"0": {"plc-main": {"normal": 0.8, "faulty": 0.15, "compromised": 0.05}}},
+        }
+
+        response = self.client.post(
+            reverse("dashboard:risk_assessment_probability"),
+            data=json.dumps(
+                {
+                    "T": 2,
+                    "findings": [
+                        {
+                            "asset": "plc-main",
+                            "cve": "CVE-TEST-EXPLICIT",
+                            "cvss": 6.8,
+                            "bucket_hint": "vul_tech3",
+                            "description": "Explicit bucket should survive forwarding",
+                        }
+                    ],
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_post_cyberpen.assert_called_once()
+        forwarded = mock_post_cyberpen.call_args.args[0]
+        self.assertEqual(forwarded["T"], 2)
+        self.assertEqual(len(forwarded["findings"]), 1)
+        self.assertEqual(forwarded["findings"][0]["asset"], "plc-main")
+        self.assertEqual(forwarded["findings"][0]["cve"], "CVE-TEST-EXPLICIT")
+        self.assertEqual(forwarded["findings"][0]["bucket_hint"], "vul_tech3")
+
+    @patch("dashboard.views._risk_post_cyberpen")
     def test_probability_api_accepts_cyber_data_payload(self, mock_post_cyberpen):
         mock_post_cyberpen.return_value = {
             "status": "ok",
@@ -2875,6 +2936,7 @@ class RiskAssessmentPredictionPayloadTests(TestCase):
         self.assertEqual(forwarded["findings"][0]["cve"], "CVE-TEST-0002")
         self.assertEqual(forwarded["findings"][0]["cvss"], 8.1)
         self.assertEqual(forwarded["findings"][0]["source"], "scan")
+        self.assertEqual(forwarded["findings"][0]["bucket_hint"], "vul_tech2")
 
     def test_probability_api_rejects_invalid_findings_type(self):
         response = self.client.post(
@@ -2994,6 +3056,46 @@ class RiskAssessmentPredictionPayloadTests(TestCase):
         self.assertEqual(forwarded["findings"][0]["asset"], "plc-main")
         self.assertEqual(forwarded["findings"][0]["cve"], "CVE-TEST-0003")
         self.assertEqual(forwarded["findings"][0]["epss"], 0.55)
+
+    @patch("dashboard.views._risk_post_cyberpen")
+    def test_probability_api_maps_plc_dos_findings_to_fault_bucket(self, mock_post_cyberpen):
+        mock_post_cyberpen.return_value = {
+            "status": "ok",
+            "updated_nodes": ["plc-main"],
+            "results": {"0": {"plc-main": {"normal": 0.6, "faulty": 0.3, "compromised": 0.1}}},
+        }
+
+        response = self.client.post(
+            reverse("dashboard:risk_assessment_probability"),
+            data=json.dumps(
+                {
+                    "T": 2,
+                    "cyber_data": {
+                        "scanned_nodes": [
+                            {
+                                "id": "plc-main",
+                                "vulnerability": [
+                                    {
+                                        "id": "CVE-TEST-DOS",
+                                        "cvss": 7.4,
+                                        "description": "Denial of service can crash the PLC runtime",
+                                        "source": "scan",
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_post_cyberpen.assert_called_once()
+        forwarded = mock_post_cyberpen.call_args.args[0]
+        self.assertEqual(forwarded["findings"][0]["asset"], "plc-main")
+        self.assertEqual(forwarded["findings"][0]["cve"], "CVE-TEST-DOS")
+        self.assertEqual(forwarded["findings"][0]["bucket_hint"], "vul_tech3")
 
 
 class AgentVersionTests(TestCase):
@@ -3181,6 +3283,62 @@ class SiemViewIntegrationTests(TestCase):
         self.assertContains(response, "sensor-a")
         self.assertContains(response, "sensor-b")
         self.assertContains(response, "stale")
+
+    def test_siem_ids_process_live_page_uses_process_graph(self):
+        response = self.client.get(reverse("dashboard:siem_ids_process_live_page"))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "dashboard/siem_ids_live.html")
+        self.assertContains(response, "Main PLC")
+        self.assertContains(response, "IDS Score")
+        self.assertContains(response, reverse("dashboard:siem_ids_process_telemetry"))
+        self.assertContains(response, "ids-process-main-chart")
+        self.assertContains(response, "ids-process-score-chart")
+
+    @patch("dashboard.views.requests.get")
+    def test_siem_ids_process_telemetry_api_returns_historian_snapshot(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {
+            "status": "ok",
+            "generated_at": 1713964200.0,
+            "profiles": {
+                "main": {
+                    "connected": True,
+                    "endpoint": "opc.tcp://10.1.1.14:4840/main",
+                    "updated_at": 1713964200.0,
+                    "values": {
+                        "average_pressure": 2234,
+                        "health_code": 1,
+                        "bridge_online": 1,
+                    },
+                },
+                "backup": {
+                    "connected": False,
+                    "endpoint": "opc.tcp://10.1.2.15:4840/backup",
+                    "updated_at": 1713964198.0,
+                    "values": {
+                        "average_pressure": 2230,
+                        "health_code": 2,
+                        "bridge_online": 0,
+                    },
+                },
+            },
+        }
+        mock_get.return_value = mock_response
+
+        response = self.client.get(reverse("dashboard:siem_ids_process_telemetry"))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["historian_status"], "ok")
+        self.assertEqual(len(payload["series"]), 2)
+        self.assertEqual(payload["series"][0]["key"], "main")
+        self.assertEqual(payload["series"][0]["value"], 2234)
+        self.assertTrue(payload["series"][0]["connected"])
+        self.assertEqual(payload["series"][1]["key"], "backup")
+        self.assertEqual(payload["series"][1]["value"], 2230)
+        self.assertFalse(payload["series"][1]["connected"])
 
     def test_siem_event_search_filters_by_module_dataset_and_observer(self):
         response = self.client.get(

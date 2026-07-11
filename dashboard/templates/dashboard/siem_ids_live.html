@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block content %}
-<div class="container-fluid px-4 py-4" id="siem-ids-live" data-updates-url="{% url updates_url_name %}" data-after-id="{{ initial_after_id }}" data-live-kind="{{ live_kind }}">
+<div class="container-fluid px-4 py-4" id="siem-ids-live" data-updates-url="{% url updates_url_name %}" data-after-id="{{ initial_after_id }}" data-live-kind="{{ live_kind }}"{% if live_kind == 'process' %} data-process-telemetry-url="{% url 'dashboard:siem_ids_process_telemetry' %}"{% endif %}>
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
     <div>
       <h2 class="mb-1">{{ page_title }}</h2>
@@ -27,6 +27,57 @@
     </li>
   </ul>
 
+  {% if live_kind == 'process' %}
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <h5 class="card-title">Stream Controls</h5>
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <button class="btn btn-outline-secondary btn-sm" id="ids-clear-table">Clear Live Rows</button>
+        <button class="btn btn-danger btn-sm" id="ids-modbus-attack-demo" data-url="{% url 'dashboard:pentest_modbus' %}">Modbus Injection Attack (demo)</button>
+      </div>
+      <p class="text-muted small mt-3 mb-0">The left chart plots main-cell historian pressure. The right chart plots live IDS score with the anomaly threshold as a dashed line.</p>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-xl-6">
+      <div class="card shadow-sm h-100" data-process-profile-card data-process-profile="main">
+        <div class="card-body">
+          <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+            <div>
+              <h5 class="card-title mb-1">Main PLC</h5>
+              <p class="text-muted small mb-0">Main-cell historian pressure from the live historian status feed.</p>
+            </div>
+            <div class="d-flex gap-2 flex-wrap" data-process-role="legend">
+              <span class="badge text-bg-light border">Waiting for telemetry...</span>
+            </div>
+          </div>
+          <svg id="ids-process-main-chart" data-process-role="chart" class="mt-3 w-100" height="560" viewBox="0 0 720 560" preserveAspectRatio="none" role="img" aria-label="Main PLC live process telemetry chart" style="border: 1px solid rgba(100, 116, 139, 0.25); border-radius: 12px; background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(241, 245, 249, 0.94));"></svg>
+          <div class="small text-muted mt-2" data-process-role="status">Polling historian and IDS process data...</div>
+          <div class="small text-muted mt-1" data-process-role="meta"></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-xl-6">
+      <div class="card shadow-sm h-100" data-process-score-card>
+        <div class="card-body">
+          <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+            <div>
+              <h5 class="card-title mb-1">IDS Score</h5>
+              <p class="text-muted small mb-0">Live process IDS score with the anomaly threshold shown as a dashed baseline.</p>
+            </div>
+            <div class="d-flex gap-2 flex-wrap" data-process-score-role="legend">
+              <span class="badge text-bg-light border">Waiting for IDS score...</span>
+            </div>
+          </div>
+          <svg id="ids-process-score-chart" data-process-score-role="chart" class="mt-3 w-100" height="560" viewBox="0 0 720 560" preserveAspectRatio="none" role="img" aria-label="Process IDS score chart" style="border: 1px solid rgba(100, 116, 139, 0.25); border-radius: 12px; background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(241, 245, 249, 0.94));"></svg>
+          <div class="small text-muted mt-2" data-process-score-role="status">Waiting for IDS process scores...</div>
+          <div class="small text-muted mt-1" data-process-score-role="meta"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% else %}
   <div class="row g-3 mb-4">
     <div class="col-xl-4">
       <div class="card shadow-sm h-100">
@@ -34,11 +85,7 @@
           <h5 class="card-title">Stream Controls</h5>
           <div class="d-flex flex-wrap gap-2 align-items-center">
             <button class="btn btn-outline-secondary btn-sm" id="ids-clear-table">Clear Live Rows</button>
-            {% if live_kind == 'network' %}
             <button class="btn btn-danger btn-sm" id="ids-network-scan-demo" data-url="{% url 'dashboard:pentest_nmap' %}">Network Scan (demo)</button>
-            {% elif live_kind == 'process' %}
-            <button class="btn btn-danger btn-sm" id="ids-modbus-attack-demo" data-url="{% url 'dashboard:pentest_modbus' %}">Modbus Injection Attack (demo)</button>
-            {% endif %}
           </div>
           <p class="text-muted small mt-3 mb-0">Keep this tab open to watch score and threshold changes in real time.</p>
         </div>
@@ -61,6 +108,7 @@
       </div>
     </div>
   </div>
+  {% endif %}
 
   <div class="card shadow-sm">
     <div class="card-body">
@@ -136,5 +184,5 @@
   // Make CSRF token available to siem-ids-live.js
   window.CSRF_TOKEN = '{{ csrf_token }}';
 </script>
-<script src="{% static 'js/siem-ids-live.js' %}"></script>
+<script src="{% static 'js/siem-ids-live.js' %}?v=20260427-process-score-panel"></script>
 {% endblock %}

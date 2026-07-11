@@ -2,7 +2,7 @@ FROM python:3.12-slim
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends gcc iproute2 python3-dev \
+ && apt-get install -y --no-install-recommends gcc iproute2 iptables python3-dev \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

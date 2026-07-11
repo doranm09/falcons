@@ -160,6 +160,8 @@ from django.views.decorators.http import require_GET
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils.timezone import now
 from django.utils import timezone
+from django.utils.timesince import timesince
+from django.template.defaultfilters import filesizeformat
 from typing import Optional
 import json
 import math
@@ -764,6 +766,548 @@ def _build_agent_sbom_vulnerability_context(node, sbom_reports):
         "rows": vulnerability_rows,
         "total_rows": len(vulnerability_rows),
         "source_label": source_label,
+    }
+
+
+def _normalize_agent_port_rows(*port_sources) -> list[dict]:
+    normalized = []
+    seen = set()
+
+    for source in port_sources:
+        if not isinstance(source, list):
+            continue
+        for entry in source:
+            if not isinstance(entry, dict):
+                continue
+            raw_port = entry.get("port")
+            if raw_port in (None, ""):
+                raw_port = entry.get("id")
+            protocol = str(entry.get("protocol") or entry.get("Protocol") or "").strip().upper()
+            status = str(entry.get("state") or entry.get("status") or "").strip().upper()
+
+            try:
+                port_number = int(raw_port)
+            except (TypeError, ValueError):
+                port_number = None
+
+            port_display = str(port_number) if port_number is not None else str(raw_port or "").strip()
+            if not port_display:
+                continue
+
+            key = (port_display, protocol, status)
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(
+                {
+                    "port": port_display,
+                    "port_number": port_number,
+                    "protocol": protocol or "-",
+                    "status": status or "-",
+                }
+            )
+
+    normalized.sort(
+        key=lambda item: (
+            0 if item["status"] == "LISTEN" else 1,
+            item["port_number"] if item["port_number"] is not None else 999999,
+            item["protocol"],
+        )
+    )
+    return normalized
+
+
+def _expected_numeric_ports(text: str = "") -> set[int]:
+    ports = set()
+    for token in str(text or "").replace("/", ",").split(","):
+        token = token.strip()
+        if token.isdigit():
+            ports.add(int(token))
+    return ports
+
+
+def _build_agent_environment_summary_context(
+    agent,
+    node,
+    *,
+    sbom_reports,
+    sbom_vulnerability_rows,
+    sbom_vulnerability_source,
+):
+    latest_metadata = NetworkMetadata.objects.filter(agent=agent).order_by("-timestamp").first()
+    metadata_count = NetworkMetadata.objects.filter(agent=agent).count()
+    recent_connections = list(NetworkConnection.objects.filter(agent=agent).order_by("-last_seen")[:100])
+    command_count = AgentCommand.objects.filter(agent_id=agent.agent_id).count()
+    result_count = CommandResult.objects.filter(agent_id=agent.agent_id).count()
+
+    observed_ips = []
+    for ip_list in (_agent_interface_ips(agent), _node_interface_ips(node), _metadata_interface_ips(latest_metadata)):
+        for ip_text in ip_list:
+            if ip_text and ip_text not in observed_ips:
+                observed_ips.append(ip_text)
+
+    override = _resolve_iaea_override(
+        agent.hostname,
+        getattr(node, "name", ""),
+        observed_ips,
+    )
+
+    primary_ip = observed_ips[0] if observed_ips else str(getattr(agent, "ip_address", "") or "").strip()
+    if override:
+        layer_slug = str(override.get("layer") or "").strip()
+        role_label = str(override.get("role_label") or "Asset").strip()
+        role_icon = str(override.get("icon") or "bi-hdd-network-fill").strip()
+        segment_label = str(override.get("segment_label") or _topology_segment_label(primary_ip)).strip()
+        display_name = str(override.get("label") or override.get("hostname") or agent.hostname).strip()
+        canonical_name = str(override.get("hostname") or display_name).strip()
+        profile_ips = [str(ip).strip() for ip in override.get("ip_addresses", []) if str(ip).strip()] or observed_ips
+    else:
+        layer_slug = _infer_purdue_layer(getattr(node, "name", ""), agent.hostname, primary_ip, getattr(node, "description", ""))
+        _role_slug, role_label, role_icon = _infer_topology_role(
+            getattr(node, "name", "") or agent.hostname,
+            agent.hostname,
+            primary_ip,
+            getattr(node, "description", ""),
+        )
+        segment_label = _topology_segment_label(primary_ip)
+        display_name = str(getattr(node, "name", "") or agent.hostname or agent.agent_id).strip()
+        canonical_name = display_name
+        profile_ips = observed_ips or ([primary_ip] if primary_ip else [])
+
+    layer_meta = _topology_layer_meta(layer_slug)
+
+    expected_paths = []
+    if override:
+        for path in RISK_HYBRID_VALIDATED_PATHS:
+            source_name = str(path.get("source") or "").strip()
+            target_name = str(path.get("target") or "").strip()
+            direction = ""
+            peer_label = ""
+            if source_name == canonical_name:
+                direction = "Outbound"
+                peer_label = target_name
+            elif target_name == canonical_name:
+                direction = "Inbound"
+                peer_label = source_name
+            if not direction:
+                continue
+            expected_paths.append(
+                {
+                    "direction": direction,
+                    "peer_label": peer_label,
+                    "service": str(path.get("service") or "-").strip(),
+                    "ports": str(path.get("ports") or "-").strip(),
+                    "layer_path": str(path.get("layer_path") or "").strip(),
+                    "peer_tokens": {peer_label.lower()},
+                    "observed": False,
+                }
+            )
+
+    peer_groups = {}
+    established_count = 0
+    listening_count = 0
+
+    for conn in recent_connections:
+        status = str(getattr(conn, "status", "") or "").strip().upper()
+        if status == "ESTABLISHED":
+            established_count += 1
+        if "LISTEN" in status:
+            listening_count += 1
+
+        remote_host, remote_port = _parse_endpoint_address(getattr(conn, "remote_address", ""))
+        _local_host, local_port = _parse_endpoint_address(getattr(conn, "local_address", ""))
+        if not remote_host:
+            continue
+        remote_host_text = str(remote_host).strip()
+        if remote_host_text.lower() in {"127.0.0.1", "::1", "localhost"} or _is_likely_docker_gateway(remote_host_text):
+            continue
+
+        remote_override = _resolve_iaea_override(remote_host_text, "", [remote_host_text])
+        if remote_override:
+            peer_key = f"static:{remote_override['hostname']}"
+            peer_label = str(remote_override.get("label") or remote_override.get("hostname") or remote_host_text).strip()
+            peer_layer_slug = str(remote_override.get("layer") or "").strip()
+            peer_role_label = str(remote_override.get("role_label") or "Asset").strip()
+            peer_segment_label = str(remote_override.get("segment_label") or "").strip()
+            peer_ip_display = ", ".join(
+                [str(ip).strip() for ip in remote_override.get("ip_addresses", []) if str(ip).strip()]
+            ) or remote_host_text
+        else:
+            peer_key = remote_host_text
+            peer_label = remote_host_text
+            peer_layer_slug = _infer_purdue_layer("", remote_host_text, remote_host_text, "")
+            _peer_role_slug, peer_role_label, _peer_role_icon = _infer_topology_role("", remote_host_text, remote_host_text, "")
+            peer_segment_label = _topology_segment_label(remote_host_text)
+            peer_ip_display = remote_host_text
+
+        group = peer_groups.setdefault(
+            peer_key,
+            {
+                "label": peer_label,
+                "ip_display": peer_ip_display,
+                "role_label": peer_role_label,
+                "layer_slug": peer_layer_slug,
+                "segment_label": peer_segment_label,
+                "ports": set(),
+                "statuses": set(),
+                "process_counts": defaultdict(int),
+                "connection_count": 0,
+                "last_seen": None,
+                "expected": False,
+                "identity_tokens": {
+                    str(peer_label).strip().lower(),
+                    str(remote_host_text).strip().lower(),
+                },
+            },
+        )
+
+        if remote_override:
+            group["identity_tokens"].update(_iaea_identity_tokens(remote_override))
+            group["identity_tokens"].update(
+                str(ip).strip().lower()
+                for ip in remote_override.get("ip_addresses", [])
+                if str(ip).strip()
+            )
+
+        observed_port = remote_port if remote_port is not None else local_port
+        protocol = str(getattr(conn, "protocol", "") or "").strip().upper() or "?"
+        if observed_port is not None:
+            group["ports"].add(f"{observed_port}/{protocol}")
+        if status:
+            group["statuses"].add(status)
+        if getattr(conn, "process_name", ""):
+            group["process_counts"][str(conn.process_name).strip()] += 1
+        group["connection_count"] += 1
+        if getattr(conn, "last_seen", None) and (
+            group["last_seen"] is None or conn.last_seen > group["last_seen"]
+        ):
+            group["last_seen"] = conn.last_seen
+
+    for path in expected_paths:
+        peer_override = IAEA_TOPOLOGY_BY_HOSTNAME.get(path["peer_label"].lower())
+        if peer_override:
+            path["peer_tokens"].update(_iaea_identity_tokens(peer_override))
+            path["peer_tokens"].update(
+                str(ip).strip().lower()
+                for ip in peer_override.get("ip_addresses", [])
+                if str(ip).strip()
+            )
+        expected_ports = _expected_numeric_ports(path["ports"])
+        for group in peer_groups.values():
+            if not path["peer_tokens"].intersection(group["identity_tokens"]):
+                continue
+            if expected_ports:
+                observed_ports = set()
+                for token in group["ports"]:
+                    port_text = str(token).split("/", 1)[0]
+                    if port_text.isdigit():
+                        observed_ports.add(int(port_text))
+                if not observed_ports.intersection(expected_ports):
+                    continue
+            path["observed"] = True
+            group["expected"] = True
+            break
+
+    observed_peers = []
+    for group in peer_groups.values():
+        top_processes = ", ".join(
+            name
+            for name, _count in sorted(
+                group["process_counts"].items(),
+                key=lambda item: (-item[1], item[0]),
+            )[:2]
+        ) or "-"
+        service_summary = ", ".join(
+            sorted(
+                group["ports"],
+                key=lambda item: (
+                    int(item.split("/", 1)[0]) if item.split("/", 1)[0].isdigit() else 999999,
+                    item,
+                ),
+            )[:4]
+        ) or "-"
+        status_summary = ", ".join(sorted(group["statuses"])) or "-"
+        peer_layer_meta = _topology_layer_meta(group["layer_slug"])
+        observed_peers.append(
+            {
+                "label": group["label"],
+                "ip_display": group["ip_display"],
+                "role_label": group["role_label"],
+                "layer_label": peer_layer_meta["label"],
+                "layer_accent": peer_layer_meta["accent"],
+                "segment_label": group["segment_label"],
+                "connection_count": group["connection_count"],
+                "service_summary": service_summary,
+                "status_summary": status_summary,
+                "process_summary": top_processes,
+                "last_seen": group["last_seen"],
+                "expected": group["expected"],
+            }
+        )
+
+    observed_peers.sort(
+        key=lambda item: (
+            0 if item["expected"] else 1,
+            -item["connection_count"],
+            item["label"].lower(),
+        )
+    )
+
+    severity_counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Unknown": 0}
+    for row in sbom_vulnerability_rows:
+        severity_name = str(row.get("severity") or "").strip().title() or "Unknown"
+        if severity_name not in severity_counts:
+            severity_name = "Unknown"
+        severity_counts[severity_name] += 1
+
+    latest_report = sbom_reports[0] if sbom_reports else None
+    package_count = 0
+    package_source = "No package inventory collected yet"
+    if latest_report:
+        package_count = int(getattr(latest_report, "package_count", 0) or 0)
+        package_source = "Latest SBOM report"
+    elif node and node.installed_libraries:
+        package_count = len(node.installed_libraries)
+        package_source = "Cyber template data"
+
+    interface_cards = []
+    seen_interfaces = set()
+    for iface in (getattr(agent, "interfaces", None) or []):
+        if not isinstance(iface, dict):
+            continue
+        name = str(iface.get("name") or iface.get("interface") or "").strip()
+        ip_text = str(iface.get("ip") or "").strip()
+        mac_text = str(iface.get("mac") or "").strip()
+        key = (name, ip_text, mac_text)
+        if key in seen_interfaces or not any(key):
+            continue
+        seen_interfaces.add(key)
+        interface_cards.append(
+            {
+                "name": name or "interface",
+                "ip": ip_text or "-",
+                "mac": mac_text or "-",
+                "segment_label": _topology_segment_label(ip_text) if ip_text else "",
+            }
+        )
+    if not interface_cards and node:
+        for iface in node.interfaces.all():
+            key = (str(iface.name).strip(), str(iface.ip).strip(), str(iface.mac).strip())
+            if key in seen_interfaces:
+                continue
+            seen_interfaces.add(key)
+            interface_cards.append(
+                {
+                    "name": str(iface.name).strip() or "interface",
+                    "ip": str(iface.ip).strip() or "-",
+                    "mac": str(iface.mac).strip() or "-",
+                    "segment_label": _topology_segment_label(str(iface.ip).strip()),
+                }
+            )
+
+    listening_ports = _normalize_agent_port_rows(
+        getattr(agent, "active_ports", None),
+        getattr(latest_metadata, "active_ports", None),
+        getattr(node, "active_ports", None),
+    )
+    top_port_summary = ", ".join(
+        f"{entry['port']}/{entry['protocol']}"
+        for entry in listening_ports[:4]
+    ) or "No listening ports reported"
+
+    expected_observed_count = sum(1 for path in expected_paths if path["observed"])
+    mapped_peer_count = sum(1 for peer in observed_peers if peer["expected"])
+    unmodeled_peer_count = sum(1 for peer in observed_peers if not peer["expected"])
+    critical_high_total = severity_counts["Critical"] + severity_counts["High"]
+
+    summary_lines = []
+    if override:
+        summary_lines.append(
+            f"Mapped to {layer_meta['label']} as a {role_label} in the {segment_label}."
+        )
+        if expected_paths:
+            summary_lines.append(
+                f"{expected_observed_count} of {len(expected_paths)} validated communication paths were observed in recent telemetry."
+            )
+    else:
+        summary_lines.append(
+            f"No static environment mapping matched this host, so the summary is built from live telemetry on {segment_label}."
+        )
+    if sbom_vulnerability_rows:
+        summary_lines.append(
+            f"{len(sbom_vulnerability_rows)} vulnerability findings were extracted, with {critical_high_total} critical/high findings."
+        )
+    else:
+        summary_lines.append("No SBOM-derived vulnerability findings are currently attached to this agent.")
+
+    environment_profile = {
+        "display_name": display_name,
+        "canonical_name": canonical_name,
+        "role_label": role_label,
+        "role_icon": role_icon,
+        "layer_label": layer_meta["label"],
+        "layer_accent": layer_meta["accent"],
+        "segment_label": segment_label,
+        "ip_addresses": profile_ips,
+        "summary": " ".join(summary_lines),
+    }
+
+    environment_metrics = [
+        {
+            "label": "Critical / High",
+            "value": str(critical_high_total),
+            "note": f"{len(sbom_vulnerability_rows)} total findings",
+        },
+        {
+            "label": "Packages",
+            "value": str(package_count),
+            "note": package_source,
+        },
+        {
+            "label": "Expected Paths",
+            "value": f"{expected_observed_count}/{len(expected_paths)}" if expected_paths else "0",
+            "note": "Validated paths seen recently" if expected_paths else "No validated paths modeled",
+        },
+        {
+            "label": "Observed Peers",
+            "value": str(len(observed_peers)),
+            "note": f"{mapped_peer_count} mapped, {unmodeled_peer_count} outside model",
+        },
+        {
+            "label": "Listening Ports",
+            "value": str(len(listening_ports)),
+            "note": top_port_summary,
+        },
+    ]
+
+    top_findings = [
+        str(row.get("cve_id") or "").strip()
+        for row in sbom_vulnerability_rows[:3]
+        if str(row.get("cve_id") or "").strip()
+    ]
+    top_findings_text = f" Top findings: {', '.join(top_findings)}." if top_findings else ""
+    finding_items = [
+        {
+            "title": "Vulnerability Posture",
+            "detail": (
+                f"{len(sbom_vulnerability_rows)} findings"
+                f"{f' from {sbom_vulnerability_source}' if sbom_vulnerability_source else ''}. "
+                f"Critical: {severity_counts['Critical']}, High: {severity_counts['High']}, "
+                f"Medium: {severity_counts['Medium']}, Low: {severity_counts['Low']}."
+                f"{top_findings_text}"
+            ),
+        },
+        {
+            "title": "Network Exposure",
+            "detail": (
+                f"{len(listening_ports)} listening or reported service ports were captured. "
+                f"Top exposures: {top_port_summary}."
+            ),
+        },
+        {
+            "title": "Observed Communications",
+            "detail": (
+                f"{len(observed_peers)} remote peers were observed across {len(recent_connections)} recent connection records. "
+                f"{established_count} were established sessions and {listening_count} were listeners."
+            ),
+        },
+        {
+            "title": "Monitoring Depth",
+            "detail": (
+                f"{metadata_count} network metadata snapshots, {len(interface_cards)} interfaces, "
+                f"{len(getattr(agent, 'processes', None) or [])} processes, {command_count} commands, and {result_count} command results are available for this host."
+            ),
+        },
+    ]
+
+    heartbeat_value = "Never"
+    if agent.last_heartbeat:
+        heartbeat_value = f"{timesince(agent.last_heartbeat)} ago"
+
+    metadata_value = "Not collected"
+    metadata_detail = "No network metadata snapshots stored yet"
+    metadata_badge = "warning"
+    metadata_status = "Missing"
+    if latest_metadata:
+        metadata_value = f"{metadata_count} snapshot{'s' if metadata_count != 1 else ''}"
+        metadata_detail = f"Last collected {timesince(latest_metadata.timestamp)} ago"
+        metadata_badge = "success"
+        metadata_status = "Fresh"
+
+    process_count = len(getattr(agent, "processes", None) or [])
+    monitoring_coverage = [
+        {
+            "label": "Heartbeat",
+            "value": heartbeat_value,
+            "detail": f"Heartbeat interval {agent.heartbeat_interval}s",
+            "badge_class": "success" if agent.is_online() else "danger",
+            "status_label": "Online" if agent.is_online() else "Stale",
+        },
+        {
+            "label": "Network Metadata",
+            "value": metadata_value,
+            "detail": metadata_detail,
+            "badge_class": metadata_badge,
+            "status_label": metadata_status,
+        },
+        {
+            "label": "Process Inventory",
+            "value": str(process_count),
+            "detail": "Current running process list reported" if process_count else "No process list reported yet",
+            "badge_class": "success" if process_count else "warning",
+            "status_label": "Collected" if process_count else "Missing",
+        },
+        {
+            "label": "Interface Inventory",
+            "value": str(len(interface_cards)),
+            "detail": "Interface addresses available for correlation" if interface_cards else "No interface data reported yet",
+            "badge_class": "success" if interface_cards else "warning",
+            "status_label": "Collected" if interface_cards else "Missing",
+        },
+        {
+            "label": "Package Inventory",
+            "value": str(package_count),
+            "detail": package_source,
+            "badge_class": "success" if package_count else "secondary",
+            "status_label": "Available" if package_count else "Unavailable",
+        },
+    ]
+
+    system_facts = [
+        {"label": "Primary IP", "value": primary_ip or "Unknown"},
+        {
+            "label": "Operating System",
+            "value": (
+                f"{str(agent.os_type or '').strip()} {str(agent.os_version or '').strip()}".strip()
+                or str(getattr(node, "os_info", "") or "").strip()
+                or "Unknown"
+            ),
+        },
+        {"label": "Platform", "value": str(agent.platform or getattr(node, "platform_info", "") or "Unknown").strip() or "Unknown"},
+        {"label": "CPU Count", "value": str(agent.cpu_count) if agent.cpu_count else "Unknown"},
+        {"label": "Memory", "value": filesizeformat(agent.memory_total) if agent.memory_total else "Unknown"},
+        {"label": "Agent Version", "value": str(agent.agent_version or "Unknown").strip() or "Unknown"},
+        {"label": "First Seen", "value": agent.first_seen.strftime("%Y-%m-%d %H:%M:%S") if agent.first_seen else "Unknown"},
+        {"label": "Last Heartbeat", "value": agent.last_heartbeat.strftime("%Y-%m-%d %H:%M:%S") if agent.last_heartbeat else "Never"},
+        {"label": "Last Command Sent", "value": agent.last_command_sent.strftime("%Y-%m-%d %H:%M:%S") if agent.last_command_sent else "Never"},
+        {"label": "Last Command Result", "value": agent.last_command_result.strftime("%Y-%m-%d %H:%M:%S") if agent.last_command_result else "Never"},
+        {
+            "label": "Response Time",
+            "value": f"{agent.response_time_ms:.1f} ms" if agent.response_time_ms is not None else "Unknown",
+        },
+        {"label": "Consecutive Failures", "value": str(agent.consecutive_failures)},
+    ]
+
+    return {
+        "environment_profile": environment_profile,
+        "environment_metrics": environment_metrics,
+        "environment_findings": finding_items,
+        "monitoring_coverage": monitoring_coverage,
+        "environment_expected_paths": expected_paths,
+        "observed_peers": observed_peers[:10],
+        "interface_cards": interface_cards,
+        "listening_ports": listening_ports,
+        "system_facts": system_facts,
     }
 SIEM_ADMIN_ROLES = (SiemUserRole.Role.ADMIN,)
 GPWR_DEFAULT_HOST = os.environ.get("GPWR_HOST", "128.61.144.101")
@@ -1595,16 +2139,7 @@ def _refresh_agent_statuses():
     return AgentStatus.objects.all().order_by("-last_heartbeat")
 
 def home(request):
-    scan_history = ScanRun.objects.order_by("-timestamp")[:8]
-    running_scans = ScanRun.objects.filter(status="RUNNING").count()
-    pending_scans = ScanRun.objects.filter(status="PENDING").count()
-
-    return render(request, "dashboard/network_scan_home.html", {
-        "scan_history": scan_history,
-        "running_scans": running_scans,
-        "pending_scans": pending_scans,
-        "timestamp": now().timestamp(),
-    })
+    return redirect("dashboard:network_monitoring")
 
 
 def network_scans(request):
@@ -2730,20 +3265,12 @@ def agent_report(request):
     hostname = data.get("hostname")
     interfaces = data.get("interfaces", [])
 
-    # Filter out loopback interface and localhost IPs
-    external_interfaces = [
-        iface for iface in interfaces
-        if iface.get("ip") and
-           not iface.get("ip", "").startswith("127.") and
-           iface.get("ip", "") != "127.0.0.1" and
-           iface.get("ip", "") != "localhost" and
-           iface.get("ip", "") != "::1"
-    ]
-
-    # Use external interface IP, fallback to first interface, then fallback IP
-    ip = (external_interfaces[0].get("ip")
-          if external_interfaces
-          else (interfaces[0].get("ip", "192.168.0.1") if interfaces else "192.168.0.1"))
+    ip = _preferred_agent_inventory_ip(
+        interfaces,
+        hostname=hostname,
+        name=hostname,
+        fallback_ip=str(data.get("ip_address") or "").strip(),
+    ) or "192.168.0.1"
 
     # Update or create AgentStatus record
     agent_status, created = AgentStatus.objects.update_or_create(
@@ -4375,6 +4902,13 @@ def agent_command_result(request):
 def agent_monitoring(request):
     """Main agent monitoring dashboard."""
     agents = _refresh_agent_statuses()
+    for agent in agents:
+        agent.display_ip_address = _preferred_agent_inventory_ip(
+            getattr(agent, "interfaces", None) or [],
+            hostname=agent.hostname,
+            name=agent.hostname,
+            fallback_ip=str(agent.ip_address or "").strip(),
+        ) or str(agent.ip_address or "").strip()
     total_agents = agents.count()
     online_agents = agents.filter(status='online').count()
     offline_agents = agents.filter(status='offline').count()
@@ -4402,10 +4936,17 @@ def agent_status_api(request):
 
     agent_data = []
     for agent in agents:
+        display_ip_address = _preferred_agent_inventory_ip(
+            getattr(agent, "interfaces", None) or [],
+            hostname=agent.hostname,
+            name=agent.hostname,
+            fallback_ip=str(agent.ip_address or "").strip(),
+        ) or str(agent.ip_address or "").strip()
         agent_data.append({
             "agent_id": agent.agent_id,
             "hostname": agent.hostname,
-            "ip_address": agent.ip_address,
+            "ip_address": display_ip_address,
+            "stored_ip_address": agent.ip_address,
             "status": agent.status,
             "os_type": agent.os_type,
             "os_version": agent.os_version,
@@ -4571,6 +5112,13 @@ def agent_details(request, agent_id):
     results = CommandResult.objects.filter(agent_id=agent_id).order_by('-timestamp')[:20]
     sbom_reports = list(SbomReport.objects.filter(agent_id=agent_id).order_by('-created_at')[:5])
     sbom_vulnerability_context = _build_agent_sbom_vulnerability_context(node, sbom_reports)
+    environment_context = _build_agent_environment_summary_context(
+        agent,
+        node,
+        sbom_reports=sbom_reports,
+        sbom_vulnerability_rows=sbom_vulnerability_context["rows"],
+        sbom_vulnerability_source=sbom_vulnerability_context["source_label"],
+    )
 
     # Sliver artifacts for quick deployment (if available)
     try:
@@ -4591,6 +5139,7 @@ def agent_details(request, agent_id):
         'sbom_vulnerability_total_rows': sbom_vulnerability_context["total_rows"],
         'sbom_vulnerability_source': sbom_vulnerability_context["source_label"],
         'sliver_artifacts': sliver_artifacts,
+        **environment_context,
     })
 
 
@@ -5336,25 +5885,53 @@ def _split_endpoint(value, port=None):
     return host, None
 
 
-def _preferred_agent_metadata_ip(interfaces):
-    ranked = []
+def _agent_ip_preference_rank(ip_text: str = "") -> int:
+    ip_text = str(ip_text or "").strip()
+    if not ip_text or ip_text.startswith("127.") or ip_text == "::1":
+        return 99
+    if ip_text.startswith("10."):
+        return 0
+    if ip_text.startswith("192.168."):
+        return 1
+    if ip_text.startswith("172.31.250."):
+        return 3
+    return 2
+
+
+def _preferred_agent_inventory_ip(interfaces, *, hostname: str = "", name: str = "", fallback_ip: str = "") -> str:
+    candidates = []
+    seen = set()
+
     for iface in interfaces or []:
         if not isinstance(iface, dict):
             continue
         ip_text = str(iface.get("ip") or "").strip()
-        if not ip_text or ip_text.startswith("127.") or ip_text == "::1":
+        if not ip_text or _agent_ip_preference_rank(ip_text) >= 99 or ip_text in seen:
             continue
-        if ip_text.startswith("10."):
-            rank = 0
-        elif ip_text.startswith("192.168."):
-            rank = 1
-        elif ip_text.startswith("172.31.250."):
-            rank = 3
-        else:
-            rank = 2
-        ranked.append((rank, ip_text))
+        seen.add(ip_text)
+        candidates.append(ip_text)
+
+    fallback_ip = str(fallback_ip or "").strip()
+    if fallback_ip and _agent_ip_preference_rank(fallback_ip) < 99 and fallback_ip not in seen:
+        seen.add(fallback_ip)
+        candidates.append(fallback_ip)
+
+    override = _resolve_iaea_override(hostname, name, candidates)
+    if override:
+        canonical_ip = str(override.get("ip_address") or "").strip()
+        if canonical_ip:
+            return canonical_ip
+        for ip_text in override.get("ip_addresses", []):
+            ip_text = str(ip_text or "").strip()
+            if ip_text:
+                return ip_text
+
+    ranked = [
+        (_agent_ip_preference_rank(ip_text), index, ip_text)
+        for index, ip_text in enumerate(candidates)
+    ]
     ranked.sort()
-    return ranked[0][1] if ranked else ""
+    return ranked[0][2] if ranked else ""
 
 
 @csrf_exempt
@@ -5382,7 +5959,12 @@ def agent_network_metadata(request):
     except AgentStatus.DoesNotExist:
         return JsonResponse({"error": "Agent not found"}, status=404)
 
-    preferred_ip = _preferred_agent_metadata_ip(interfaces) or str(agent.ip_address or "").strip()
+    preferred_ip = _preferred_agent_inventory_ip(
+        interfaces,
+        hostname=agent.hostname,
+        name=agent.hostname,
+        fallback_ip=str(agent.ip_address or "").strip(),
+    ) or str(agent.ip_address or "").strip()
     if preferred_ip:
         agent.ip_address = preferred_ip
     agent.interfaces = interfaces

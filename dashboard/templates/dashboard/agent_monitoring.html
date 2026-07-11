@@ -91,7 +91,7 @@
                                         <code class="small agent-table-cell">{{ agent.agent_id }}</code>
                                     </td>
                                     <td>{{ agent.hostname }}</td>
-                                    <td>{{ agent.ip_address }}</td>
+                                    <td>{{ agent.display_ip_address|default:agent.ip_address }}</td>
                                     <td>
                                         <div class="d-flex flex-wrap gap-2">
                                             <a href="{% url 'dashboard:agent_details' agent.agent_id %}" class="btn btn-sm btn-outline-primary">
@@ -133,7 +133,7 @@
                                 <div class="agent-mobile-card__meta">
                                     <div>
                                         <span class="agent-mobile-card__meta-label">IP Address</span>
-                                        <div class="agent-mobile-card__meta-value">{{ agent.ip_address }}</div>
+                                        <div class="agent-mobile-card__meta-value">{{ agent.display_ip_address|default:agent.ip_address }}</div>
                                     </div>
                                 </div>
                                 <div class="d-grid gap-2">

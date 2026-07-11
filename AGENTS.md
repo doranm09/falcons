@@ -635,6 +635,16 @@ Working area: `testbed/iaea_rcs_demo/docker-compose-hybrid.yml`, `dashboard/view
   - `10.1.2.x`
   rather than the `172.31.250.x` management subnet
 
+### OOB isolation hardening
+
+- The OOB network is a management / telemetry backhaul, not a port-mirrored fabric.
+- Passive observation still happens on the control-network interfaces such as:
+  - `span-l1a` on `10.1.1.0/24`
+  - `span-l1b` on `10.1.2.0/24`
+  - `suricata-sensor` / `zeek-sensor` on their `10.1.1.x` and `10.1.2.x` attachments
+- To prevent the OOB bridge from becoming an unintended side network, OOB-attached PLCs, channels, and span sensors now enable an `OOB_GUARD` at startup that drops peer-to-peer IP traffic within `172.31.250.0/24`.
+- The guard is intended to preserve host telemetry and dashboard reachability while preventing east-west use of the OOB subnet for process traffic.
+
 ### Browser checkpoint
 
 After the web process reloads, the updated Purdue topology should be viewable in:

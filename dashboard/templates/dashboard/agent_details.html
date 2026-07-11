@@ -29,116 +29,244 @@
         </div>
     </div>
 
-    <!-- Agent Overview Cards -->
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card">
+    <div class="card mb-4 agent-environment-card">
+        <div class="card-body">
+            <div class="agent-heading align-items-start">
+                <div>
+                    <div class="agent-section-kicker">Environment Summary</div>
+                    <h4 class="mb-2">
+                        <i class="bi {{ environment_profile.role_icon|default:'bi-hdd-network-fill' }}"></i>
+                        {{ environment_profile.display_name }}
+                    </h4>
+                    <p class="text-muted mb-0">{{ environment_profile.summary }}</p>
+                </div>
+                <div class="agent-summary-pills">
+                    <span class="badge bg-{{ environment_profile.layer_accent }}">{{ environment_profile.layer_label }}</span>
+                    <span class="badge text-bg-light">{{ environment_profile.role_label }}</span>
+                    <span class="badge text-bg-light">{{ environment_profile.segment_label }}</span>
+                    {% for ip_text in environment_profile.ip_addresses %}
+                    <span class="badge text-bg-light">{{ ip_text }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="agent-metric-grid">
+                {% for metric in environment_metrics %}
+                <div class="agent-metric-tile">
+                    <div class="agent-metric-label">{{ metric.label }}</div>
+                    <div class="agent-metric-value">{{ metric.value }}</div>
+                    <div class="agent-metric-note">{{ metric.note }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4 g-4">
+        <div class="col-lg-7">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5><i class="bi bi-binoculars"></i> Environment Findings</h5>
+                </div>
                 <div class="card-body">
-                    <h6 class="card-title text-muted">IP Address</h6>
-                    <h4>{{ agent.ip_address }}</h4>
+                    <div class="agent-finding-list">
+                        {% for finding in environment_findings %}
+                        <div class="agent-finding-item">
+                            <h6>{{ finding.title }}</h6>
+                            <p class="text-muted mb-0">{{ finding.detail }}</p>
+                        </div>
+                        {% endfor %}
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card">
-                <div class="card-body">
-                    <h6 class="card-title text-muted">Operating System</h6>
-                    <h4>
-                        {% if agent.os_type %}
-                            {{ agent.os_type }} {{ agent.os_version }}
-                        {% else %}
-                            <span class="text-muted">Unknown</span>
-                        {% endif %}
-                    </h4>
+        <div class="col-lg-5">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5><i class="bi bi-radar"></i> Monitoring Coverage</h5>
                 </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card">
                 <div class="card-body">
-                    <h6 class="card-title text-muted">Last Heartbeat</h6>
-                    <h4>
-                        {% if agent.last_heartbeat %}
-                            {{ agent.last_heartbeat|timesince }} ago
-                        {% else %}
-                            <span class="text-muted">Never</span>
-                        {% endif %}
-                    </h4>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card">
-                <div class="card-body">
-                    <h6 class="card-title text-muted">Uptime</h6>
-                    <h4>
-                        {% if agent.get_uptime %}
-                            {{ agent.get_uptime|date:"d\d H\h i\m" }}
-                        {% else %}
-                            <span class="text-muted">Unknown</span>
-                        {% endif %}
-                    </h4>
+                    <div class="agent-coverage-list">
+                        {% for item in monitoring_coverage %}
+                        <div class="agent-coverage-row">
+                            <div>
+                                <div class="fw-semibold">{{ item.label }}</div>
+                                <div class="agent-coverage-detail">{{ item.detail }}</div>
+                            </div>
+                            <div class="text-end">
+                                <div class="fw-semibold">{{ item.value }}</div>
+                                <span class="badge bg-{{ item.badge_class }}">{{ item.status_label }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- System Information -->
-    <div class="row mb-4">
-        <div class="col-md-6">
-            <div class="card">
+    <div class="row mb-4 g-4">
+        <div class="col-lg-6">
+            <div class="card h-100">
                 <div class="card-header">
-                    <h5><i class="bi bi-info-circle"></i> System Information</h5>
+                    <h5><i class="bi bi-diagram-3"></i> Expected Communications</h5>
                 </div>
                 <div class="card-body">
-                    <table class="table table-sm">
-                        <tr>
-                            <td><strong>Platform:</strong></td>
-                            <td>{{ agent.platform|default:"Unknown" }}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>CPU Count:</strong></td>
-                            <td>{{ agent.cpu_count|default:"Unknown" }}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Memory:</strong></td>
-                            <td>
-                                {% if agent.memory_total %}
-                                    {{ agent.memory_total|filesizeformat }}
-                                {% else %}
-                                    Unknown
-                                {% endif %}
-                            </td>
-                        </tr>
-                        <tr>
-                            <td><strong>Heartbeat Interval:</strong></td>
-                            <td>{{ agent.heartbeat_interval }} seconds</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Consecutive Failures:</strong></td>
-                            <td>{{ agent.consecutive_failures }}</td>
-                        </tr>
-                    </table>
+                    {% if environment_expected_paths %}
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Direction</th>
+                                    <th>Peer</th>
+                                    <th>Service</th>
+                                    <th>Ports</th>
+                                    <th>Seen</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for path in environment_expected_paths %}
+                                <tr>
+                                    <td>{{ path.direction }}</td>
+                                    <td><strong>{{ path.peer_label }}</strong><div class="small text-muted">{{ path.layer_path }}</div></td>
+                                    <td>{{ path.service }}</td>
+                                    <td><code>{{ path.ports }}</code></td>
+                                    <td>
+                                        <span class="badge bg-{% if path.observed %}success{% else %}secondary{% endif %}">
+                                            {% if path.observed %}Observed{% else %}Not Seen{% endif %}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">No validated communication paths are defined for this asset yet.</p>
+                    {% endif %}
                 </div>
             </div>
         </div>
-        <div class="col-md-6">
-            <div class="card">
+        <div class="col-lg-6">
+            <div class="card h-100">
                 <div class="card-header">
-                    <h5><i class="bi bi-wifi"></i> Network Interfaces</h5>
+                    <h5><i class="bi bi-share"></i> Observed Peers</h5>
                 </div>
                 <div class="card-body">
-                    {% if agent.interfaces %}
-                        <div class="small">
-                            {% for iface in agent.interfaces %}
-                                <div class="mb-2">
-                                    <strong>{{ iface.name }}:</strong> {{ iface.ip }} ({{ iface.mac }})
-                                </div>
-                            {% endfor %}
-                        </div>
+                    {% if observed_peers %}
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Peer</th>
+                                    <th>Placement</th>
+                                    <th>Services</th>
+                                    <th>Last Seen</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for peer in observed_peers %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ peer.label }}</strong>
+                                        <div class="small text-muted">{{ peer.ip_display }}</div>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ peer.layer_accent }}">{{ peer.layer_label }}</span>
+                                        <div class="small text-muted">{{ peer.role_label }}{% if peer.segment_label %} • {{ peer.segment_label }}{% endif %}</div>
+                                    </td>
+                                    <td>
+                                        {{ peer.service_summary }}
+                                        <div class="small text-muted">
+                                            {{ peer.connection_count }} connection{{ peer.connection_count|pluralize }}
+                                            {% if peer.process_summary != "-" %} • {{ peer.process_summary }}{% endif %}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        {% if peer.last_seen %}
+                                            {{ peer.last_seen|timesince }} ago
+                                        {% else %}
+                                            Unknown
+                                        {% endif %}
+                                        <div class="small text-muted">{% if peer.expected %}Expected path{% else %}Outside modeled paths{% endif %}</div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                     {% else %}
-                        <p class="text-muted mb-0">No interface information available</p>
+                    <p class="text-muted mb-0">No remote peers have been captured from recent connection telemetry.</p>
                     {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-info-circle"></i> Host Telemetry Profile</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-4">
+                        <div class="col-lg-6">
+                            <div class="table-responsive">
+                                <table class="table table-sm align-middle mb-0">
+                                    <tbody>
+                                        {% for fact in system_facts %}
+                                        <tr>
+                                            <td><strong>{{ fact.label }}</strong></td>
+                                            <td>{{ fact.value }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="mb-4">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="mb-0"><i class="bi bi-wifi"></i> Interfaces</h6>
+                                    <span class="text-muted small">{{ interface_cards|length }} reported</span>
+                                </div>
+                                {% if interface_cards %}
+                                <div class="agent-interface-grid">
+                                    {% for iface in interface_cards %}
+                                    <div class="agent-interface-card">
+                                        <div class="agent-interface-name">{{ iface.name }}</div>
+                                        <div class="small text-muted">{{ iface.ip }}</div>
+                                        <div class="small text-muted">{{ iface.mac }}</div>
+                                        {% if iface.segment_label %}
+                                        <div class="small text-muted">{{ iface.segment_label }}</div>
+                                        {% endif %}
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% else %}
+                                <p class="text-muted mb-0">No interface information available.</p>
+                                {% endif %}
+                            </div>
+                            <div>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="mb-0"><i class="bi bi-broadcast-pin"></i> Listening / Reported Ports</h6>
+                                    <span class="text-muted small">{{ listening_ports|length }} reported</span>
+                                </div>
+                                {% if listening_ports %}
+                                <div class="agent-port-list">
+                                    {% for port in listening_ports|slice:":12" %}
+                                    <span class="badge text-bg-light">{{ port.port }}/{{ port.protocol }}{% if port.status != "-" %} • {{ port.status }}{% endif %}</span>
+                                    {% endfor %}
+                                </div>
+                                {% if listening_ports|length > 12 %}
+                                <p class="text-muted small mt-2 mb-0">Showing first 12 reported ports.</p>
+                                {% endif %}
+                                {% else %}
+                                <p class="text-muted mb-0">No listening port data available.</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -230,7 +358,7 @@
                             </div>
                             {% if sbom_vulnerability_rows %}
                                 <div class="table-responsive">
-                                    <table class="table table-sm table-hover align-middle">
+                                    <table class="table table-sm table-hover align-middle sbom-vulnerability-table">
                                         <thead>
                                             <tr>
                                                 <th>CVE</th>
@@ -290,7 +418,7 @@
                                 <span class="text-muted small">{{ sbom_vulnerability_total_rows }} findings{% if sbom_vulnerability_source %} from {{ sbom_vulnerability_source }}{% endif %}</span>
                             </div>
                             <div class="table-responsive">
-                                <table class="table table-sm table-hover align-middle">
+                                <table class="table table-sm table-hover align-middle sbom-vulnerability-table">
                                     <thead>
                                         <tr>
                                             <th>CVE</th>
@@ -320,7 +448,7 @@
                                 <span class="text-muted small">{{ sbom_vulnerability_total_rows }} findings{% if sbom_vulnerability_source %} from {{ sbom_vulnerability_source }}{% endif %}</span>
                             </div>
                             <div class="table-responsive">
-                                <table class="table table-sm table-hover align-middle">
+                                <table class="table table-sm table-hover align-middle sbom-vulnerability-table">
                                     <thead>
                                         <tr>
                                             <th>CVE</th>

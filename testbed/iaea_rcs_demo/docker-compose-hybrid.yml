@@ -419,6 +419,9 @@ services:
       - net.ipv6.conf.default.disable_ipv6=1
     environment:
       <<: *agent_env
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.250.0/24"
+      OOB_MGMT_PREFIX: "172.31.250."
       DEVICE_NAME: Channel-A
       DEVICE_ROLE: Layer0 Channel
       DEVICE_DESC: Channel A process signal
@@ -455,6 +458,9 @@ services:
       - net.ipv6.conf.default.disable_ipv6=1
     environment:
       <<: *agent_env
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.250.0/24"
+      OOB_MGMT_PREFIX: "172.31.250."
       DEVICE_NAME: Channel-B
       DEVICE_ROLE: Layer0 Channel
       DEVICE_DESC: Channel B process signal
@@ -491,6 +497,9 @@ services:
       - net.ipv6.conf.default.disable_ipv6=1
     environment:
       <<: *agent_env
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.250.0/24"
+      OOB_MGMT_PREFIX: "172.31.250."
       DEVICE_NAME: Channel-C
       DEVICE_ROLE: Layer0 Channel
       DEVICE_DESC: Channel C analog signal and controller state
@@ -532,6 +541,9 @@ services:
       - net.ipv6.conf.default.disable_ipv6=1
     environment:
       <<: *agent_env
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.250.0/24"
+      OOB_MGMT_PREFIX: "172.31.250."
       DEVICE_NAME: Channel-D
       DEVICE_ROLE: Layer0 Channel
       DEVICE_DESC: Channel D analog signal and controller state
@@ -576,6 +588,9 @@ services:
       - net.ipv6.conf.default.disable_ipv6=1
     environment:
       <<: *agent_env
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.250.0/24"
+      OOB_MGMT_PREFIX: "172.31.250."
       DEVICE_NAME: PLC-Main
       DEVICE_ROLE: Layer1 controller
       DEVICE_DESC: Primary PLC
@@ -616,6 +631,9 @@ services:
       - net.ipv6.conf.default.disable_ipv6=1
     environment:
       <<: *agent_env
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.250.0/24"
+      OOB_MGMT_PREFIX: "172.31.250."
       DEVICE_NAME: PLC-Backup
       DEVICE_ROLE: Layer1 controller
       DEVICE_DESC: Backup PLC
@@ -653,6 +671,9 @@ services:
     command: ["sleep", "infinity"]
     environment:
       <<: *agent_env
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.250.0/24"
+      OOB_MGMT_PREFIX: "172.31.250."
       AGENT_ID: span-l1a
       DEVICE_NAME: Span-L1A
       DEVICE_ROLE: Passive network sensor
@@ -673,6 +694,9 @@ services:
     command: ["sleep", "infinity"]
     environment:
       <<: *agent_env
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.250.0/24"
+      OOB_MGMT_PREFIX: "172.31.250."
       AGENT_ID: span-l1b
       DEVICE_NAME: Span-L1B
       DEVICE_ROLE: Passive network sensor

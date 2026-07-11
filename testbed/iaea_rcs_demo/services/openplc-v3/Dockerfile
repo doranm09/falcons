@@ -7,7 +7,7 @@ ENV PIP_BREAK_SYSTEM_PACKAGES=1
 WORKDIR /workdir
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl gcc iproute2 python3 python3-dev python3-pip python3-venv tar \
+ && apt-get install -y --no-install-recommends ca-certificates curl gcc iproute2 iptables python3 python3-dev python3-pip python3-venv tar \
  && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSL "https://github.com/thiagoralves/OpenPLC_v3/archive/${OPENPLC_REF}.tar.gz" -o /tmp/openplc.tar.gz \

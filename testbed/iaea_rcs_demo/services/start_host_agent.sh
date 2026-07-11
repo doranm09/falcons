@@ -1,4 +1,41 @@
+apply_oob_guard() {
+  if [ "${OOB_GUARD_ENABLED:-0}" != "1" ]; then
+    return 0
+  fi
+
+  if ! command -v iptables >/dev/null 2>&1; then
+    echo "oob guard skipped: iptables not available"
+    return 0
+  fi
+
+  oob_subnet="${OOB_MGMT_SUBNET:-172.31.250.0/24}"
+  oob_prefix="${OOB_MGMT_PREFIX:-172.31.250.}"
+  oob_iface="${OOB_MGMT_IFACE:-}"
+
+  if [ -z "${oob_iface}" ]; then
+    oob_iface="$(
+      ip -o -4 addr show 2>/dev/null | awk -v prefix="${oob_prefix}" '
+        $4 ~ "^" prefix { print $2; exit }
+      '
+    )"
+  fi
+
+  if [ -z "${oob_iface}" ]; then
+    echo "oob guard skipped: no interface found for prefix ${oob_prefix}"
+    return 0
+  fi
+
+  iptables -C INPUT -i "${oob_iface}" -s "${oob_subnet}" -j DROP 2>/dev/null \
+    || iptables -I INPUT -i "${oob_iface}" -s "${oob_subnet}" -j DROP
+  iptables -C OUTPUT -o "${oob_iface}" -d "${oob_subnet}" -j DROP 2>/dev/null \
+    || iptables -I OUTPUT -o "${oob_iface}" -d "${oob_subnet}" -j DROP
+
+  echo "oob guard enabled on ${oob_iface}: blocking peer traffic within ${oob_subnet}"
+}
+
 start_host_agent() {
+  apply_oob_guard
+
   if [ -z "${AGENT_SERVER_URL:-}" ]; then
     if getent hosts host.docker.internal >/dev/null 2>&1; then
       AGENT_SERVER_URL="http://host.docker.internal:8000"

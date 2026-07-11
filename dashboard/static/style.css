@@ -868,6 +868,141 @@ input:checked + .slider .moon-icon {
     flex-wrap: wrap;
 }
 
+.agent-page .agent-environment-card {
+    background:
+        linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(30, 41, 59, 0.02)),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.92));
+    border: 1px solid rgba(14, 165, 233, 0.18);
+}
+
+[data-theme="dark"] .agent-page .agent-environment-card {
+    background:
+        linear-gradient(135deg, rgba(56, 189, 248, 0.14), rgba(15, 23, 42, 0.42)),
+        linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(11, 18, 32, 0.94));
+}
+
+.agent-page .agent-section-kicker {
+    margin-bottom: 0.35rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent-primary);
+}
+
+.agent-page .agent-summary-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: flex-start;
+    justify-content: flex-end;
+}
+
+.agent-page .agent-metric-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.agent-page .agent-metric-tile {
+    min-width: 0;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--card-border);
+    border-radius: var(--border-radius-lg);
+    background: rgba(255, 255, 255, 0.72);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+[data-theme="dark"] .agent-page .agent-metric-tile {
+    background: rgba(15, 23, 42, 0.72);
+    box-shadow: none;
+}
+
+.agent-page .agent-metric-label {
+    margin-bottom: 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.agent-page .agent-metric-value {
+    font-size: 1.85rem;
+    line-height: 1.05;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.agent-page .agent-metric-note {
+    margin-top: 0.45rem;
+    font-size: 0.87rem;
+    color: var(--text-muted);
+}
+
+.agent-page .agent-finding-list,
+.agent-page .agent-coverage-list {
+    display: grid;
+    gap: 0.9rem;
+}
+
+.agent-page .agent-finding-item {
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--card-border);
+    border-radius: var(--border-radius-lg);
+    background: var(--bg-secondary);
+}
+
+.agent-page .agent-finding-item h6 {
+    margin-bottom: 0.35rem;
+}
+
+.agent-page .agent-coverage-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    padding-bottom: 0.9rem;
+    border-bottom: 1px solid var(--card-border);
+}
+
+.agent-page .agent-coverage-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.agent-page .agent-coverage-detail {
+    margin-top: 0.2rem;
+    font-size: 0.87rem;
+    color: var(--text-muted);
+}
+
+.agent-page .agent-interface-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.75rem;
+}
+
+.agent-page .agent-interface-card {
+    min-width: 0;
+    padding: 0.85rem 0.9rem;
+    border: 1px solid var(--card-border);
+    border-radius: var(--border-radius-lg);
+    background: var(--bg-secondary);
+}
+
+.agent-page .agent-interface-name {
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.agent-page .agent-port-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
 /* Main content area enhancement */
 main {
     margin-left: 250px;
@@ -963,6 +1098,10 @@ main {
     .agent-page .agent-toolbar {
         width: 100%;
         align-items: stretch;
+    }
+
+    .agent-page .agent-summary-pills {
+        justify-content: flex-start;
     }
 
     .btn {
@@ -1144,11 +1283,14 @@ main {
 }
 
 /* Vulnerability Table Enhancements */
+.sbom-vulnerability-table,
 .sortable-vulnerability-table {
   table-layout: fixed;
   width: 100%;
 }
 
+.sbom-vulnerability-table th,
+.sbom-vulnerability-table td,
 .sortable-vulnerability-table th,
 .sortable-vulnerability-table td {
   padding: 8px 12px;
@@ -1163,6 +1305,10 @@ main {
   overflow-wrap: anywhere;
 }
 
+.sbom-vulnerability-table th {
+  width: auto;
+}
+
 .sortable-vulnerability-table th button {
   display: block;
   width: 100%;
@@ -1170,35 +1316,9 @@ main {
   white-space: normal;
 }
 
-/* column sizing */
-.sortable-vulnerability-table th:nth-child(1),
-.sortable-vulnerability-table td:nth-child(1) { width: 12%; }  /* CVE */
-
-.sortable-vulnerability-table th:nth-child(2),
-.sortable-vulnerability-table td:nth-child(2) { width: 7%; }   /* Package */
-
-.sortable-vulnerability-table th:nth-child(3),
-.sortable-vulnerability-table td:nth-child(3) { width: 8%; }   /* Installed */
-
-.sortable-vulnerability-table th:nth-child(4),
-.sortable-vulnerability-table td:nth-child(4) { width: 8%; }   /* Fixed */
-
-.sortable-vulnerability-table th:nth-child(5),
-.sortable-vulnerability-table td:nth-child(5) { width: 7%; }   /* Severity */
-
-.sortable-vulnerability-table th:nth-child(6),
-.sortable-vulnerability-table td:nth-child(6) { width: 5%; }   /* Score */
-
-.sortable-vulnerability-table th:nth-child(7),
-.sortable-vulnerability-table td:nth-child(7) { width: 15%; }  /* Source */
-
-.sortable-vulnerability-table th:nth-child(8),
-.sortable-vulnerability-table td:nth-child(8) { width: 30%; }  /* Description */
-
-.sortable-vulnerability-table th:nth-child(9),
-.sortable-vulnerability-table td:nth-child(9) { width: 8%; }   /* References */
-
 /* keep small fields neat */
+.sbom-vulnerability-table td:nth-child(5),
+.sbom-vulnerability-table td:nth-child(6),
 .sortable-vulnerability-table td:nth-child(5),
 .sortable-vulnerability-table td:nth-child(6) {
   text-align: center;

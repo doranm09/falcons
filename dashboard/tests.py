@@ -454,14 +454,12 @@ class DashboardViewTests(TestCase):
         self.client = Client()
 
     def test_home_view(self):
-        """Test home view renders correctly."""
+        """Test home view redirects to network monitoring."""
         response = self.client.get(reverse('dashboard:dashboard-home'))
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'dashboard/network_monitoring.html')
+        self.assertRedirects(response, reverse('dashboard:network_monitoring'))
 
     def test_home_view_with_data(self):
-        """Test home view includes network monitoring summary context."""
-        scan = ScanRun.objects.create(cidr="192.168.1.0/24", status="RUNNING")
+        """Test home view lands on network monitoring with summary context."""
         agent = AgentStatus.objects.create(
             agent_id="test-agent-001",
             hostname="test-host",
@@ -488,13 +486,12 @@ class DashboardViewTests(TestCase):
             status="ESTABLISHED",
         )
 
-        response = self.client.get(reverse('dashboard:dashboard-home'))
+        response = self.client.get(reverse('dashboard:dashboard-home'), follow=True)
         self.assertEqual(response.status_code, 200)
-        self.assertIn('scan_history', response.context)
+        self.assertRedirects(response, reverse('dashboard:network_monitoring'))
+        self.assertTemplateUsed(response, 'dashboard/network_monitoring.html')
         self.assertIn('recent_metadata', response.context)
         self.assertIn('recent_connections', response.context)
-        self.assertEqual(response.context['running_scans'], 1)
-        self.assertEqual(response.context['pending_scans'], 0)
         self.assertEqual(response.context['total_agents'], 1)
         self.assertEqual(response.context['total_connections'], 1)
         self.assertEqual(response.context['total_metadata_records'], 1)
@@ -622,6 +619,22 @@ class AgentViewTests(TestCase):
         agents = data['agents']
         self.assertEqual(len(agents), 1)
         self.assertEqual(agents[0]['agent_id'], 'test-agent-001')
+
+    def test_agent_status_api_prefers_process_network_display_ip(self):
+        self.agent.hostname = "span-l1a"
+        self.agent.ip_address = "172.31.250.250"
+        self.agent.interfaces = [
+            {"name": "eth0", "ip": "172.31.250.250", "mac": "00:11:22:33:44:60"},
+            {"name": "eth1", "ip": "10.1.1.250", "mac": "00:11:22:33:44:61"},
+        ]
+        self.agent.save(update_fields=["hostname", "ip_address", "interfaces"])
+
+        response = self.client.get(reverse('dashboard:agent_status_api'))
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()["agents"][0]
+        self.assertEqual(payload["ip_address"], "10.1.1.250")
+        self.assertEqual(payload["stored_ip_address"], "172.31.250.250")
 
     def test_delete_offline_agents(self):
         """Test offline agent cleanup endpoint."""
@@ -826,6 +839,37 @@ class AgentAPITests(TestCase):
         self.assertEqual(node.agent_id, 'replacement-agent-id')
         self.assertEqual(Node.objects.filter(hostname='stable-host', ip_address='192.168.1.110').count(), 1)
         self.assertTrue(AgentCommand.objects.filter(agent_id='replacement-agent-id').exists())
+
+    def test_agent_report_prefers_purdue_ip_over_oob_management_ip(self):
+        report_data = {
+            'agent_id': self.agent.agent_id,
+            'hostname': 'plc-main',
+            'interfaces': [
+                {'name': 'eth0', 'ip': '172.31.250.14', 'mac': '00:11:22:33:44:70'},
+                {'name': 'eth1', 'ip': '10.1.1.14', 'mac': '00:11:22:33:44:71'},
+                {'name': 'eth2', 'ip': '10.1.2.14', 'mac': '00:11:22:33:44:72'},
+            ],
+            'os': 'Ubuntu',
+            'os_version': '24.04',
+            'platform': 'x86_64',
+            'cpu_count': 4,
+            'memory_total': 8 * 1024 * 1024 * 1024,
+            'agent_version': '1.1.0'
+        }
+
+        response = self.client.post(
+            reverse('dashboard:agent_report'),
+            json.dumps(report_data),
+            content_type='application/json',
+            **self.agent_headers
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.agent.refresh_from_db()
+        self.assertEqual(self.agent.ip_address, '10.1.1.14')
+
+        node = Node.objects.get(agent_id=self.agent.agent_id)
+        self.assertEqual(node.ip_address, '10.1.1.14')
 
     def test_agent_cyber_report(self):
         """Test agent cyber template report."""
@@ -1771,6 +1815,106 @@ class AgentDetailsSbomVulnerabilityTests(TestCase):
         self.assertContains(response, "SBOM Vulnerabilities")
         self.assertContains(response, "CVE-2026-2222")
         self.assertContains(response, "Persisted fallback finding")
+
+
+class AgentDetailsEnvironmentSummaryTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.agent = AgentStatus.objects.create(
+            agent_id="engineer-ws-agent-001",
+            hostname="engineer-ws",
+            ip_address="10.2.50.20",
+            status="online",
+            os_type="Ubuntu",
+            os_version="24.04",
+            platform="linux",
+            cpu_count=4,
+            memory_total=8 * 1024 * 1024 * 1024,
+            interfaces=[
+                {"name": "eth0", "ip": "10.2.50.20", "mac": "00:11:22:33:44:55"},
+            ],
+            active_ports=[{"port": 44818, "protocol": "tcp", "state": "LISTEN"}],
+            processes=[{"pid": 101, "name": "engineering-suite", "status": "running"}],
+            response_time_ms=12.5,
+            agent_version="1.2.3",
+        )
+        self.node = Node.objects.create(
+            agent_id=self.agent.agent_id,
+            hostname="engineer-ws",
+            name="engineer-ws",
+            ip_address="10.2.50.20",
+            os_info="Ubuntu 24.04",
+            installed_libraries=["openssl", "libplctag", "python3"],
+            active_ports=[{"id": 44818, "Protocol": "TCP", "status": "LISTEN"}],
+        )
+        vuln = Vulnerability.objects.create(
+            cve_id="CVE-2026-3333",
+            description="Engineering workstation test finding",
+            severity="High",
+            score=8.8,
+            package="openssl",
+            installed_version="3.0.0",
+            fixed_version="3.0.13",
+            published=timezone.now(),
+            last_modified=timezone.now(),
+            references="https://example.test/CVE-2026-3333",
+        )
+        vuln.nodes.add(self.node)
+
+        metadata = NetworkMetadata.objects.create(
+            agent=self.agent,
+            total_connections=2,
+            total_interfaces=1,
+            active_ports=[{"port": 44818, "protocol": "tcp", "state": "LISTEN"}],
+            interfaces=[{"name": "eth0", "ip": "10.2.50.20", "mac": "00:11:22:33:44:55"}],
+        )
+        NetworkConnection.objects.create(
+            metadata=metadata,
+            agent=self.agent,
+            protocol="TCP",
+            local_address="10.2.50.20:51000",
+            local_port=51000,
+            remote_address="10.3.50.10:443",
+            remote_port=443,
+            status="ESTABLISHED",
+            process_name="engineering-suite",
+        )
+        NetworkConnection.objects.create(
+            metadata=metadata,
+            agent=self.agent,
+            protocol="TCP",
+            local_address="10.2.50.20:51001",
+            local_port=51001,
+            remote_address="10.1.1.14:44818",
+            remote_port=44818,
+            status="ESTABLISHED",
+            process_name="engineering-suite",
+        )
+
+    def test_agent_details_renders_environment_summary_sections(self):
+        response = self.client.get(reverse("dashboard:agent_details", args=[self.agent.agent_id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Environment Summary")
+        self.assertContains(response, "Environment Findings")
+        self.assertContains(response, "Monitoring Coverage")
+        self.assertContains(response, "Expected Communications")
+        self.assertContains(response, "Observed Peers")
+        self.assertContains(response, "Host Telemetry Profile")
+        self.assertContains(response, "Supervisory LAN")
+        self.assertContains(response, "historian")
+        self.assertContains(response, "CVE-2026-3333")
+
+        profile = response.context["environment_profile"]
+        self.assertEqual(profile["role_label"], "Workstation")
+        self.assertEqual(profile["segment_label"], "Supervisory LAN")
+
+        expected_paths = response.context["environment_expected_paths"]
+        self.assertTrue(any(path["peer_label"] == "historian" and path["observed"] for path in expected_paths))
+        self.assertTrue(any(path["peer_label"] == "plc-main" and path["observed"] for path in expected_paths))
+
+        observed_peer_labels = {peer["label"] for peer in response.context["observed_peers"]}
+        self.assertIn("historian", observed_peer_labels)
+        self.assertIn("plc-main", observed_peer_labels)
 
 
 class ShortestPathsTests(TestCase):

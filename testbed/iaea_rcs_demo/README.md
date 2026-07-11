@@ -773,6 +773,47 @@ Expected result:
 - `zeek-sensor` has a positive `event_count`
 - `siem-forwarder` offsets include `/var/lib/siem/zeek/spool/logger/conn.log`
 
+### Live IDS demo flow
+
+To run a concise operator-facing demo that drives hybrid traffic, validates the live Suricata and Zeek forwarding path, and prints the recommended dashboard URLs:
+
+```bash
+python3 scripts/run_live_ids_demo.py --traffic-iterations 2
+```
+
+That helper:
+
+- drives the validated cross-layer traffic paths with `verify_hybrid_runtime.py`
+- verifies the live sensor pipeline with `verify_siem_sensors.py`
+- prints the recommended pages for the demo:
+  - Live Monitor
+  - Sensor Health
+  - Suricata Alerts preset
+  - Zeek Protocols preset
+  - Hybrid Connections preset
+  - agent topology view
+
+### Offline IDS workflow
+
+The repo also includes an offline anomaly-analysis service named `ids`. This is separate from the passive `suricata-sensor` and `zeek-sensor` containers: it does not currently sit inline on the control bridges and it does not yet receive a live pcap feed automatically.
+
+Use it as a manual pcap workflow:
+
+```bash
+docker compose -f docker-compose-hybrid.yml up -d ids
+python3 scripts/capture_interface_pcap.py <host-interface> 10
+docker compose -f docker-compose-hybrid.yml exec ids python /app/ids.py train /data/network/<capture>.pcap
+docker compose -f docker-compose-hybrid.yml exec ids python /app/ids.py infer /data/network/<capture>.pcap --model /models/<dataset>/iforest.joblib --plot-scores-hist
+```
+
+Repo-local working paths:
+
+- pcaps: `testbed/iaea_rcs_demo/data/network`
+- trained models: `testbed/iaea_rcs_demo/models`
+- score histograms: `testbed/iaea_rcs_demo/plots`
+
+The helper `scripts/capture_interface_pcap.py` uses `tshark` to write captures into the repo-local network data directory so the `ids` container can consume them directly.
+
 Observed on `2026-04-04`:
 
 - `iaea_rcs_demo_p13_net` mapped to `br-5a4b5882c864`, `iaea_rcs_demo_p23_net` mapped to `br-b07b9287c182`, `iaea_rcs_demo_l1_main` mapped to `br-3f672706c2f3`, and `iaea_rcs_demo_l1_backup` mapped to `br-1450e55dd42d`.

@@ -36,6 +36,30 @@ Working area: `dashboard/views.py`, `cyber_pen_test/settings.py`, `dashboard/ope
 - OpenSearch bootstrap now renders the ISM policy and index template from `OPENSEARCH_INDEX_PREFIX` at container startup.
 - OpenSearch documents keep producer identity in `event_source` and reserve ECS-style `source.*` / `destination.*` objects for endpoint fields.
 
+## IDS PR integration
+
+Date: 2026-04-17
+Working area: `testbed/iaea_rcs_demo/services/ids`, `testbed/iaea_rcs_demo/scripts/capture_interface_pcap.py`, compose files
+
+- Remote branch identified for the IDS work:
+  - `origin/iaea_demo_testbed_ids`
+  - merge ref: `origin/pr/13`
+- The IDS branch was based far behind the validated hybrid topology and could not be merged cleanly.
+- The current integration model ports the IDS code manually into the current repo state.
+- Integrated assets:
+  - offline anomaly IDS service under `testbed/iaea_rcs_demo/services/ids`
+  - host-side capture helper `testbed/iaea_rcs_demo/scripts/capture_interface_pcap.py`
+  - `ids` service in both `docker-compose.yml` and `docker-compose-hybrid.yml`
+- Current intended workflow:
+  - capture `.pcap` files into `testbed/iaea_rcs_demo/data/network`
+  - train models into `testbed/iaea_rcs_demo/models`
+  - emit score plots into `testbed/iaea_rcs_demo/plots`
+  - run the analysis inside the `ids` container with `docker compose exec ids python /app/ids.py ...`
+- Important limitation:
+  - this integration is currently offline/manual pcap analysis
+  - it is not yet wired to a live SPAN/pcap feed from `suricata-sensor`, `zeek-sensor`, `span-l1a`, or `span-l1b`
+  - the `ids` container should start unprivileged by default for offline analysis; live interface capture now requires explicit opt-in such as `IDS_ENABLE_PROMISC=1` and the necessary container capabilities
+
 ## IAEA RCS hybrid topology alignment
 
 Date: 2026-04-16

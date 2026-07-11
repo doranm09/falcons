@@ -42,6 +42,9 @@
         <a class="nav-link" href="{% url 'dashboard:agent_monitoring' %}">
           <i class="bi bi-robot"></i> Agent Monitor
         </a>
+        <a class="nav-link" href="{% url 'dashboard:siem_ids_live_page' %}">
+          <i class="bi bi-activity"></i> IDS Live
+        </a>
       </nav>
     </div>
 
@@ -73,7 +76,7 @@
       </h6>
       <nav class="nav flex-column">
         <a class="nav-link {% if request.resolver_match.url_name == 'siem_soc_overview' %}active{% endif %}" href="{% url 'dashboard:siem_soc_overview' %}">
-          <i class="bi bi-speedometer2"></i> SOC Overview
+          <i class="bi bi-speedometer2"></i> Live Monitor
         </a>
         <a class="nav-link {% if request.resolver_match.url_name == 'siem_event_explorer' %}active{% endif %}" href="{% url 'dashboard:siem_event_explorer' %}">
           <i class="bi bi-search"></i> Event Explorer

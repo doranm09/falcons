@@ -5,20 +5,28 @@
 <div class="container-fluid px-4 py-4">
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
     <div>
-      <h2 class="mb-1">SOC Overview</h2>
-      <p class="text-muted mb-0">Operator entrypoint for sensor health, detections, and recent network telemetry.</p>
+      <h2 class="mb-1">Network IDS Live Monitor</h2>
+      <p class="text-muted mb-0">Operator entrypoint for the live Suricata and Zeek forwarding path on the hybrid stack, with hybrid traffic context alongside detections.</p>
     </div>
     <div class="d-flex gap-2">
-      <a class="btn btn-outline-primary" href="{% url 'dashboard:siem_event_explorer' %}">Open Event Explorer</a>
+      <a class="btn btn-outline-primary" href="{% url 'dashboard:siem_event_explorer' %}">Open Network Explorer</a>
       <a class="btn btn-outline-secondary" href="{% url 'dashboard:siem_sensor_health_page' %}">Sensor Health</a>
+      <a class="btn btn-outline-secondary" href="{% url 'dashboard:siem_alerts_page' %}">Alert Queue</a>
       <a class="btn btn-outline-dark" href="{{ opensearch.dashboards_url }}" target="_blank">Open Dashboards</a>
     </div>
   </div>
 
+  <div class="d-flex flex-wrap gap-2 mb-4">
+    <a class="btn btn-sm btn-outline-dark" href="{% url 'dashboard:siem_event_explorer' %}?event_dataset=suricata.alert&exclude_stats=1">Suricata Alerts</a>
+    <a class="btn btn-sm btn-outline-dark" href="{% url 'dashboard:siem_event_explorer' %}?event_module=zeek&event_dataset=zeek.conn,zeek.dns,zeek.http,zeek.ssl,zeek.notice,zeek.files&exclude_stats=1">Zeek Protocols</a>
+    <a class="btn btn-sm btn-outline-dark" href="{% url 'dashboard:siem_event_explorer' %}?event_dataset=agent.network_connection,zeek.conn,suricata.flow&exclude_stats=1">Hybrid Connections</a>
+    <a class="btn btn-sm btn-outline-dark" href="{% url 'dashboard:network_monitoring' %}">Agent Topology</a>
+  </div>
+
   <div class="row g-3 mb-4">
-    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Events (24h)</div><div class="fs-2 fw-bold">{{ summary.events_24h }}</div></div></div></div>
-    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Open Alerts</div><div class="fs-2 fw-bold text-danger">{{ summary.open_alerts }}</div><div class="small text-muted">{{ summary.high_alerts }} high severity</div></div></div></div>
-    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Open Cases / Hunts</div><div class="fs-2 fw-bold">{{ summary.open_cases }}</div><div class="small text-muted">{{ summary.open_hunts }} active hunts</div></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">IDS Events (24h)</div><div class="fs-2 fw-bold">{{ summary.ids_events_24h }}</div><div class="small text-muted">{{ summary.hybrid_connection_events_24h }} agent connection events</div></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Suricata Alerts</div><div class="fs-2 fw-bold text-danger">{{ summary.suricata_alerts_24h }}</div><div class="small text-muted">{{ summary.open_alerts }} open alerts, {{ summary.high_alerts }} high severity</div></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Zeek Activity</div><div class="fs-2 fw-bold">{{ summary.zeek_events_24h }}</div><div class="small text-muted">{{ summary.open_cases }} open cases, {{ summary.open_hunts }} hunts</div></div></div></div>
     <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Sensors</div><div class="fs-2 fw-bold">{{ summary.live_sensors }}</div><div class="small text-muted">{{ summary.stale_sensors }} stale</div></div></div></div>
   </div>
 
@@ -74,7 +82,7 @@
     <div class="col-lg-4">
       <div class="card shadow-sm h-100">
         <div class="card-body">
-          <h5 class="card-title">Top Modules</h5>
+          <h5 class="card-title">Top IDS Modules</h5>
           <ul class="list-unstyled mb-0">
             {% for item in top_modules %}
               <li class="d-flex justify-content-between"><span>{{ item.event_module }}</span><span class="badge bg-secondary">{{ item.count }}</span></li>
@@ -88,7 +96,7 @@
     <div class="col-lg-4">
       <div class="card shadow-sm h-100">
         <div class="card-body">
-          <h5 class="card-title">Top Datasets</h5>
+          <h5 class="card-title">Top IDS Datasets</h5>
           <ul class="list-unstyled mb-0">
             {% for item in top_datasets %}
               <li class="d-flex justify-content-between"><span>{{ item.event_dataset }}</span><span class="badge bg-secondary">{{ item.count }}</span></li>
@@ -133,7 +141,7 @@
       <div class="card shadow-sm h-100">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="card-title mb-0">Sensor Health</h5>
+            <h5 class="card-title mb-0">Forwarding Sensors</h5>
             <a href="{% url 'dashboard:siem_sensor_health_page' %}" class="btn btn-sm btn-outline-secondary">View All</a>
           </div>
           <ul class="list-unstyled mb-0">
@@ -144,6 +152,13 @@
                   <span class="badge {% if sensor.status == 'online' %}bg-success{% elif sensor.status == 'stale' %}bg-warning text-dark{% else %}bg-danger{% endif %}">{{ sensor.status }}</span>
                 </div>
                 <div class="text-muted small">{{ sensor.sensor_type }} | {{ sensor.last_seen|date:"Y-m-d H:i:s" }}</div>
+                <div class="text-muted small">
+                  {% if sensor.interfaces %}
+                    {{ sensor.interfaces|join:", " }}
+                  {% else %}
+                    No interface metadata
+                  {% endif %}
+                </div>
               </li>
             {% empty %}
               <li class="text-muted">No sensor records yet.</li>
@@ -181,7 +196,7 @@
   <div class="card shadow-sm">
     <div class="card-body">
       <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="card-title mb-0">Recent Events</h5>
+        <h5 class="card-title mb-0">Live Network Feed</h5>
         <a href="{% url 'dashboard:siem_event_explorer' %}" class="btn btn-sm btn-outline-primary">Explore All</a>
       </div>
       <div class="table-responsive">
@@ -189,9 +204,10 @@
           <thead>
             <tr>
               <th>Timestamp</th>
-              <th>Module</th>
+              <th>Sensor</th>
               <th>Dataset</th>
-              <th>Asset IP</th>
+              <th>Source</th>
+              <th>Destination</th>
               <th>Summary</th>
             </tr>
           </thead>
@@ -202,13 +218,14 @@
                   data-source-ip="{{ event.source_ip|default:'' }}"
                   data-destination-ip="{{ event.destination_ip|default:'' }}">
                 <td>{{ event.timestamp|date:"Y-m-d H:i:s" }}</td>
-                <td>{{ event.event_module|default:event.source }}</td>
+                <td>{{ event.observer_name|default:"-" }}</td>
                 <td>{{ event.event_dataset|default:event.event_type }}</td>
-                <td>{{ event.asset_ip|default:"-" }}</td>
+                <td>{{ event.source_ip|default:"-" }}{% if event.source_port is not None %}:{{ event.source_port }}{% endif %}</td>
+                <td>{{ event.destination_ip|default:"-" }}{% if event.destination_port is not None %}:{{ event.destination_port }}{% endif %}</td>
                 <td>{{ event.summary|default:"-" }}</td>
               </tr>
             {% empty %}
-              <tr id="soc-recent-events-empty"><td colspan="5" class="text-muted text-center">No SIEM events yet.</td></tr>
+              <tr id="soc-recent-events-empty"><td colspan="6" class="text-muted text-center">No SIEM events yet.</td></tr>
             {% endfor %}
           </tbody>
         </table>

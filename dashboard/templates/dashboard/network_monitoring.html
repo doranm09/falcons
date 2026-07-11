@@ -130,8 +130,23 @@
     <form id="csrf-form">{% csrf_token %}</form>
     <div class="row mb-4">
         <div class="col-12">
-            <h2><i class="bi bi-diagram-3"></i> Network Monitoring Dashboard</h2>
-            <p class="text-muted">Security Onion-like network monitoring with detailed connection metadata</p>
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                <div>
+                    <h2><i class="bi bi-diagram-3"></i> Network Monitoring Dashboard</h2>
+                    <p class="text-muted mb-0">Agent-reported topology and connection telemetry. Use the live IDS monitor for the Suricata and Zeek forwarding path.</p>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="{% url 'dashboard:siem_soc_overview' %}" class="btn btn-outline-primary">
+                        <i class="bi bi-broadcast-pin"></i> Live IDS Monitor
+                    </a>
+                    <a href="{% url 'dashboard:siem_event_explorer' %}" class="btn btn-outline-secondary">
+                        <i class="bi bi-search"></i> Network Event Explorer
+                    </a>
+                    <a href="{% url 'dashboard:siem_sensor_health_page' %}" class="btn btn-outline-dark">
+                        <i class="bi bi-activity"></i> Sensor Health
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
 

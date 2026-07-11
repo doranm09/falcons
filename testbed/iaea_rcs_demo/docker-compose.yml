@@ -199,6 +199,16 @@ services:
       l2_net:
         ipv4_address: 10.2.50.31
 
+  ids:
+    build:
+      context: ./services/ids
+    container_name: ids
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+      - ./models:/models
+      - ./plots:/plots
+
   # ---------------------- Firewalls ----------------------
   firewall-2:
     <<: *firewall
@@ -784,6 +794,10 @@ networks:
       com.docker.network.bridge.name: br_rcs_m23
     ipam:
       config: [{ subnet: 10.0.23.0/24, gateway: 10.0.23.254 }]
+
+  cyber_pen_test_appnet:
+    external: true
+    name: cyber_pen_test_appnet
 
 volumes:
   plc_main_data:

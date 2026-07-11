@@ -73,6 +73,7 @@ from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 import json
+import math
 import os
 import shutil
 from collections import Counter, defaultdict
@@ -2258,6 +2259,19 @@ def _parse_bool(value, default=False):
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _json_safe(value):
+    """Normalize values so they are valid for PostgreSQL JSON fields."""
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, tuple):
+        return [_json_safe(v) for v in value]
+    return value
+
+
 def _persist_normalized_events(normalized):
     normalized = match_indicators(normalized)
     event_records = [
@@ -2277,7 +2291,7 @@ def _persist_normalized_events(normalized):
             "destination_port": item.get("destination_port"),
             "network_community_id": item.get("network_community_id", ""),
             "summary": item.get("summary"),
-            "raw": item.get("raw"),
+            "raw": _json_safe(item.get("raw")),
         }
         for item in normalized
     ]
@@ -2588,6 +2602,19 @@ def _siem_soc_focus_queryset(base_qs):
     )
 
 
+def _siem_network_ids_queryset(base_qs):
+    return (
+        base_qs.exclude(event_dataset__endswith=".stats")
+        .filter(
+            Q(event_module__in=["suricata", "zeek"])
+            | Q(source__in=["suricata", "zeek"])
+            | Q(event_dataset__startswith="suricata.")
+            | Q(event_dataset__startswith="zeek.")
+        )
+        .order_by("-timestamp")
+    )
+
+
 def _build_explorer_query(**params):
     cleaned = {key: value for key, value in params.items() if value not in (None, "", [])}
     return urlencode(cleaned, doseq=True)
@@ -2705,30 +2732,35 @@ def siem_soc_overview(request):
     now_ts = timezone.now()
     since = now_ts - timedelta(hours=24)
     recent_qs = SiemEvent.objects.filter(timestamp__gte=since).order_by("-timestamp")
-    focus_qs = _siem_soc_focus_queryset(recent_qs)
-    if not focus_qs.exists():
-        focus_qs = recent_qs
+    ids_qs = _siem_network_ids_queryset(recent_qs)
+    flow_qs = _siem_soc_focus_queryset(recent_qs)
+    live_feed_qs = ids_qs if ids_qs.exists() else flow_qs if flow_qs.exists() else recent_qs
+    module_focus_qs = ids_qs if ids_qs.exists() else live_feed_qs
     sensor_rows = _build_siem_sensor_rows()
     recent_alerts = Alert.objects.filter(status=Alert.Status.OPEN).order_by("-last_seen")[:8]
+    open_alerts = Alert.objects.filter(status=Alert.Status.OPEN)
 
     context = {
         "summary": {
-            "events_24h": recent_qs.count(),
-            "open_alerts": Alert.objects.filter(status=Alert.Status.OPEN).count(),
-            "high_alerts": Alert.objects.filter(status=Alert.Status.OPEN, severity__gte=7).count(),
+            "ids_events_24h": ids_qs.count(),
+            "suricata_alerts_24h": ids_qs.filter(event_type="suricata.alert").count(),
+            "zeek_events_24h": ids_qs.filter(event_module="zeek").count(),
+            "hybrid_connection_events_24h": flow_qs.filter(event_dataset="agent.network_connection").count(),
+            "open_alerts": open_alerts.count(),
+            "high_alerts": open_alerts.filter(severity__gte=7).count(),
             "open_cases": Case.objects.filter(status=Case.Status.OPEN).count(),
             "open_hunts": Hunt.objects.filter(status=Hunt.Status.OPEN).count(),
             "live_sensors": sum(1 for row in sensor_rows if row["status"] == "online"),
             "stale_sensors": sum(1 for row in sensor_rows if row["status"] == "stale"),
         },
         "sensor_rows": sensor_rows[:8],
-        "top_modules": _top_json_values(focus_qs, "event_module", "event_module"),
-        "top_datasets": _top_json_values(focus_qs, "event_dataset", "event_dataset"),
-        "top_asset_ips": _build_top_talker_rows(focus_qs, limit=8),
+        "top_modules": _top_json_values(module_focus_qs, "event_module", "event_module"),
+        "top_datasets": _top_json_values(module_focus_qs, "event_dataset", "event_dataset"),
+        "top_asset_ips": _build_top_talker_rows(flow_qs if flow_qs.exists() else live_feed_qs, limit=8),
         "recent_alerts": [
             {"alert": alert, "explorer_url": _build_alert_explorer_url(alert)} for alert in recent_alerts
         ],
-        "recent_events": list(focus_qs[:10]),
+        "recent_events": list(live_feed_qs[:10]),
         "health": health_snapshot(),
         **_siem_opensearch_context(),
     }
@@ -2795,11 +2827,15 @@ def siem_event_explorer(request):
     since = now_ts - timedelta(hours=24)
 
     recent_qs = SiemEvent.objects.filter(timestamp__gte=since).order_by("-timestamp")
-    focus_qs = _siem_soc_focus_queryset(recent_qs)
+    ids_qs = _siem_network_ids_queryset(recent_qs)
+    focus_qs = ids_qs if ids_qs.exists() else _siem_soc_focus_queryset(recent_qs)
     if not focus_qs.exists():
         focus_qs = recent_qs
     summary = {
         "total_24h": recent_qs.count(),
+        "ids_24h": ids_qs.count(),
+        "suricata_alerts_24h": ids_qs.filter(event_type="suricata.alert").count(),
+        "zeek_events_24h": ids_qs.filter(event_module="zeek").count(),
         "sources_24h": recent_qs.values("source").distinct().count(),
         "types_24h": recent_qs.values("event_type").distinct().count(),
         "modules_24h": _filtered_count(recent_qs, "event_module"),
@@ -2812,9 +2848,10 @@ def siem_event_explorer(request):
     top_types = list(
         recent_qs.values("event_type").annotate(count=Count("id")).order_by("-count")[:5]
     )
-    top_modules = _top_json_values(recent_qs, "event_module", "event_module")
-    top_datasets = _top_json_values(recent_qs, "event_dataset", "event_dataset")
-    top_observers = _top_json_values(recent_qs, "raw__observer__name", "observer_name")
+    sidebar_qs = ids_qs if ids_qs.exists() else recent_qs
+    top_modules = _top_json_values(sidebar_qs, "event_module", "event_module")
+    top_datasets = _top_json_values(sidebar_qs, "event_dataset", "event_dataset")
+    top_observers = _top_json_values(sidebar_qs, "raw__observer__name", "observer_name")
 
     events = list(focus_qs[:50])
     health = health_snapshot()
@@ -2834,6 +2871,107 @@ def siem_event_explorer(request):
         **_siem_opensearch_context(),
     }
     return render(request, "dashboard/siem_events.html", context)
+
+
+def _serialize_ids_event(event: SiemEvent) -> dict:
+    root = event.raw if isinstance(event.raw, dict) else {}
+    layers = []
+    cursor = root
+    while isinstance(cursor, dict):
+        layers.append(cursor)
+        next_cursor = cursor.get("raw")
+        if not isinstance(next_cursor, dict):
+            break
+        cursor = next_cursor
+
+    def pick(*keys):
+        for key in keys:
+            for layer in reversed(layers):
+                value = layer.get(key)
+                if value not in (None, ""):
+                    return value
+        return None
+
+    def normalize_ip(value):
+        if value in (None, ""):
+            return None
+        if isinstance(value, int):
+            try:
+                return str(ipaddress.IPv4Address(value))
+            except ipaddress.AddressValueError:
+                return str(value)
+        return str(value)
+
+    def normalize_score(value):
+        if value in (None, ""):
+            return None
+        try:
+            return round(float(value), 2)
+        except (TypeError, ValueError):
+            return value
+
+    protocol = pick("protocol", "proto")
+    if not protocol and isinstance(event.summary, str):
+        summary_lower = event.summary.lower()
+        for candidate in ("tcp", "udp", "icmp", "igmp", "arp"):
+            if f" {candidate} " in f" {summary_lower} ":
+                protocol = candidate.upper()
+                break
+
+    return {
+        "id": event.id,
+        "timestamp": event.timestamp.isoformat(),
+        "event_type": event.event_type,
+        "summary": event.summary or "",
+        "src_ip": normalize_ip(pick("src_ip", "source_ip", "saddr")),
+        "dst_ip": normalize_ip(pick("dst_ip", "dest_ip", "destination_ip", "daddr")),
+        "src_port": pick("src_port", "source_port", "sport"),
+        "dst_port": pick("dst_port", "dest_port", "destination_port", "dport"),
+        "protocol": protocol or "N/A",
+        "score": normalize_score(pick("score")),
+        "decision_threshold": pick("decision_threshold", "threshold"),
+    }
+
+
+@require_http_methods(["GET"])
+def siem_ids_live_page(request):
+    now_ts = timezone.now()
+    since = now_ts - timedelta(hours=24)
+
+    ids_qs = SiemEvent.objects.filter(source="ids")
+    recent_qs = ids_qs.filter(timestamp__gte=since)
+    latest = ids_qs.order_by("-id").first()
+    event_objects = list(ids_qs.order_by("-id")[:100])
+    events = [_serialize_ids_event(item) for item in event_objects]
+    initial_after_id = event_objects[0].id if event_objects else 0
+
+    summary = {
+        "total_24h": recent_qs.count(),
+        "anomalies_24h": recent_qs.filter(event_type="ids.anomaly").count(),
+        "latest": _serialize_ids_event(latest) if latest else None,
+    }
+    context = {
+        "summary": summary,
+        "events": events,
+        "initial_after_id": initial_after_id,
+    }
+    return render(request, "dashboard/siem_ids_live.html", context)
+
+
+@require_http_methods(["GET"])
+def siem_ids_live_updates(request):
+    try:
+        after_id = int(request.GET.get("after_id", "0") or 0)
+    except (TypeError, ValueError):
+        after_id = 0
+
+    event_objects = list(
+        SiemEvent.objects.filter(source="ids", id__gt=after_id)
+        .order_by("id")[:200]
+    )
+    events = [_serialize_ids_event(item) for item in event_objects]
+    next_after_id = event_objects[-1].id if event_objects else after_id
+    return JsonResponse({"events": events, "after_id": next_after_id})
 
 
 @require_http_methods(["GET"])

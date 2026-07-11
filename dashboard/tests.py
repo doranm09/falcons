@@ -928,6 +928,8 @@ class NetworkMonitoringViewTests(TestCase):
         response = self.client.get(reverse('dashboard:network_monitoring'))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'dashboard/network_monitoring.html')
+        self.assertContains(response, "Live IDS Monitor")
+        self.assertContains(response, reverse('dashboard:siem_soc_overview'))
 
     def test_network_monitoring_dashboard_counts_full_recent_telemetry(self):
         metadata_records = [
@@ -2492,15 +2494,16 @@ class SiemViewIntegrationTests(TestCase):
             response = self.client.get(reverse("dashboard:siem_soc_overview"))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "dashboard/siem_overview.html")
-        self.assertContains(response, "SOC Overview")
+        self.assertContains(response, "Network IDS Live Monitor")
         self.assertContains(response, "sensor-a")
         self.assertContains(response, "Suricata Alerts")
         self.assertContains(response, reverse("dashboard:siem_event_explorer"))
+        self.assertContains(response, "Live Network Feed")
         self.assertContains(response, "OpenSearch")
         self.assertContains(response, "siem-events-2026.04.16")
         self.assertContains(response, "http://127.0.0.1:5601")
 
-    def test_siem_soc_overview_prefers_network_events_over_stats_noise(self):
+    def test_siem_soc_overview_prefers_sensor_events_over_stats_noise(self):
         newer_noise = SiemEvent.objects.create(
             timestamp=self.now + timedelta(minutes=5),
             source="suricata",
@@ -2511,18 +2514,18 @@ class SiemViewIntegrationTests(TestCase):
             summary="",
             raw={},
         )
-        network_event = SiemEvent.objects.create(
+        live_event = SiemEvent.objects.create(
             timestamp=self.now + timedelta(minutes=4),
-            source="agent",
-            event_type="agent.network_connection",
-            event_module="agent",
-            event_dataset="agent.network_connection",
-            observer_name="historian",
+            source="zeek",
+            event_type="zeek.conn",
+            event_module="zeek",
+            event_dataset="zeek.conn",
+            observer_name="sensor-b",
             asset_id="historian",
             asset_ip="10.3.50.10",
             source_ip="10.3.50.10",
             destination_ip="10.4.50.20",
-            summary="TCP ESTABLISHED python 10.3.50.10:43000 -> 10.4.50.20:5432",
+            summary="historian to postgres flow",
             raw={},
         )
 
@@ -2532,10 +2535,11 @@ class SiemViewIntegrationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         recent_events = list(response.context["recent_events"])
         self.assertTrue(recent_events)
-        self.assertEqual(recent_events[0].id, network_event.id)
+        self.assertEqual(recent_events[0].id, live_event.id)
         self.assertNotIn(newer_noise.id, [event.id for event in recent_events])
         self.assertContains(response, "10.3.50.10")
-        self.assertContains(response, "agent.network_connection")
+        self.assertContains(response, "zeek.conn")
+        self.assertContains(response, "historian to postgres flow")
 
     def test_siem_sensor_health_page_marks_stale_sensors(self):
         response = self.client.get(reverse("dashboard:siem_sensor_health_page"))
@@ -2578,11 +2582,14 @@ class SiemViewIntegrationTests(TestCase):
             response = self.client.get(reverse("dashboard:siem_event_explorer"))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "dashboard/siem_events.html")
-        self.assertContains(response, "Top Modules")
-        self.assertContains(response, "Top Datasets")
+        self.assertContains(response, "Network Event Explorer")
+        self.assertContains(response, "Top IDS Modules")
+        self.assertContains(response, "Top IDS Datasets")
         self.assertContains(response, "siem-event-module")
         self.assertContains(response, reverse("dashboard:siem_sensor_health_page"))
         self.assertContains(response, "Open Dashboards")
+        self.assertContains(response, "Live IDS")
+        self.assertContains(response, "Suricata Alerts")
 
     def test_siem_alert_and_case_pages_link_back_to_explorer(self):
         with patch(

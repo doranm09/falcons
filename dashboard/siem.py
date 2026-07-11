@@ -225,6 +225,10 @@ def normalize_siem_event(payload: Dict[str, Any]) -> Dict[str, Any]:
         or ""
     )
 
+    # Preserve producer-provided raw payload when available to avoid
+    # introducing an extra wrapper layer at normalization time.
+    raw_payload = payload.get("raw") if isinstance(payload.get("raw"), dict) else payload
+
     return {
         "timestamp": timestamp,
         "source": str(source)[:100],
@@ -241,7 +245,7 @@ def normalize_siem_event(payload: Dict[str, Any]) -> Dict[str, Any]:
         "destination_port": destination_port,
         "network_community_id": network_community_id,
         "summary": str(summary)[:512],
-        "raw": payload,
+        "raw": raw_payload,
     }
 
 

@@ -762,6 +762,16 @@ services:
       oob_mgmt:
         ipv4_address: 172.31.250.242
 
+  ids:
+    build:
+      context: ./services/ids
+    container_name: ids
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+      - ./models:/models
+      - ./plots:/plots
+
 networks:
   l4_net:
     driver: bridge

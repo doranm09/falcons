@@ -13,8 +13,6 @@
   const tbody = document.querySelector('[data-testid="siem-events-body"]');
   const modalEl = document.getElementById('siem-raw-modal');
   const modalContent = document.getElementById('siem-raw-content');
-  const pivotModalEl = document.getElementById('siem-pivot-modal');
-  const pivotContent = document.getElementById('siem-pivot-content');
   const quickRangeButtons = explorer.querySelectorAll('[data-range]');
   const workflowButtons = explorer.querySelectorAll('[data-workflow]');
   const resetButton = document.getElementById('siem-reset');
@@ -23,7 +21,6 @@
 
   const rawCache = new Map();
   const modal = modalEl ? new bootstrap.Modal(modalEl) : null;
-  const pivotModal = pivotModalEl ? new bootstrap.Modal(pivotModalEl) : null;
 
   const inputs = {
     start: document.getElementById('siem-start'),
@@ -173,7 +170,7 @@
     }
 
     events.forEach((event, idx) => {
-      const eventId = event.id ?? `tmp-${idx}`;
+      const eventId = String(event.id ?? `tmp-${idx}`);
       rawCache.set(eventId, event.raw || {});
 
       const row = document.createElement('tr');
@@ -225,7 +222,7 @@
   }
 
   function showRawFromCache(eventId) {
-    const payload = rawCache.get(eventId);
+    const payload = rawCache.get(String(eventId));
     modalContent.textContent = JSON.stringify(payload || {}, null, 2);
     modal?.show();
   }
@@ -275,6 +272,22 @@
   });
 
   const workflowPresets = {
+    liveids: {
+      eventModule: 'suricata,zeek',
+      excludeStats: true,
+      message: 'Showing live Suricata and Zeek events from the network sensor forwarding path.',
+    },
+    suricataalerts: {
+      eventDataset: 'suricata.alert',
+      excludeStats: true,
+      message: 'Showing Suricata alert events only.',
+    },
+    zeekprotocols: {
+      eventModule: 'zeek',
+      eventDataset: 'zeek.conn,zeek.dns,zeek.http,zeek.ssl,zeek.notice,zeek.files',
+      excludeStats: true,
+      message: 'Showing Zeek protocol and session logs from the live sensor feed.',
+    },
     hybrid: {
       eventDataset: 'agent.network_connection,zeek.conn,suricata.flow',
       excludeStats: true,
@@ -371,40 +384,14 @@
       return;
     }
 
-    if (action === 'pivot') {
-      const assetIp = row.dataset.assetIp || '';
-      const assetId = row.dataset.assetId || '';
-      if (!pivotUrl) return;
-      pivotContent.innerHTML = '<div class="text-muted">Loading pivot details…</div>';
-      pivotModal?.show();
-      if (!assetIp && !assetId) {
-        pivotContent.innerHTML = '<div class="text-muted">No asset information on this event.</div>';
-        return;
-      }
-      const params = new URLSearchParams();
-      if (assetIp) params.set('asset_ip', assetIp);
-      if (assetId) params.set('asset_id', assetId);
-      try {
-        const resp = await fetch(`${pivotUrl}?${params.toString()}`);
-        const body = await resp.json();
-        if (!resp.ok) throw new Error(body.error || 'Pivot request failed');
-        if (!body.found) {
-          pivotContent.innerHTML = '<div class="text-muted">No matching node found.</div>';
-          return;
-        }
-        const scanLink = body.scan_url ? `<a href="${body.scan_url}">Scan Vulnerabilities</a>` : '—';
-        pivotContent.innerHTML = `
-          <div class="mb-2"><strong>Node:</strong> ${body.node_name} (${body.node_ip})</div>
-          <div class="mb-2"><strong>Agent ID:</strong> ${body.agent_id || '-'}</div>
-          <div class="mb-2"><strong>Node CVEs:</strong> ${body.node_cve_count ?? 0}</div>
-          <div class="mb-2"><strong>Scan Vulnerabilities:</strong> ${body.scan_vuln_count ?? 0}</div>
-          <div class="mb-2"><strong>Links:</strong> <a href="${body.node_url}">Node Detail</a> | ${scanLink}</div>
-        `;
-      } catch (err) {
-        pivotContent.innerHTML = `<div class="text-danger">${err.message || 'Pivot failed'}</div>`;
-      }
-    }
   });
+
+  if (inputs.start && !inputs.start.value) {
+    inputs.start.value = defaultStart;
+  }
+  if (inputs.end && !inputs.end.value) {
+    inputs.end.value = defaultEnd;
+  }
 
   if (timelineBars) {
     runSearch();

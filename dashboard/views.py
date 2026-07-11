@@ -133,6 +133,14 @@ from .pid_drawio import (
     store_drawio_upload,
     upload_sim_system,
 )
+from .sim_system import (
+    SIM_SYSTEM_SECTION_KEYS,
+    build_risk_service_compatible_sim_system,
+    is_legacy_sim_system,
+    legacy_to_sectioned_sim_system,
+    load_sim_system_json,
+    write_sim_system_json,
+)
 from .gvmd import fetch_gvmd_findings_for_ips
 
 
@@ -844,19 +852,451 @@ def _load_gpwr_subsystem_catalog() -> list[dict]:
 
 
 def _risk_call(func, path, **kwargs):
+    response = _risk_raw_call(func, path, **kwargs)
+    response.raise_for_status()
+    return response
+
+
+def _risk_raw_call(func, path, retry=None, **kwargs):
+    if retry is None:
+        retry = getattr(func, "__name__", "").lower() in {"get", "head", "options"}
     last_exc = None
-    for attempt in range(2):
+    attempts = 2 if retry else 1
+    for attempt in range(attempts):
         try:
             response = func(_risk_api_url(path), timeout=RISK_ASSESSMENT_TIMEOUT, **kwargs)
-            response.raise_for_status()
             return response
         except Exception as exc:
             last_exc = exc
-            if attempt == 0:
+            if attempt + 1 < attempts:
                 time.sleep(0.5)
     if last_exc:
         raise last_exc
     raise RuntimeError("Risk service request failed.")
+
+
+def _risk_response_detail(response) -> str:
+    try:
+        payload = response.json()
+    except Exception:
+        payload = None
+    if isinstance(payload, dict):
+        for key in ("detail", "error", "message"):
+            value = payload.get(key)
+            if value:
+                return str(value)
+    return str(getattr(response, "text", "") or "").strip()
+
+
+def _risk_raise_for_status(response, path: str) -> None:
+    try:
+        response.raise_for_status()
+    except Exception as exc:
+        detail = _risk_response_detail(response)
+        if detail:
+            raise RuntimeError(f"Risk service {path} failed: {detail}") from exc
+        raise
+
+
+def _risk_missing_model_response(response) -> bool:
+    detail = _risk_response_detail(response).lower()
+    return "no system model uploaded" in detail or "dbn not loaded" in detail
+
+
+def _normalize_risk_node_name(node_name: str) -> str:
+    name = str(node_name or "").strip()
+    if len(name) > 2 and name.endswith(("N0", "Nt")):
+        return name[:-2]
+    return name
+
+
+def _normalize_risk_results_payload(payload):
+    if not isinstance(payload, dict):
+        return payload
+    results = payload.get("results")
+    if not isinstance(results, dict):
+        return payload
+    normalized = {}
+    for node_name, state_map in results.items():
+        normalized_name = _normalize_risk_node_name(node_name)
+        if isinstance(state_map, dict):
+            normalized[normalized_name] = {
+                ("normal" if str(state).strip().lower() == "nominal" else str(state).strip().lower()): probability
+                for state, probability in state_map.items()
+            }
+        else:
+            normalized[normalized_name] = state_map
+    out = dict(payload)
+    out["results"] = normalized
+    return out
+
+
+def _risk_nodes_from_payload(payload) -> list[dict]:
+    node_payload = payload.get("nodes") if isinstance(payload, dict) else None
+    if not isinstance(node_payload, dict):
+        return []
+
+    nodes = []
+    for node_id, raw_info in node_payload.items():
+        info = raw_info if isinstance(raw_info, dict) else {}
+        info = info if isinstance(info, dict) else {}
+        identifier = str(node_id).strip()
+        if not identifier:
+            continue
+        states = info.get("states")
+        if isinstance(states, tuple):
+            states = list(states)
+        if not isinstance(states, list):
+            states = []
+        nodes.append(
+            {
+                "id": identifier,
+                "name": identifier,
+                "states": [str(state) for state in states],
+                "type": str(info.get("type") or ""),
+                "category": str(info.get("category") or ""),
+            }
+        )
+
+    nodes.sort(key=lambda item: item["name"])
+    return nodes
+
+
+def _risk_node_ids_from_payload(payload) -> list[str]:
+    return [node["id"] for node in _risk_nodes_from_payload(payload)]
+
+
+def _risk_local_model_payload() -> tuple[dict | None, Path | None]:
+    return _risk_local_model_payload_for_source("auto")
+
+
+def _risk_local_model_payload_for_source(source: str = "auto") -> tuple[dict | None, Path | None]:
+    output_dir_value = getattr(settings, "PID_DRAWIO_OUTPUT_DIR", None)
+    output_dir = Path(output_dir_value) if output_dir_value else Path(settings.BASE_DIR) / "out" / "pid_drawio"
+    target_path_value = getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", "")
+    target_path = Path(target_path_value) if target_path_value else None
+    sim_path, _ = resolve_sim_system_path(source, output_dir, target_path)
+    if not sim_path or not sim_path.exists():
+        return None, None
+    try:
+        payload = load_sim_system_json(sim_path)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Failed to parse sim_system JSON from {sim_path}: {exc}") from exc
+    return legacy_to_sectioned_sim_system(payload), sim_path
+
+
+def _risk_model_counts(payload: dict | None) -> dict[str, int]:
+    counts = {}
+    if not isinstance(payload, dict):
+        return counts
+    for section in ("digital", "physical", "flow", "function"):
+        section_payload = payload.get(section)
+        if isinstance(section_payload, dict):
+            counts[section] = len(section_payload)
+    return counts
+
+
+def _risk_payload_is_model_payload(payload: dict) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    return is_legacy_sim_system(payload) or any(key in payload for key in SIM_SYSTEM_SECTION_KEYS)
+
+
+def _risk_console_groups() -> list[dict]:
+    return [
+        {
+            "title": "Inspection",
+            "endpoints": [
+                {
+                    "id": "metadata",
+                    "label": "API Metadata",
+                    "method": "GET",
+                    "url": reverse("dashboard:risk_assessment_service_info"),
+                    "path": "/",
+                    "description": "Fetch service metadata and the advertised endpoint list.",
+                    "payload_mode": "none",
+                },
+                {
+                    "id": "status",
+                    "label": "Status",
+                    "method": "GET",
+                    "url": reverse("dashboard:risk_assessment_service_status"),
+                    "path": "/status",
+                    "description": "Check risk service health and current DBN state.",
+                    "payload_mode": "none",
+                },
+                {
+                    "id": "nodes",
+                    "label": "Nodes",
+                    "method": "GET",
+                    "url": reverse("dashboard:risk_assessment_service_nodes"),
+                    "path": "/nodes",
+                    "description": "Fetch available digital and physical nodes and their states.",
+                    "payload_mode": "none",
+                },
+            ],
+        },
+        {
+            "title": "Model Lifecycle",
+            "endpoints": [
+                {
+                    "id": "upload-model",
+                    "label": "Upload Model",
+                    "method": "POST",
+                    "url": reverse("dashboard:risk_assessment_service_upload"),
+                    "path": "/upload_model",
+                    "description": "Upload a raw sim_system JSON payload and rebuild the DBN.",
+                    "payload_mode": "json",
+                    "payload_label": "JSON body",
+                    "default_payload": json.dumps(
+                        {
+                            "version": "1.0",
+                            "digital": {},
+                            "physical": {},
+                            "flow": {},
+                            "function": {},
+                        },
+                        indent=2,
+                    ),
+                },
+                {
+                    "id": "unload-model",
+                    "label": "Unload Model",
+                    "method": "POST",
+                    "url": reverse("dashboard:risk_assessment_service_unload"),
+                    "path": "/unload_model",
+                    "description": "Unload the current model and reset the risk module.",
+                    "payload_mode": "none",
+                },
+            ],
+        },
+        {
+            "title": "Updates And Queries",
+            "endpoints": [
+                {
+                    "id": "post-vulnerability",
+                    "label": "Post Vulnerability",
+                    "method": "POST",
+                    "url": reverse("dashboard:risk_assessment_service_vulnerability"),
+                    "path": "/post_vulnerability",
+                    "description": "Apply vulnerability updates and regenerate the DBN.",
+                    "payload_mode": "json",
+                    "payload_label": "JSON body",
+                    "default_payload": json.dumps(
+                        {
+                            "nodes": {
+                                "Firewall-Main-Cell": {
+                                    "CVE-TEST-0001": {
+                                        "cvss": 7.5,
+                                        "epss": 0.004,
+                                    }
+                                }
+                            }
+                        },
+                        indent=2,
+                    ),
+                },
+                {
+                    "id": "post-detection",
+                    "label": "Post Detection",
+                    "method": "POST",
+                    "url": reverse("dashboard:risk_assessment_service_detection"),
+                    "path": "/post_detection",
+                    "description": "Apply detection scores as soft evidence for compromised states.",
+                    "payload_mode": "json",
+                    "payload_label": "JSON body",
+                    "default_payload": json.dumps(
+                        {
+                            "nodes": {
+                                "Firewall-Main-Cell": {
+                                    "score": 0.8,
+                                }
+                            }
+                        },
+                        indent=2,
+                    ),
+                },
+                {
+                    "id": "get-probability",
+                    "label": "Get Probability",
+                    "method": "GET",
+                    "url": reverse("dashboard:risk_assessment_service_probability"),
+                    "path": "/get_probability",
+                    "description": "Query node probabilities with the service's documented query parameters.",
+                    "payload_mode": "query",
+                    "payload_label": "Query JSON",
+                    "default_payload": json.dumps({"T": 3, "nodes": ["Firewall-Main-Cell"]}, indent=2),
+                },
+            ],
+        },
+    ]
+
+
+def _risk_upload_model_payload(payload):
+    response = _risk_raw_call(requests.post, "/upload_model", json=payload, retry=False)
+    _risk_raise_for_status(response, "/upload_model")
+    try:
+        return response.json()
+    except Exception:
+        return {}
+
+
+def _risk_upload_local_model_if_available() -> bool:
+    payload, _ = _risk_local_model_payload()
+    if payload is None:
+        return False
+    _risk_upload_model_payload(build_risk_service_compatible_sim_system(payload))
+    return True
+
+
+def _risk_get_probability(t_value: int | None = None, nodes: list[str] | None = None):
+    params = {}
+    if t_value is not None:
+        params["T"] = t_value
+    if nodes:
+        params["nodes"] = ",".join(str(node).strip() for node in nodes if str(node).strip())
+    response = _risk_raw_call(requests.get, "/get_probability", params=params or None)
+    if _risk_missing_model_response(response) and _risk_upload_local_model_if_available():
+        response = _risk_raw_call(requests.get, "/get_probability", params=params or None)
+    _risk_raise_for_status(response, "/get_probability")
+    return _normalize_risk_results_payload(response.json())
+
+
+def _risk_query_nodes_from_cyber_data(cyber_data: dict) -> list[str]:
+    nodes = []
+    for entry in cyber_data.get("scanned_nodes", []) if isinstance(cyber_data, dict) else []:
+        if not isinstance(entry, dict):
+            continue
+        node_id = str(entry.get("id") or entry.get("name") or "").strip()
+        if node_id and node_id not in nodes:
+            nodes.append(node_id)
+    return nodes
+
+
+def _risk_extract_mutation_updates_from_cyber_data(cyber_data: dict) -> tuple[dict, dict]:
+    vulnerability_nodes = {}
+    detection_nodes = {}
+    for entry in cyber_data.get("scanned_nodes", []) if isinstance(cyber_data, dict) else []:
+        if not isinstance(entry, dict):
+            continue
+        node_id = str(entry.get("id") or entry.get("name") or "").strip()
+        if not node_id:
+            continue
+
+        vulnerabilities = entry.get("vulnerability") or entry.get("vulnerabilities") or []
+        if isinstance(vulnerabilities, list):
+            for vulnerability in vulnerabilities:
+                if not isinstance(vulnerability, dict):
+                    continue
+                cve_id = str(vulnerability.get("id") or vulnerability.get("cve_id") or "").strip()
+                if not cve_id:
+                    continue
+                payload = {}
+                try:
+                    if vulnerability.get("cvss") is not None:
+                        payload["cvss"] = float(vulnerability.get("cvss"))
+                    elif vulnerability.get("cvss_score") is not None:
+                        payload["cvss"] = float(vulnerability.get("cvss_score"))
+                except (TypeError, ValueError):
+                    pass
+                try:
+                    if vulnerability.get("epss") is not None:
+                        payload["epss"] = float(vulnerability.get("epss"))
+                except (TypeError, ValueError):
+                    pass
+                if payload:
+                    vulnerability_nodes.setdefault(node_id, {})[cve_id] = payload
+
+        score_value = None
+        for detection_key in ("detection", "detections"):
+            detection_payload = entry.get(detection_key)
+            if isinstance(detection_payload, dict):
+                for value in detection_payload.values():
+                    if isinstance(value, (int, float)):
+                        score_value = float(value)
+                        break
+                    if isinstance(value, dict):
+                        for nested in value.values():
+                            if isinstance(nested, (int, float)):
+                                score_value = float(nested)
+                                break
+                    if score_value is not None:
+                        break
+            if score_value is not None:
+                break
+        if score_value is None and isinstance(entry.get("score"), (int, float)):
+            score_value = float(entry.get("score"))
+        if score_value is not None:
+            detection_nodes[node_id] = {"score": max(0.0, min(score_value, 1.0))}
+
+    return vulnerability_nodes, detection_nodes
+
+
+def _risk_post_mutation(path: str, payload: dict) -> dict:
+    response = _risk_raw_call(requests.post, path, json=payload, retry=False)
+    if _risk_missing_model_response(response) and _risk_upload_local_model_if_available():
+        response = _risk_raw_call(requests.post, path, json=payload, retry=False)
+    _risk_raise_for_status(response, path)
+    try:
+        return response.json()
+    except Exception:
+        return {}
+
+
+def _risk_probability_from_updates(
+    vulnerabilities: dict | None = None,
+    detections: dict | None = None,
+    t_value: int | None = None,
+    nodes: list[str] | None = None,
+):
+    if detections:
+        raise ValueError(
+            "The current ICS risk assessment API exposes /post_detection, "
+            "but it does not return posterior probabilities that Django can query afterward."
+        )
+
+    if vulnerabilities:
+        _risk_post_mutation(
+            "/post_vulnerability",
+            {"T": t_value if t_value is not None else 3, "nodes": vulnerabilities},
+        )
+
+    if detections:
+        _risk_post_mutation(
+            "/post_detection",
+            {"T": t_value if t_value is not None else 0, "nodes": detections},
+        )
+
+    query_nodes = nodes or sorted(set((vulnerabilities or {}).keys()) | set((detections or {}).keys()))
+    return _risk_get_probability(t_value=t_value, nodes=query_nodes or None)
+
+
+def _risk_probability_from_cyber_data(
+    cyber_data: dict,
+    t_value: int | None = None,
+    nodes: list[str] | None = None,
+):
+    vulnerabilities, detections = _risk_extract_mutation_updates_from_cyber_data(cyber_data)
+    query_nodes = nodes or _risk_query_nodes_from_cyber_data(cyber_data)
+    return _risk_probability_from_updates(
+        vulnerabilities=vulnerabilities,
+        detections=detections,
+        t_value=t_value,
+        nodes=query_nodes or None,
+    )
+
+
+def _risk_probability_from_evidence(
+    evidence: dict,
+    t_value: int | None = None,
+    nodes: list[str] | None = None,
+):
+    if not evidence:
+        return _risk_get_probability(t_value=t_value, nodes=nodes)
+    raise RuntimeError(
+        "The current ICS risk assessment API does not support ad hoc evidence queries. "
+        "Use vulnerability updates, detection updates, or a direct probability query instead."
+    )
 
 
 def _gpwr_send_command(command: str, host: str, port: int, timeout: float = 5.0) -> str:
@@ -6267,13 +6707,159 @@ def network_topology_api(request):
 
 
 def risk_assessment_page(request):
+    local_model = {
+        "available": False,
+        "path": "",
+        "counts": {},
+        "error": "",
+    }
+    try:
+        payload, model_path = _risk_local_model_payload()
+        if payload is not None and model_path is not None:
+            local_model = {
+                "available": True,
+                "path": _relative_to_base(model_path),
+                "counts": _risk_model_counts(payload),
+                "error": "",
+            }
+    except Exception as exc:
+        local_model["error"] = str(exc)
+
     return render(
         request,
-        'dashboard/risk_assessment.html',
+        'dashboard/risk_assessment_console.html',
         {
             "risk_pid_target_path": getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", ""),
+            "risk_service_url": getattr(settings, "RISK_ASSESSMENT_API_URL", ""),
+            "risk_local_model": local_model,
+            "risk_console_groups": _risk_console_groups(),
         },
     )
+
+
+@require_http_methods(["POST"])
+def risk_assessment_model_upload_api(request):
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "JSON body must be an object."}, status=400)
+
+    try:
+        if _risk_payload_is_model_payload(payload):
+            risk_model = legacy_to_sectioned_sim_system(payload)
+        else:
+            source = str(payload.get("source") or "auto").strip() or "auto"
+            model_payload = payload.get("model")
+            if model_payload is not None:
+                if not isinstance(model_payload, dict):
+                    return JsonResponse({"error": "model must be a JSON object."}, status=400)
+                risk_model = legacy_to_sectioned_sim_system(model_payload)
+            else:
+                risk_model, _ = _risk_local_model_payload_for_source(source)
+                if risk_model is None:
+                    return JsonResponse({"error": "No local risk model is available to upload."}, status=404)
+
+        service_model = build_risk_service_compatible_sim_system(risk_model)
+        response_payload = _risk_upload_model_payload(service_model)
+        return JsonResponse(response_payload, safe=False)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=502)
+
+
+@require_GET
+def risk_assessment_service_info_api(request):
+    try:
+        response = _risk_call(requests.get, "/")
+        return JsonResponse(response.json(), safe=False)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=502)
+
+
+@require_GET
+def risk_assessment_service_status_api(request):
+    try:
+        response = _risk_call(requests.get, "/status")
+        return JsonResponse(response.json(), safe=False)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=502)
+
+
+@require_GET
+def risk_assessment_service_nodes_api(request):
+    try:
+        response = _risk_call(requests.get, "/nodes")
+        return JsonResponse(response.json(), safe=False)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=502)
+
+
+@require_http_methods(["POST"])
+def risk_assessment_service_unload_api(request):
+    try:
+        response = _risk_raw_call(requests.post, "/unload_model", json={}, retry=False)
+        _risk_raise_for_status(response, "/unload_model")
+        return JsonResponse(response.json(), safe=False)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=502)
+
+
+@require_http_methods(["POST"])
+def risk_assessment_service_vulnerability_api(request):
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "JSON body must be an object."}, status=400)
+
+    try:
+        response_payload = _risk_post_mutation("/post_vulnerability", payload)
+        return JsonResponse(response_payload, safe=False)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=502)
+
+
+@require_http_methods(["POST"])
+def risk_assessment_service_detection_api(request):
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "JSON body must be an object."}, status=400)
+
+    try:
+        response_payload = _risk_post_mutation("/post_detection", payload)
+        return JsonResponse(response_payload, safe=False)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=502)
+
+
+@require_GET
+def risk_assessment_service_probability_api(request):
+    params = {}
+    t_value = request.GET.get("T")
+    if t_value not in (None, ""):
+        try:
+            params["T"] = int(t_value)
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "T must be an integer."}, status=400)
+
+    nodes_value = request.GET.get("nodes", "")
+    nodes = [node.strip() for node in str(nodes_value).split(",") if node.strip()]
+    if nodes:
+        params["nodes"] = ",".join(nodes)
+
+    try:
+        response = _risk_call(requests.get, "/get_probability", params=params or None)
+        return JsonResponse(response.json(), safe=False)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=502)
 
 
 @require_http_methods(["POST"])
@@ -6289,6 +6875,10 @@ def risk_assessment_pid_upload(request):
     try:
         xml_path = store_drawio_upload(upload, output_dir, prefix)
         sim_system, sim_path = convert_drawio_to_sim_system(xml_path, output_dir, prefix)
+        risk_model = legacy_to_sectioned_sim_system(sim_system)
+        risk_model_path = write_sim_system_json(output_dir / f"{prefix}_risk_upload_sim_system.json", risk_model)
+        risk_service_model = build_risk_service_compatible_sim_system(risk_model)
+        risk_service_model_path = write_sim_system_json(output_dir / f"{prefix}_risk_service_payload.json", risk_service_model)
     except DrawioParseError as exc:
         return JsonResponse({"error": f"Invalid draw.io XML: {exc}"}, status=400)
     except Exception as exc:
@@ -6323,21 +6913,30 @@ def risk_assessment_pid_upload(request):
     if upload_requested:
         if upload_path_value:
             try:
-                uploaded_path = upload_sim_system(sim_path, Path(upload_path_value))
+                uploaded_path = upload_sim_system(risk_service_model_path, Path(upload_path_value))
                 upload_result["success"] = True
                 upload_result["path"] = _relative_to_base(uploaded_path)
             except Exception as exc:
                 upload_result["error"] = str(exc)
-        else:
-            upload_result["error"] = "RISK_ASSESSMENT_SIM_SYSTEM_PATH not configured."
 
         if upload_url:
             try:
                 headers = {}
                 if upload_token:
                     headers["Authorization"] = f"Bearer {upload_token}"
-                response = requests.post(upload_url, json=sim_system, headers=headers, timeout=RISK_ASSESSMENT_TIMEOUT)
+                response = requests.post(
+                    upload_url,
+                    json=risk_service_model,
+                    headers=headers,
+                    timeout=RISK_ASSESSMENT_TIMEOUT,
+                )
                 response.raise_for_status()
+                upload_result["posted"] = True
+            except Exception as exc:
+                upload_result["post_error"] = str(exc)
+        else:
+            try:
+                _risk_upload_model_payload(risk_service_model)
                 upload_result["posted"] = True
             except Exception as exc:
                 upload_result["post_error"] = str(exc)
@@ -6362,6 +6961,18 @@ def risk_assessment_pid_upload(request):
             "connections_count": len(connections),
             "drawio_path": _relative_to_base(xml_path),
             "sim_system_path": _relative_to_base(sim_path),
+            "risk_model_path": _relative_to_base(risk_model_path),
+            "risk_service_model_path": _relative_to_base(risk_service_model_path),
+            "risk_model_nodes_count": sum(
+                len(risk_model.get(section, {}) or {})
+                for section in ("digital", "physical", "flow", "function")
+                if isinstance(risk_model.get(section), dict)
+            ),
+            "risk_service_model_nodes_count": sum(
+                len(risk_service_model.get(section, {}) or {})
+                for section in ("digital", "physical", "flow", "function")
+                if isinstance(risk_service_model.get(section), dict)
+            ),
             "upload": upload_result,
             "validation": {
                 "summary": validation_result[0],
@@ -6537,7 +7148,8 @@ def risk_assessment_status_api(request):
 def risk_assessment_nodes_api(request):
     try:
         response = _risk_call(requests.get, '/nodes')
-        return JsonResponse(response.json())
+        nodes = _risk_nodes_from_payload(response.json())
+        return JsonResponse({"nodes": nodes, "total_count": len(nodes)})
     except Exception as exc:
         return JsonResponse({'error': str(exc)}, status=502)
 
@@ -6565,17 +7177,20 @@ def risk_assessment_evidence_api(request):
         except (TypeError, ValueError):
             return JsonResponse({'error': 'T must be an integer.'}, status=400)
 
-    try:
-        response = _risk_call(
-            requests.post,
-            '/evidence',
-            json={
-                "T": t_value if t_value is not None else 3,
-                "evidence": evidence,
-                "nodes": nodes,
+    if evidence:
+        return JsonResponse(
+            {
+                "error": (
+                    "The current ICS risk assessment API does not support ad hoc evidence queries. "
+                    "Use vulnerability updates, detection updates, or a direct probability query instead."
+                )
             },
+            status=400,
         )
-        return JsonResponse(response.json())
+
+    try:
+        result = _risk_probability_from_evidence(evidence=evidence, t_value=t_value, nodes=nodes)
+        return JsonResponse(result)
     except Exception as exc:
         return JsonResponse({'error': str(exc)}, status=502)
 
@@ -6594,21 +7209,62 @@ def risk_assessment_probability_api(request):
         except (TypeError, ValueError):
             return JsonResponse({'error': 'T must be an integer.'}, status=400)
 
+    nodes = payload.get("nodes")
+    if nodes is not None and not isinstance(nodes, list):
+        return JsonResponse({'error': 'nodes must be a list of node names.'}, status=400)
+
+    evidence = payload.get("evidence")
+    if evidence is not None and not isinstance(evidence, dict):
+        return JsonResponse({'error': 'evidence must be an object.'}, status=400)
+    if evidence:
+        return JsonResponse(
+            {
+                "error": (
+                    "The current ICS risk assessment API does not support ad hoc evidence queries. "
+                    "Use vulnerability updates, detection updates, or a direct probability query instead."
+                )
+            },
+            status=400,
+        )
+
+    vulnerabilities = payload.get("vulnerabilities")
+    if vulnerabilities is not None and not isinstance(vulnerabilities, dict):
+        return JsonResponse({'error': 'vulnerabilities must be an object.'}, status=400)
+
+    detections = payload.get("detections")
+    if detections is not None and not isinstance(detections, dict):
+        return JsonResponse({'error': 'detections must be an object.'}, status=400)
+    if detections:
+        return JsonResponse(
+            {
+                "error": (
+                    "The current ICS risk assessment API exposes /post_detection, "
+                    "but it does not return posterior probabilities that Django can query afterward."
+                )
+            },
+            status=400,
+        )
+
     cyber_data = payload.get("cyber_data")
     if cyber_data is None and payload.get("scanned_nodes") is not None:
         cyber_data = payload
 
-    if not isinstance(cyber_data, dict):
-        return JsonResponse({'error': 'cyber_data must be provided for /probability.'}, status=400)
-
     try:
-        response = _risk_call(
-            requests.post,
-            '/probability',
-            json=cyber_data,
-            params={"T": t_value} if t_value is not None else None,
-        )
-        return JsonResponse(response.json())
+        if isinstance(cyber_data, dict):
+            result = _risk_probability_from_cyber_data(cyber_data=cyber_data, t_value=t_value, nodes=nodes)
+            return JsonResponse(result)
+        if vulnerabilities or detections:
+            result = _risk_probability_from_updates(
+                vulnerabilities=vulnerabilities or {},
+                detections=detections or {},
+                t_value=t_value,
+                nodes=nodes,
+            )
+            return JsonResponse(result)
+        result = _risk_get_probability(t_value=t_value, nodes=nodes)
+        return JsonResponse(result)
+    except ValueError as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
     except Exception as exc:
         return JsonResponse({'error': str(exc)}, status=502)
 
@@ -6627,17 +7283,14 @@ def risk_assessment_network_compute_api(request):
 
         nodes_response = _risk_call(requests.get, '/nodes')
         payload = nodes_response.json()
-        variables = payload.get("variables", {})
-        risk_nodes = list(variables.keys())
+        risk_nodes = _risk_node_ids_from_payload(payload)
 
         cyber_data, mapped_nodes = build_cyber_data_for_risk_nodes(risk_nodes, scan_run_id=scan_run_id)
 
-        probability_response = _risk_call(
-            requests.post,
-            '/probability',
-            json=cyber_data,
+        result_payload = _risk_probability_from_cyber_data(
+            cyber_data=cyber_data,
+            nodes=risk_nodes,
         )
-        result_payload = probability_response.json()
         results = result_payload.get("results", {})
 
         summary = summarize_risk_results(mapped_nodes, results)
@@ -6658,22 +7311,8 @@ def risk_assessment_mappings_api(request):
         risk_nodes = []
         risk_error = None
         try:
-            response = requests.get(_risk_api_url('/nodes'), timeout=RISK_ASSESSMENT_TIMEOUT)
-            response.raise_for_status()
-            payload = response.json()
-            variables = payload.get("variables")
-            if isinstance(variables, dict):
-                risk_nodes = [str(key) for key in variables.keys()]
-            else:
-                nodes_payload = payload.get("nodes")
-                if isinstance(nodes_payload, list):
-                    for node in nodes_payload:
-                        if isinstance(node, str):
-                            risk_nodes.append(node)
-                        elif isinstance(node, dict):
-                            name = node.get("name") or node.get("node") or node.get("id")
-                            if name:
-                                risk_nodes.append(str(name))
+            response = _risk_call(requests.get, '/nodes')
+            risk_nodes = _risk_node_ids_from_payload(response.json())
         except Exception as exc:
             risk_error = str(exc)
 
@@ -6886,18 +7525,7 @@ def risk_assessment_testbed_generate(request):
     except Exception as exc:
         return JsonResponse({'error': f'Risk service unavailable: {exc}'}, status=502)
 
-    variables = payload.get("variables", {})
-    risk_nodes = list(variables.keys()) if isinstance(variables, dict) else []
-    if not risk_nodes:
-        nodes_payload = payload.get("nodes")
-        if isinstance(nodes_payload, list):
-            for node in nodes_payload:
-                if isinstance(node, str):
-                    risk_nodes.append(node)
-                elif isinstance(node, dict):
-                    name = node.get("name") or node.get("node") or node.get("id")
-                    if name:
-                        risk_nodes.append(str(name))
+    risk_nodes = _risk_node_ids_from_payload(payload)
 
     if not risk_nodes:
         return JsonResponse({'error': 'No risk nodes returned from risk service.'}, status=400)

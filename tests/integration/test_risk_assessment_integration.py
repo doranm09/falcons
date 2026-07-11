@@ -21,6 +21,32 @@ def _risk_service_available() -> bool:
         return False
 
 
+def _risk_node_ids_from_payload(payload) -> list[str]:
+    if not isinstance(payload, dict):
+        return []
+
+    nodes_obj = payload.get("nodes")
+    if isinstance(nodes_obj, dict):
+        return sorted(str(node_id) for node_id in nodes_obj.keys() if str(node_id).strip())
+
+    variables = payload.get("variables")
+    if isinstance(variables, dict):
+        return [str(node_id) for node_id in variables.keys() if str(node_id).strip()]
+
+    if isinstance(nodes_obj, list):
+        node_ids = []
+        for node in nodes_obj:
+            if isinstance(node, str) and node.strip():
+                node_ids.append(node.strip())
+            elif isinstance(node, dict):
+                node_id = str(node.get("id") or node.get("name") or node.get("node") or "").strip()
+                if node_id:
+                    node_ids.append(node_id)
+        return node_ids
+
+    return []
+
+
 @pytest.mark.django_db
 def test_risk_assessment_network_compute_integration(client):
     if not _risk_service_available():
@@ -31,8 +57,7 @@ def test_risk_assessment_network_compute_integration(client):
         pytest.skip("Risk assessment nodes endpoint unavailable.")
 
     payload = nodes_response.json()
-    variables = payload.get("variables", {})
-    risk_nodes = list(variables.keys())
+    risk_nodes = _risk_node_ids_from_payload(payload)
     if not risk_nodes:
         pytest.skip("Risk assessment returned no nodes.")
 

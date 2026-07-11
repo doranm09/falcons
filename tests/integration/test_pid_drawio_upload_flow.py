@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
@@ -51,3 +52,7 @@ def test_pid_drawio_upload_flow(client, tmp_path: Path, settings):
     assert data["upload"]["attempted"] is True
     assert data["upload"]["success"] is True
     assert target_path.exists()
+    payload = json.loads(target_path.read_text(encoding="utf-8"))
+    assert payload["version"] == "1.0"
+    assert "physical" in payload
+    assert "PUMP_A" in payload["physical"]

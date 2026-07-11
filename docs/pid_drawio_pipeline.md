@@ -1,12 +1,13 @@
 # P&ID Draw.io Pipeline
 
-This project supports converting draw.io P&ID diagrams into `sim_system.json` (compatible with `ics-risk-assessment`) and back.
+This project supports converting draw.io P&ID diagrams into `sim_system.json` and the current sectioned risk-model JSON used by `ics-risk-assessment`.
 
 ## Overview
 - Author P&ID diagrams in draw.io (diagrams.net).
 - Store node metadata using `Edit Data` (recommended).
-- Convert diagram XML into `sim_system.json`.
-- Feed `sim_system.json` into `ics-risk-assessment` for system graph analysis.
+- Convert diagram XML into the local legacy `sim_system.json` representation.
+- Translate that model into the current sectioned risk-model JSON for `ics-risk-assessment`.
+- Feed the translated model into `ics-risk-assessment` for system graph analysis.
 
 ## Draw.io Conventions
 **Nodes (variables)**
@@ -74,7 +75,7 @@ python manage.py pid_drawio \
 1. Navigate to **Risk Assessment** -> **Overview**.
 2. In **P&ID Draw.io Import**, choose a draw.io XML file.
 3. Optional: enable **Upload to risk assessment workspace** (requires `RISK_ASSESSMENT_SIM_SYSTEM_PATH`).
-4. Click **Convert & Upload** to generate `sim_system.json`.
+4. Click **Convert & Upload** to generate `sim_system.json` plus the current sectioned risk model.
 
 ## System View (UI)
 1. Navigate to **Risk Assessment** -> **System**.
@@ -92,10 +93,12 @@ Include these fields on cyber nodes in the draw.io P\&ID to drive validation and
 - `redundancy_group`: redundancy grouping label (e.g., `PLC-A/B`).
 
 ## Risk Service Workflow
-1. Upload the generated `sim_system.json` to the risk service `POST /sim-system` (set `RISK_ASSESSMENT_UPLOAD_URL`).
+1. Upload the generated sectioned risk model to the risk service with `POST /upload_model`.
 2. Check `GET /status` to confirm the DBN is loaded.
-3. Use `POST /evidence` to query probabilities with evidence and optional node list.
-4. Use `POST /probability` for cyber.json vulnerability data (no evidence payload).
+3. Use `GET /get_probability` for direct probability queries on selected nodes.
+4. Use `POST /post_vulnerability` followed by `GET /get_probability` for vulnerability-driven updates.
+5. `POST /post_detection` exists upstream, but it does not expose posterior probabilities that the dashboard can query afterward.
+6. Ad hoc `evidence` queries are not supported by the current upstream API contract.
 
 ## Integration Smoke Test
 Run a minimal end-to-end check against the risk service:
@@ -104,9 +107,10 @@ python manage.py risk_smoke_test --sim-system out/pid_drawio/risk_sim_system.jso
 ```
 
 Options:
-- `--skip-probability`: skip the `/probability` call (useful for very large DBNs).
-- `--force-probability`: run `/probability` even when the node count is large.
-- `--nodes-limit 8`: number of nodes to use for the `/evidence` check.
+- `--skip-probability`: skip the `/get_probability` call (useful for very large DBNs).
+- `--skip-detection`: skip the `/post_detection` smoke step.
+- `--force-probability`: run `/get_probability` even when the node count is large.
+- `--nodes-limit 8`: number of nodes to include in the `/get_probability` check.
 
 ## PID Network Validation
 Validate PID cyber nodes against discovered assets and optionally launch scans:
@@ -140,6 +144,6 @@ python manage.py pid_testbed_verify --inventory out/pid_drawio/pid_inventory.jso
 
 Environment variables:
 - `PID_DRAWIO_OUTPUT_DIR`: override where conversion outputs are stored.
-- `RISK_ASSESSMENT_SIM_SYSTEM_PATH`: optional filesystem target for uploading the generated `sim_system.json` into the risk assessment workspace.
-- `RISK_ASSESSMENT_UPLOAD_URL`: optional HTTP endpoint to POST the generated JSON.
+- `RISK_ASSESSMENT_SIM_SYSTEM_PATH`: optional filesystem target for uploading the generated sectioned risk model into the risk assessment workspace.
+- `RISK_ASSESSMENT_UPLOAD_URL`: optional HTTP endpoint to POST the generated sectioned risk model.
 - `RISK_ASSESSMENT_UPLOAD_TOKEN`: optional bearer token for the upload endpoint.

@@ -95,6 +95,15 @@ urlpatterns = [
 
     # Risk assessment (ICS)
     path('risk-assessment/', views.risk_assessment_page, name='risk_assessment'),
+    path('risk-assessment/service/info/', views.risk_assessment_service_info_api, name='risk_assessment_service_info'),
+    path('risk-assessment/service/status/', views.risk_assessment_service_status_api, name='risk_assessment_service_status'),
+    path('risk-assessment/service/nodes/', views.risk_assessment_service_nodes_api, name='risk_assessment_service_nodes'),
+    path('risk-assessment/service/model/upload/', views.risk_assessment_model_upload_api, name='risk_assessment_service_upload'),
+    path('risk-assessment/service/model/unload/', views.risk_assessment_service_unload_api, name='risk_assessment_service_unload'),
+    path('risk-assessment/service/vulnerability/', views.risk_assessment_service_vulnerability_api, name='risk_assessment_service_vulnerability'),
+    path('risk-assessment/service/detection/', views.risk_assessment_service_detection_api, name='risk_assessment_service_detection'),
+    path('risk-assessment/service/probability/', views.risk_assessment_service_probability_api, name='risk_assessment_service_probability'),
+    path('risk-assessment/model/upload/', views.risk_assessment_model_upload_api, name='risk_assessment_model_upload'),
     path('risk-assessment/status/', views.risk_assessment_status_api, name='risk_assessment_status'),
     path('risk-assessment/nodes/', views.risk_assessment_nodes_api, name='risk_assessment_nodes'),
     path('risk-assessment/evidence/', views.risk_assessment_evidence_api, name='risk_assessment_evidence'),

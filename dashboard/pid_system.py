@@ -8,9 +8,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from django.utils.timezone import now
 
-from knowledge_extraction.drawio import load_sim_system
-
 from .models import NetworkConnection
+from .sim_system import load_local_sim_system
 
 CYBER_HINTS = (
     "plc",
@@ -63,7 +62,7 @@ def resolve_sim_system_path(
 
 
 def load_sim_system_file(path: Path) -> Dict[str, Any]:
-    return load_sim_system(path)
+    return load_local_sim_system(path)
 
 
 def build_system_elements(

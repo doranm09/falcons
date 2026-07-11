@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import requests
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
+from dashboard.sim_system import build_risk_service_compatible_sim_system, load_sim_system_json
+
 
 class Command(BaseCommand):
-    help = "Run integration smoke tests against the risk assessment API."
+    help = "Run smoke tests against the current ICS risk assessment API."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -21,23 +22,28 @@ class Command(BaseCommand):
         parser.add_argument(
             "--sim-system",
             default=None,
-            help="Optional path to sim_system.json to POST to /sim-system before tests.",
+            help="Optional sim_system.json path to upload with /upload_model before tests.",
         )
         parser.add_argument(
             "--nodes-limit",
             type=int,
             default=8,
-            help="Number of nodes to query for /evidence (default: 8).",
+            help="Number of nodes to query with /get_probability (default: 8).",
         )
         parser.add_argument(
             "--skip-probability",
             action="store_true",
-            help="Skip the /probability smoke test.",
+            help="Skip the /get_probability smoke test.",
+        )
+        parser.add_argument(
+            "--skip-detection",
+            action="store_true",
+            help="Skip the /post_detection smoke test.",
         )
         parser.add_argument(
             "--force-probability",
             action="store_true",
-            help="Run /probability even if nodes_count is large.",
+            help="Run /get_probability even if nodes_count is large.",
         )
         parser.add_argument(
             "--timeout",
@@ -54,6 +60,24 @@ class Command(BaseCommand):
         def _url(path: str) -> str:
             return f"{base_url}/{path.lstrip('/')}"
 
+        def _detail(response: requests.Response) -> str:
+            try:
+                payload = response.json()
+            except Exception:
+                payload = None
+            if isinstance(payload, dict):
+                for key in ("detail", "error", "message"):
+                    value = payload.get(key)
+                    if value:
+                        return str(value)
+            return response.text
+
+        def _node_ids_from_payload(payload: Any) -> list[str]:
+            nodes_obj = payload.get("nodes") if isinstance(payload, dict) else None
+            if not isinstance(nodes_obj, dict):
+                return []
+            return sorted(str(node_id) for node_id in nodes_obj.keys() if str(node_id).strip())
+
         self.stdout.write(self.style.NOTICE(f"Risk API: {base_url}"))
 
         sim_system_path = options.get("sim_system")
@@ -62,72 +86,62 @@ class Command(BaseCommand):
             if not sim_path.exists():
                 raise SystemExit(f"sim_system.json not found: {sim_path}")
             try:
-                payload = json.loads(sim_path.read_text())
-            except json.JSONDecodeError as exc:
-                raise SystemExit(f"Invalid JSON in {sim_path}: {exc}")
-            self.stdout.write("Posting sim_system.json to /sim-system …")
-            resp = requests.post(_url("/sim-system"), json=payload, timeout=timeout)
+                payload = build_risk_service_compatible_sim_system(load_sim_system_json(sim_path))
+            except Exception as exc:
+                raise SystemExit(f"Failed to load sim_system.json from {sim_path}: {exc}")
+            self.stdout.write("Uploading sim_system.json to /upload_model ...")
+            resp = requests.post(_url("/upload_model"), json=payload, timeout=timeout)
             if not resp.ok:
-                raise SystemExit(f"/sim-system failed: {resp.status_code} {resp.text}")
-            self.stdout.write(self.style.SUCCESS(f"/sim-system ok: {resp.json()}"))
+                raise SystemExit(f"/upload_model failed: {resp.status_code} {_detail(resp)}")
+            self.stdout.write(self.style.SUCCESS(f"/upload_model ok: {resp.json()}"))
 
-        self.stdout.write("Checking /status …")
+        self.stdout.write("Checking /status ...")
         status_resp = requests.get(_url("/status"), timeout=timeout)
         if not status_resp.ok:
-            raise SystemExit(f"/status failed: {status_resp.status_code} {status_resp.text}")
+            raise SystemExit(f"/status failed: {status_resp.status_code} {_detail(status_resp)}")
         status = status_resp.json()
         self.stdout.write(self.style.SUCCESS(f"/status ok: dbn_loaded={status.get('dbn_loaded')}"))
 
-        self.stdout.write("Fetching /nodes …")
+        self.stdout.write("Fetching /nodes ...")
         nodes_resp = requests.get(_url("/nodes"), timeout=timeout)
         if not nodes_resp.ok:
-            raise SystemExit(f"/nodes failed: {nodes_resp.status_code} {nodes_resp.text}")
-        nodes_payload = nodes_resp.json()
-
-        variables = nodes_payload.get("variables", {}) if isinstance(nodes_payload, dict) else {}
-        risk_nodes = list(variables.keys()) if isinstance(variables, dict) else []
-        if not risk_nodes:
-            nodes_list = nodes_payload.get("nodes") if isinstance(nodes_payload, dict) else []
-            if isinstance(nodes_list, list):
-                for node in nodes_list:
-                    if isinstance(node, str):
-                        risk_nodes.append(node)
-                    elif isinstance(node, dict):
-                        name = node.get("name") or node.get("node") or node.get("id")
-                        if name:
-                            risk_nodes.append(str(name))
-
+            raise SystemExit(f"/nodes failed: {nodes_resp.status_code} {_detail(nodes_resp)}")
+        risk_nodes = _node_ids_from_payload(nodes_resp.json())
         if not risk_nodes:
             raise SystemExit("/nodes returned no node identifiers.")
 
         nodes_limit = max(1, int(options["nodes_limit"]))
         sample_nodes = risk_nodes[:nodes_limit]
 
-        self.stdout.write(f"Running /evidence on {len(sample_nodes)} nodes …")
-        evidence_payload = {
-            "T": 1,
-            "evidence": {},
-            "nodes": sample_nodes,
-        }
-        evidence_resp = requests.post(_url("/evidence"), json=evidence_payload, timeout=timeout)
-        if not evidence_resp.ok:
-            raise SystemExit(f"/evidence failed: {evidence_resp.status_code} {evidence_resp.text}")
-        self.stdout.write(self.style.SUCCESS("/evidence ok"))
+        if not options["skip_detection"]:
+            self.stdout.write(f"Running /post_detection on {sample_nodes[0]} ...")
+            detection_resp = requests.post(
+                _url("/post_detection"),
+                json={"T": 0, "nodes": {sample_nodes[0]: {"score": 0.5}}},
+                timeout=timeout,
+            )
+            if not detection_resp.ok:
+                raise SystemExit(f"/post_detection failed: {detection_resp.status_code} {_detail(detection_resp)}")
+            self.stdout.write(self.style.SUCCESS("/post_detection ok"))
 
         skip_probability = options["skip_probability"]
         force_probability = options["force_probability"]
         nodes_count = len(risk_nodes)
         if not skip_probability:
             if nodes_count > 2000 and not force_probability:
-                self.stdout.write(self.style.WARNING(
-                    f"Skipping /probability because nodes_count={nodes_count}. Use --force-probability to run."
-                ))
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"Skipping /get_probability because nodes_count={nodes_count}. Use --force-probability to run."
+                    )
+                )
             else:
-                self.stdout.write("Running /probability with empty scanned_nodes …")
-                prob_payload = {"scanned_nodes": []}
-                prob_resp = requests.post(_url("/probability"), json=prob_payload, params={"T": 1}, timeout=timeout)
+                self.stdout.write(f"Running /get_probability on {len(sample_nodes)} nodes ...")
+                params = {"T": 1, "nodes": ",".join(sample_nodes)}
+                prob_resp = requests.get(_url("/get_probability"), params=params, timeout=timeout)
                 if not prob_resp.ok:
-                    raise SystemExit(f"/probability failed: {prob_resp.status_code} {prob_resp.text}")
-                self.stdout.write(self.style.SUCCESS("/probability ok"))
+                    raise SystemExit(
+                        f"/get_probability failed: {prob_resp.status_code} {_detail(prob_resp)}"
+                    )
+                self.stdout.write(self.style.SUCCESS("/get_probability ok"))
 
         self.stdout.write(self.style.SUCCESS("Risk smoke test completed."))

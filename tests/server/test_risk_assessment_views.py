@@ -1,19 +1,20 @@
 import json
 from unittest.mock import Mock
+from pathlib import Path
 
+import pytest
+from django.urls import reverse
 from django.utils import timezone
 
 from dashboard.models import Node, RiskNodeMapping, ScanRun, ScanVulnerability, Vulnerability
 from dashboard.risk_assessment import build_cyber_data_for_risk_nodes, summarize_risk_results
-
-import pytest
-from django.urls import reverse
 
 
 class MockResponse:
     def __init__(self, payload, status_code=200):
         self._payload = payload
         self.status_code = status_code
+        self.text = json.dumps(payload)
 
     def json(self):
         return self._payload
@@ -27,12 +28,18 @@ class MockResponse:
 def test_risk_assessment_page_access(user_client):
     response = user_client.get(reverse("dashboard:risk_assessment"))
     assert response.status_code == 200
-    assert b"risk-network-graph" in response.content
+    assert b"Risk Assessment Console" in response.content
+    assert b"/upload_model" in response.content
+    assert b"/post_detection" in response.content
+    assert b"/get_probability" in response.content
+    assert b"/risk-assessment/pid/upload/" not in response.content
+    assert b"/risk-assessment/network/compute/" not in response.content
 
 
 @pytest.mark.django_db
 def test_risk_assessment_status_proxy(user_client, monkeypatch):
     from dashboard import views as dashboard_views
+
     monkeypatch.setattr(dashboard_views.requests, "get", Mock(return_value=MockResponse({"status": "ok"})))
 
     response = user_client.get(reverse("dashboard:risk_assessment_status"))
@@ -41,22 +48,197 @@ def test_risk_assessment_status_proxy(user_client, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_risk_assessment_service_info_proxy(user_client, monkeypatch):
+    from dashboard import views as dashboard_views
+
+    monkeypatch.setattr(dashboard_views.requests, "get", Mock(return_value=MockResponse({"service": "risk"})))
+
+    response = user_client.get(reverse("dashboard:risk_assessment_service_info"))
+    assert response.status_code == 200
+    assert response.json()["service"] == "risk"
+
+
+@pytest.mark.django_db
+def test_risk_assessment_service_nodes_proxy(user_client, monkeypatch):
+    from dashboard import views as dashboard_views
+
+    payload = {
+        "nodes": {
+            "PLC-1": {"states": ["Nominal", "Compromised"], "type": "controller", "category": "digital"}
+        }
+    }
+    monkeypatch.setattr(dashboard_views.requests, "get", Mock(return_value=MockResponse(payload)))
+
+    response = user_client.get(reverse("dashboard:risk_assessment_service_nodes"))
+    assert response.status_code == 200
+    assert response.json() == payload
+
+
+@pytest.mark.django_db
+def test_risk_assessment_model_upload_from_local_model(user_client, monkeypatch):
+    from dashboard import views as dashboard_views
+
+    model_payload = {
+        "version": "1.0",
+        "digital": {"PLC-1": {"type": "controller", "source": {}, "target": {}}},
+        "physical": {},
+        "flow": {},
+        "function": {},
+    }
+    monkeypatch.setattr(
+        dashboard_views,
+        "_risk_local_model_payload_for_source",
+        Mock(return_value=(model_payload, Path("/tmp/test_sim_system.json"))),
+    )
+    mock_post = Mock(return_value=MockResponse({"status": "ok"}))
+    monkeypatch.setattr(dashboard_views.requests, "post", mock_post)
+
+    response = user_client.post(
+        reverse("dashboard:risk_assessment_model_upload"),
+        data=json.dumps({"source": "auto"}),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert mock_post.call_args.args[0].endswith("/upload_model")
+
+
+@pytest.mark.django_db
+def test_risk_assessment_model_upload_from_raw_model_payload(user_client, monkeypatch):
+    from dashboard import views as dashboard_views
+
+    mock_post = Mock(return_value=MockResponse({"status": "ok"}))
+    monkeypatch.setattr(dashboard_views.requests, "post", mock_post)
+
+    response = user_client.post(
+        reverse("dashboard:risk_assessment_service_upload"),
+        data=json.dumps(
+            {
+                "version": "1.0",
+                "digital": {"PLC-1": {"type": "controller", "source": {}, "target": {}}},
+                "physical": {},
+                "flow": {},
+                "function": {},
+            }
+        ),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert mock_post.call_args.args[0].endswith("/upload_model")
+
+
+@pytest.mark.django_db
 def test_risk_assessment_nodes_proxy(user_client, monkeypatch):
     from dashboard import views as dashboard_views
-    payload = {"nodes": [{"name": "PLC-1", "states": ["normal", "faulty"]}]}
+
+    payload = {
+        "nodes": {
+            "PLC-1": {"states": ["Nominal", "Compromised"], "type": "controller", "category": "digital"}
+        }
+    }
     monkeypatch.setattr(dashboard_views.requests, "get", Mock(return_value=MockResponse(payload)))
 
     response = user_client.get(reverse("dashboard:risk_assessment_nodes"))
     assert response.status_code == 200
-    assert response.json()["nodes"][0]["name"] == "PLC-1"
+    assert response.json()["nodes"] == [
+        {
+            "id": "PLC-1",
+            "name": "PLC-1",
+            "states": ["Nominal", "Compromised"],
+            "type": "controller",
+            "category": "digital",
+        }
+    ]
+
+
+@pytest.mark.django_db
+def test_risk_assessment_service_unload_proxy(user_client, monkeypatch):
+    from dashboard import views as dashboard_views
+
+    mock_post = Mock(return_value=MockResponse({"status": "ok"}))
+    monkeypatch.setattr(dashboard_views.requests, "post", mock_post)
+
+    response = user_client.post(
+        reverse("dashboard:risk_assessment_service_unload"),
+        data="{}",
+        content_type="application/json",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert mock_post.call_args.args[0].endswith("/unload_model")
+
+
+@pytest.mark.django_db
+def test_risk_assessment_service_vulnerability_proxy(user_client, monkeypatch):
+    from dashboard import views as dashboard_views
+
+    mock_post = Mock(return_value=MockResponse({"status": "ok", "updated_nodes": ["PLC-1"]}))
+    monkeypatch.setattr(dashboard_views.requests, "post", mock_post)
+
+    payload = {"nodes": {"PLC-1": {"CVE-2024-0001": {"epss": 0.7}}}}
+    response = user_client.post(
+        reverse("dashboard:risk_assessment_service_vulnerability"),
+        data=json.dumps(payload),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["updated_nodes"] == ["PLC-1"]
+    assert mock_post.call_args.args[0].endswith("/post_vulnerability")
+    assert mock_post.call_args.kwargs["json"] == payload
+
+
+@pytest.mark.django_db
+def test_risk_assessment_service_detection_proxy(user_client, monkeypatch):
+    from dashboard import views as dashboard_views
+
+    mock_post = Mock(return_value=MockResponse({"status": "ok"}))
+    monkeypatch.setattr(dashboard_views.requests, "post", mock_post)
+
+    payload = {"nodes": {"PLC-1": {"score": 0.8}}}
+    response = user_client.post(
+        reverse("dashboard:risk_assessment_service_detection"),
+        data=json.dumps(payload),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert mock_post.call_args.args[0].endswith("/post_detection")
+    assert mock_post.call_args.kwargs["json"] == payload
+
+
+@pytest.mark.django_db
+def test_risk_assessment_service_probability_proxy(user_client, monkeypatch):
+    from dashboard import views as dashboard_views
+
+    expected_result = {"results": {"PLC-1Nt": {"Nominal": 0.9, "Compromised": 0.1}}}
+    mock_get = Mock(return_value=MockResponse(expected_result))
+    monkeypatch.setattr(dashboard_views.requests, "get", mock_get)
+
+    response = user_client.get(
+        reverse("dashboard:risk_assessment_service_probability"),
+        {"T": 2, "nodes": "PLC-1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == expected_result
+    assert mock_get.call_args.args[0].endswith("/get_probability")
+    assert mock_get.call_args.kwargs["params"]["nodes"] == "PLC-1"
+    assert mock_get.call_args.kwargs["params"]["T"] == 2
 
 
 @pytest.mark.django_db
 def test_risk_assessment_probability_proxy(user_client, monkeypatch):
     from dashboard import views as dashboard_views
-    expected_result = {"results": {"PLC-1": {"normal": 0.9}}}
-    mock_post = Mock(return_value=MockResponse(expected_result))
-    monkeypatch.setattr(dashboard_views.requests, "post", mock_post)
+
+    expected_result = {"results": {"PLC-1Nt": {"Nominal": 0.9, "Compromised": 0.1}}}
+    mock_get = Mock(return_value=MockResponse(expected_result))
+    monkeypatch.setattr(dashboard_views.requests, "get", mock_get)
 
     payload = {"T": 2, "nodes": ["PLC-1"]}
     response = user_client.post(
@@ -67,7 +249,101 @@ def test_risk_assessment_probability_proxy(user_client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["results"]["PLC-1"]["normal"] == 0.9
-    assert mock_post.call_args.kwargs["json"] == payload
+    assert response.json()["results"]["PLC-1"]["compromised"] == 0.1
+    assert mock_get.call_args.args[0].endswith("/get_probability")
+    assert mock_get.call_args.kwargs["params"]["nodes"] == "PLC-1"
+
+
+@pytest.mark.django_db
+def test_risk_assessment_probability_proxy_current_mutations(user_client, monkeypatch):
+    from dashboard import views as dashboard_views
+
+    mock_post = Mock(return_value=MockResponse({"status": "ok"}))
+    mock_get = Mock(return_value=MockResponse({"results": {"PLC-1Nt": {"Compromised": 0.42, "Nominal": 0.58}}}))
+    monkeypatch.setattr(dashboard_views.requests, "post", mock_post)
+    monkeypatch.setattr(dashboard_views.requests, "get", mock_get)
+
+    payload = {
+        "T": 3,
+        "nodes": ["PLC-1"],
+        "vulnerabilities": {
+            "PLC-1": {
+                "CVE-2024-0001": {"epss": 0.7},
+            }
+        },
+    }
+    response = user_client.post(
+        reverse("dashboard:risk_assessment_probability"),
+        data=json.dumps(payload),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["results"]["PLC-1"]["compromised"] == 0.42
+    assert mock_post.call_args.args[0].endswith("/post_vulnerability")
+    assert mock_post.call_args.kwargs["json"]["nodes"]["PLC-1"]["CVE-2024-0001"]["epss"] == 0.7
+    assert mock_get.call_args.args[0].endswith("/get_probability")
+
+
+@pytest.mark.django_db
+def test_risk_assessment_probability_proxy_cyber_data(user_client, monkeypatch):
+    from dashboard import views as dashboard_views
+
+    mock_post = Mock(return_value=MockResponse({"status": "ok", "updated_nodes": ["PLC-1"]}))
+    mock_get = Mock(return_value=MockResponse({"results": {"PLC-1Nt": {"Compromised": 0.42, "Nominal": 0.58}}}))
+    monkeypatch.setattr(dashboard_views.requests, "post", mock_post)
+    monkeypatch.setattr(dashboard_views.requests, "get", mock_get)
+
+    payload = {
+        "T": 3,
+        "cyber_data": {
+            "scanned_nodes": [
+                {
+                    "id": "PLC-1",
+                    "type": "network_node",
+                    "vulnerability": [{"id": "CVE-2024-0001", "epss": 0.7}],
+                }
+            ]
+        },
+    }
+    response = user_client.post(
+        reverse("dashboard:risk_assessment_probability"),
+        data=json.dumps(payload),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["results"]["PLC-1"]["compromised"] == 0.42
+    assert mock_post.call_args.args[0].endswith("/post_vulnerability")
+    assert mock_post.call_args.kwargs["json"]["nodes"]["PLC-1"]["CVE-2024-0001"]["epss"] == 0.7
+    assert mock_get.call_args.args[0].endswith("/get_probability")
+    assert mock_get.call_args.kwargs["params"]["nodes"] == "PLC-1"
+
+
+@pytest.mark.django_db
+def test_risk_assessment_probability_rejects_evidence(user_client):
+    payload = {"T": 1, "evidence": {"PLC-1N0": "Compromised"}}
+    response = user_client.post(
+        reverse("dashboard:risk_assessment_probability"),
+        data=json.dumps(payload),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 400
+    assert "does not support ad hoc evidence" in response.json()["error"]
+
+
+@pytest.mark.django_db
+def test_risk_assessment_probability_rejects_detections(user_client):
+    payload = {"T": 1, "detections": {"PLC-1": {"score": 0.8}}}
+    response = user_client.post(
+        reverse("dashboard:risk_assessment_probability"),
+        data=json.dumps(payload),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 400
+    assert "does not return posterior probabilities" in response.json()["error"]
 
 
 @pytest.mark.django_db
@@ -156,20 +432,28 @@ def test_risk_assessment_network_compute_proxy(user_client, monkeypatch):
     )
 
     from dashboard import views as dashboard_views
-    nodes_payload = {"variables": {"PLC-1": {}, "10.0.0.20": {}}}
-    monkeypatch.setattr(
-        dashboard_views.requests,
-        "get",
-        Mock(return_value=MockResponse(nodes_payload)),
-    )
 
-    probability_payload = {
-        "results": {
-            "PLC-1": {"compromised": 0.83},
-            "10.0.0.20": {"faulty": 0.22},
+    nodes_payload = {
+        "nodes": {
+            "PLC-1": {"states": ["Nominal", "Compromised"], "type": "controller", "category": "digital"},
+            "10.0.0.20": {"states": ["Nominal", "Faulty"], "type": "host", "category": "digital"},
         }
     }
-    mock_post = Mock(return_value=MockResponse(probability_payload))
+    mock_get = Mock(
+        side_effect=[
+            MockResponse(nodes_payload),
+            MockResponse(
+                {
+                    "results": {
+                        "PLC-1Nt": {"Compromised": 0.83, "Nominal": 0.17},
+                        "10.0.0.20Nt": {"Faulty": 0.22, "Nominal": 0.78},
+                    }
+                }
+            ),
+        ]
+    )
+    mock_post = Mock(return_value=MockResponse({"status": "ok", "updated_nodes": ["PLC-1"]}))
+    monkeypatch.setattr(dashboard_views.requests, "get", mock_get)
     monkeypatch.setattr(dashboard_views.requests, "post", mock_post)
 
     response = user_client.get(reverse("dashboard:risk_assessment_network_compute"))
@@ -182,13 +466,14 @@ def test_risk_assessment_network_compute_proxy(user_client, monkeypatch):
     assert mapped["10.0.0.20"]["risk_level"] == "low"
 
     posted_payload = mock_post.call_args.kwargs["json"]
-    assert "scanned_nodes" in posted_payload
-    assert len(posted_payload["scanned_nodes"]) == 2
+    assert mock_post.call_args.args[0].endswith("/post_vulnerability")
+    assert "PLC-1" in posted_payload["nodes"]
 
 
 @pytest.mark.django_db
 def test_risk_assessment_mappings_get(user_client, monkeypatch):
     from dashboard import views as dashboard_views
+
     Node.objects.create(
         name="PLC-1",
         ip_address="10.1.0.10",
@@ -203,12 +488,13 @@ def test_risk_assessment_mappings_get(user_client, monkeypatch):
 
     RiskNodeMapping.objects.create(risk_node_id="PLC-Main", ip_address="10.1.0.10", label="PLC Main")
 
-    nodes_payload = {"variables": {"PLC-Main": {}, "Heat-Ctrl": {}}}
-    monkeypatch.setattr(
-        dashboard_views.requests,
-        "get",
-        Mock(return_value=MockResponse(nodes_payload)),
-    )
+    nodes_payload = {
+        "nodes": {
+            "PLC-Main": {"states": ["Nominal"], "type": "controller", "category": "digital"},
+            "Heat-Ctrl": {"states": ["Nominal"], "type": "controller", "category": "digital"},
+        }
+    }
+    monkeypatch.setattr(dashboard_views.requests, "get", Mock(return_value=MockResponse(nodes_payload)))
 
     response = user_client.get(reverse("dashboard:risk_assessment_mappings"))
     assert response.status_code == 200
@@ -276,12 +562,14 @@ def test_risk_assessment_mappings_post_bulk(user_client):
 @pytest.mark.django_db
 def test_risk_assessment_testbed_generate(user_client, monkeypatch):
     from dashboard import views as dashboard_views
-    payload = {"variables": {"PLC-Main": {}, "Heat-Ctrl": {}}}
-    monkeypatch.setattr(
-        dashboard_views.requests,
-        "get",
-        Mock(return_value=MockResponse(payload)),
-    )
+
+    payload = {
+        "nodes": {
+            "PLC-Main": {"states": ["Nominal"], "type": "controller", "category": "digital"},
+            "Heat-Ctrl": {"states": ["Nominal"], "type": "controller", "category": "digital"},
+        }
+    }
+    monkeypatch.setattr(dashboard_views.requests, "get", Mock(return_value=MockResponse(payload)))
 
     response = user_client.post(
         reverse("dashboard:risk_assessment_testbed_generate"),

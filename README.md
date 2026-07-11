@@ -69,22 +69,25 @@ This project is a full-stack Django platform that simulates and secures networke
 - Implant generation + deployment workflows
 
 ### 8. ICS Risk Assessment
-- Integrated Risk Assessment UI (Overview, Nodes, Probability)
+- Integrated Risk Assessment UI (Overview, Nodes, Mappings, Probability, Network View, P&ID tools)
 - Network risk overlay computed from cyber scan data
-- Proxy endpoints to the ICS risk assessment API
+- Proxy endpoints to the current ICS risk assessment API
 - Dockerized FastAPI service started alongside web/worker
 
 #### Risk Assessment Views
 - **Overview**: Health/status of the risk assessment service.
 - **Nodes**: List of DBN nodes and their state definitions from the risk service.
 - **Mappings**: Link risk model node IDs to discovered IPs/nodes and manage labels/notes.
-- **Probability**: Run probability queries with optional evidence + cyber data payloads.
+- **Probability**: Run direct probability queries or vulnerability-driven queries against the current API workflow.
 - **Network View**: Graph + table that overlays per-node risk on the live topology.
 
 #### What It Does
 The risk assessment service provides Bayesian probability outputs for ICS nodes. The
 dashboard fetches available risk nodes, maps them to discovered network nodes (by
-name or IP), generates a cyber vulnerability payload, and computes risk scores.
+name or IP), generates vulnerability updates from scan data, posts them to the risk
+service, and then fetches posterior probabilities for the mapped nodes. The P&ID
+workflow also converts uploaded draw.io XML into both the legacy `sim_system.json`
+shape used locally and the current sectioned model uploaded to the risk service.
 Results are shown in the Network View graph (color-coded) and in a sortable table.
 
 #### How To Use
@@ -94,7 +97,15 @@ Results are shown in the Network View graph (color-coded) and in a sortable tabl
    - **Overview** to confirm service health.
    - **Nodes** to see available DBN nodes.
    - **Network View** to load the graph and compute risk overlay.
-   - **Probability** for manual queries (optional evidence/cyber payloads).
+   - **Probability** for manual queries with direct node queries or vulnerability updates.
+   - **P&ID Draw.io Import** to convert draw.io XML and optionally upload the generated risk model.
+
+Current API notes:
+- The dashboard uses `POST /upload_model` for model uploads.
+- Direct probability queries use `GET /get_probability`.
+- Vulnerability-driven updates use `POST /post_vulnerability` followed by `GET /get_probability`.
+- The upstream service currently exposes `POST /post_detection`, but it does not provide a posterior query path the dashboard can use afterward.
+- Ad hoc `evidence` queries are not supported by the current upstream API contract.
 
 #### Mapping Risk Nodes
 To align your discovered nodes with the risk model, manage mappings in the Risk Assessment UI:
@@ -343,11 +354,15 @@ greenbone-community-container/
 ```bash
 sudo mkdir -p /opt/gvm-run
 sudo chmod 777 /opt/gvm-run
-docker compose up -d --build
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.greenbone.yml \
+  up -d --build
 ```
-The default dev compose path now includes the Greenbone services through
-`docker-compose.override.yml`, so `gvmd`, `ospd-openvas`, `gsad`, and the feed
-containers come up alongside the dashboard stack.
+`docker compose up` at the repo root no longer auto-starts Greenbone. Use the
+explicit `docker-compose.greenbone.yml` overlay when you want the integrated
+dashboard plus Greenbone stack in one command, or use the standalone
+`greenbone-community-container/` compose files instead.
 
 ### OpenVAS OT Network Bridge (for full testbed scans)
 When scanning the OT sandbox from OpenVAS, attach the scanner to OT zone networks:
@@ -363,7 +378,7 @@ For the IAEA RCS demo, use the matching override instead:
 ```bash
 docker compose \
   -f docker-compose.yml \
-  -f docker-compose.override.yml \
+  -f docker-compose.greenbone.yml \
   -f docker-compose.iaea.yml \
   up -d
 ```

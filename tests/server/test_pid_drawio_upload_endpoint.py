@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
@@ -51,6 +52,23 @@ def test_pid_drawio_upload_endpoint(client, tmp_path: Path, settings):
 
     sim_path = Path(data["sim_system_path"])
     assert sim_path.exists()
+    sim_payload = json.loads(sim_path.read_text(encoding="utf-8"))
+    assert "variables" in sim_payload
+    assert "connections" in sim_payload
+
+    risk_model_path = Path(data["risk_model_path"])
+    assert risk_model_path.exists()
+    risk_payload = json.loads(risk_model_path.read_text(encoding="utf-8"))
+    assert risk_payload["version"] == "1.0"
+    assert "physical" in risk_payload
+    assert "PUMP_A" in risk_payload["physical"]
+    assert risk_payload["physical"]["VALVE_B"]["source"]["PUMP_A"] == "Input"
+
+    risk_service_model_path = Path(data["risk_service_model_path"])
+    assert risk_service_model_path.exists()
+    risk_service_payload = json.loads(risk_service_model_path.read_text(encoding="utf-8"))
+    assert risk_service_payload["version"] == "1.0"
+    assert data["risk_service_model_nodes_count"] >= data["risk_model_nodes_count"]
 
     xml_path = Path(data["drawio_path"])
     assert xml_path.exists()

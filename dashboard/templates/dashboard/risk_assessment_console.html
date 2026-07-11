@@ -1,0 +1,332 @@
+{% extends 'dashboard/base.html' %}
+
+{% block content %}
+<div class="container-fluid p-4">
+  <form id="risk-csrf-form" class="d-none">{% csrf_token %}</form>
+
+  <div class="row mb-4">
+    <div class="col-12">
+      <h2><i class="bi bi-shield-exclamation"></i> Risk Assessment Console</h2>
+      <p class="text-muted mb-0">Console for the upstream risk assessment API contract defined in <code>src/api/README.md</code>.</p>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-xl-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-header">
+          <h5 class="mb-0">Quick Actions</h5>
+        </div>
+        <div class="card-body">
+          <div class="small text-muted mb-2">Risk service base URL</div>
+          <div class="mb-3"><code>{{ risk_service_url|default:"(unset)" }}</code></div>
+
+          <div class="small text-muted mb-2">Local model</div>
+          {% if risk_local_model.available %}
+            <div class="mb-1"><code>{{ risk_local_model.path }}</code></div>
+            <div class="small text-muted mb-3">
+              {% for section, count in risk_local_model.counts.items %}
+                <span class="me-2 text-capitalize">{{ section }}: {{ count }}</span>
+              {% endfor %}
+            </div>
+          {% elif risk_local_model.error %}
+            <div class="text-danger small mb-3">{{ risk_local_model.error }}</div>
+          {% else %}
+            <div class="text-muted small mb-3">No local model found for auto initialization.</div>
+          {% endif %}
+
+          <div class="d-grid gap-2">
+            <button type="button" class="btn btn-primary" id="risk-quick-status">Refresh Status</button>
+            <button type="button" class="btn btn-outline-primary" id="risk-quick-init">Initialize From Local Model</button>
+            <button type="button" class="btn btn-outline-secondary" id="risk-quick-nodes">Load Nodes</button>
+          </div>
+
+          <div id="risk-service-summary" class="mt-4 small text-muted">Checking service status…</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-8">
+      <div class="card shadow-sm h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Latest Response</h5>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="risk-console-copy">Copy</button>
+        </div>
+        <div class="card-body">
+          <div id="risk-console-meta" class="small text-muted mb-3">No request sent yet.</div>
+          <pre id="risk-console-response" class="mb-0 risk-console-pre">Open an endpoint card below and send a request.</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4 mt-1">
+    {% for group in risk_console_groups %}
+      <div class="col-12">
+        <div class="card shadow-sm">
+          <div class="card-header">
+            <h5 class="mb-0">{{ group.title }}</h5>
+          </div>
+          <div class="card-body">
+            <div class="row g-3">
+              {% for endpoint in group.endpoints %}
+                <div class="col-xl-6">
+                  <div
+                    class="border rounded p-3 h-100 risk-endpoint-card"
+                    data-endpoint-id="{{ endpoint.id }}"
+                    data-method="{{ endpoint.method }}"
+                    data-url="{{ endpoint.url }}"
+                    data-path="{{ endpoint.path }}"
+                    data-payload-mode="{{ endpoint.payload_mode }}"
+                  >
+                    <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
+                      <div>
+                        <div class="fw-semibold">{{ endpoint.label }}</div>
+                        <div class="small text-muted"><code>{{ endpoint.path }}</code></div>
+                      </div>
+                      <span class="badge {% if endpoint.method == 'GET' %}bg-secondary{% else %}bg-primary{% endif %}">{{ endpoint.method }}</span>
+                    </div>
+                    <div class="small text-muted mb-3">{{ endpoint.description }}</div>
+
+                    {% if endpoint.payload_mode != "none" %}
+                      <label class="form-label small">{{ endpoint.payload_label }}</label>
+                      <textarea class="form-control form-control-sm risk-endpoint-payload" rows="7">{{ endpoint.default_payload|default:"" }}</textarea>
+                    {% else %}
+                      <div class="small text-muted mb-3">No request body required.</div>
+                    {% endif %}
+
+                    <div class="d-flex gap-2 mt-3">
+                      <button type="button" class="btn btn-sm btn-primary risk-endpoint-send">Send</button>
+                      {% if endpoint.payload_mode != "none" %}
+                        <button type="button" class="btn btn-sm btn-outline-secondary risk-endpoint-reset">Reset</button>
+                      {% endif %}
+                    </div>
+                    <div class="small text-muted mt-3 risk-endpoint-status">Idle.</div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<style>
+  .risk-console-pre {
+    min-height: 420px;
+    max-height: 70vh;
+    overflow: auto;
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.85rem;
+  }
+</style>
+<script>
+  const consoleMeta = document.getElementById('risk-console-meta');
+  const consoleResponse = document.getElementById('risk-console-response');
+  const serviceSummary = document.getElementById('risk-service-summary');
+  const localModelAvailable = {{ risk_local_model.available|yesno:"true,false" }};
+
+  function getCSRFToken() {
+    const input = document.querySelector('#risk-csrf-form input[name=csrfmiddlewaretoken]');
+    if (input && input.value) return input.value;
+    return '';
+  }
+
+  function prettyJson(value) {
+    if (typeof value === 'string') return value;
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch (err) {
+      return String(value);
+    }
+  }
+
+  function renderConsole(meta, payload) {
+    if (consoleMeta) consoleMeta.textContent = meta;
+    if (consoleResponse) consoleResponse.textContent = prettyJson(payload);
+  }
+
+  function setCardStatus(card, message, isError = false) {
+    const status = card.querySelector('.risk-endpoint-status');
+    if (!status) return;
+    status.textContent = message;
+    status.classList.toggle('text-danger', Boolean(isError));
+    status.classList.toggle('text-muted', !isError);
+  }
+
+  function parsePayload(card) {
+    const mode = card.dataset.payloadMode;
+    if (mode === 'none') return null;
+    const textarea = card.querySelector('.risk-endpoint-payload');
+    const raw = textarea ? textarea.value.trim() : '';
+    if (!raw) return {};
+    return JSON.parse(raw);
+  }
+
+  function buildQueryString(payload) {
+    const params = new URLSearchParams();
+    if (!payload || typeof payload !== 'object') return params.toString();
+    Object.entries(payload).forEach(([key, value]) => {
+      if (value === null || value === undefined || value === '') return;
+      if (Array.isArray(value)) {
+        params.set(key, value.join(','));
+        return;
+      }
+      params.set(key, String(value));
+    });
+    return params.toString();
+  }
+
+  async function sendCardRequest(card, overridePayload) {
+    const method = card.dataset.method;
+    const baseUrl = card.dataset.url;
+    const path = card.dataset.path;
+    const mode = card.dataset.payloadMode;
+    let payload = overridePayload;
+
+    try {
+      if (payload === undefined) {
+        payload = parsePayload(card);
+      }
+    } catch (err) {
+      setCardStatus(card, `Invalid JSON: ${err.message}`, true);
+      renderConsole(`${method} ${path} failed`, { error: `Invalid JSON: ${err.message}` });
+      return null;
+    }
+
+    setCardStatus(card, 'Sending…');
+
+    let requestUrl = baseUrl;
+    const fetchOptions = { method, headers: {} };
+
+    if (method === 'GET') {
+      const query = buildQueryString(payload);
+      if (query) requestUrl += `?${query}`;
+    } else if (mode === 'json') {
+      fetchOptions.headers['Content-Type'] = 'application/json';
+      fetchOptions.headers['X-CSRFToken'] = getCSRFToken();
+      fetchOptions.body = JSON.stringify(payload || {});
+    }
+
+    try {
+      const response = await fetch(requestUrl, fetchOptions);
+      const data = await response.json();
+      const label = `${method} ${path} -> ${response.status}`;
+      renderConsole(label, {
+        request: method === 'GET' ? { query: payload || {} } : (payload || {}),
+        response: data,
+      });
+      setCardStatus(card, response.ok ? `Completed (${response.status})` : `Failed (${response.status})`, !response.ok);
+      return { response, data };
+    } catch (err) {
+      renderConsole(`${method} ${path} failed`, { error: err.message });
+      setCardStatus(card, `Request failed: ${err.message}`, true);
+      return null;
+    }
+  }
+
+  function statusCard() {
+    return document.querySelector('[data-endpoint-id="status"]');
+  }
+
+  function initCard() {
+    return document.querySelector('[data-endpoint-id="upload-model"]');
+  }
+
+  function nodesCard() {
+    return document.querySelector('[data-endpoint-id="nodes"]');
+  }
+
+  async function initializeRiskService(autoTriggered = false) {
+    const card = initCard();
+    if (!card) return null;
+    const payload = { source: 'auto' };
+    const result = await sendCardRequest(card, payload);
+    if (!result) return null;
+    if (serviceSummary) {
+      serviceSummary.textContent = result.response.ok
+        ? `${autoTriggered ? 'Auto-' : ''}Initialized from local model.`
+        : (result.data.error || 'Initialization failed.');
+    }
+    return result;
+  }
+
+  async function refreshStatus(autoInitialize = true) {
+    const card = statusCard();
+    if (!card) return;
+    const result = await sendCardRequest(card, {});
+    if (!result || !serviceSummary) return;
+
+    const data = result.data || {};
+    if (!result.response.ok) {
+      serviceSummary.textContent = data.error || 'Status request failed.';
+      return;
+    }
+
+    const dbnLoaded = Boolean(data.dbn_loaded);
+    const nodesCount = data.nodes_count ?? '—';
+    const arcsCount = data.arcs_count ?? '—';
+    const message = data.message || '';
+    serviceSummary.textContent = `dbn_loaded=${dbnLoaded} | nodes=${nodesCount} | arcs=${arcsCount}${message ? ` | ${message}` : ''}`;
+
+    if (autoInitialize && localModelAvailable && !dbnLoaded) {
+      serviceSummary.textContent += ' | attempting auto-initialize from local model…';
+      const initResult = await initializeRiskService(true);
+      if (initResult && initResult.response.ok) {
+        await refreshStatus(false);
+      }
+    }
+  }
+
+  async function loadNodes() {
+    const card = nodesCard();
+    if (!card) return;
+    await sendCardRequest(card, {});
+  }
+
+  document.querySelectorAll('.risk-endpoint-send').forEach(button => {
+    button.addEventListener('click', async () => {
+      const card = button.closest('.risk-endpoint-card');
+      if (card) {
+        await sendCardRequest(card);
+      }
+    });
+  });
+
+  document.querySelectorAll('.risk-endpoint-reset').forEach(button => {
+    button.addEventListener('click', () => {
+      const card = button.closest('.risk-endpoint-card');
+      if (!card) return;
+      const textarea = card.querySelector('.risk-endpoint-payload');
+      if (!textarea) return;
+      textarea.value = textarea.defaultValue || '';
+      setCardStatus(card, 'Reset to default payload.');
+    });
+  });
+
+  document.getElementById('risk-quick-status')?.addEventListener('click', () => refreshStatus(false));
+  document.getElementById('risk-quick-init')?.addEventListener('click', async () => {
+    await initializeRiskService(false);
+    await refreshStatus(false);
+  });
+  document.getElementById('risk-quick-nodes')?.addEventListener('click', loadNodes);
+
+  document.getElementById('risk-console-copy')?.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(consoleResponse.textContent);
+    } catch (err) {
+      renderConsole('Copy failed', { error: err.message });
+    }
+  });
+
+  refreshStatus(true);
+</script>
+{% endblock %}

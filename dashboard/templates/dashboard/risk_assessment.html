@@ -337,13 +337,9 @@
                   <input type="text" class="form-control" id="risk-nodes-input" placeholder="PLC-Main, Heat-Ctrl">
                 </div>
                 <div class="mb-3">
-                  <label class="form-label" for="risk-evidence">Evidence (JSON)</label>
-                  <textarea class="form-control" id="risk-evidence" rows="4" placeholder='{"Heat-CtrlN0": "normal"}'></textarea>
-                </div>
-                <div class="mb-3">
-                  <label class="form-label" for="risk-cyber">Cyber Data (JSON, optional)</label>
-                  <textarea class="form-control" id="risk-cyber" rows="4" placeholder='{"scanned_nodes": []}'></textarea>
-                  <div class="form-text">If cyber data is provided, the request uses the risk service <code>/probability</code> endpoint and ignores evidence.</div>
+                  <label class="form-label" for="risk-vulnerabilities">Vulnerability Updates (JSON)</label>
+                  <textarea class="form-control" id="risk-vulnerabilities" rows="4" placeholder='{"PLC-Main":{"CVE-2024-0001":{"epss":0.7}}}'></textarea>
+                  <div class="form-text">The current risk API supports <code>/post_vulnerability</code> and <code>/get_probability</code> for this workflow. <code>/post_detection</code> exists upstream, but it does not expose posterior probabilities for the dashboard to query afterward.</div>
                 </div>
                 <div class="d-flex gap-2">
                   <button type="submit" class="btn btn-primary">
@@ -1500,53 +1496,33 @@
     event.preventDefault();
     const tValue = parseInt(document.getElementById('risk-t').value || '3', 10);
     const nodesInput = document.getElementById('risk-nodes-input').value.trim();
-    const evidenceRaw = document.getElementById('risk-evidence').value.trim();
-    const cyberRaw = document.getElementById('risk-cyber').value.trim();
+    const vulnerabilitiesRaw = document.getElementById('risk-vulnerabilities').value.trim();
 
-    let evidence = {};
-    let cyberData = null;
+    let vulnerabilities = {};
 
     try {
-      evidence = evidenceRaw ? JSON.parse(evidenceRaw) : {};
+      vulnerabilities = vulnerabilitiesRaw ? JSON.parse(vulnerabilitiesRaw) : {};
     } catch (err) {
-      alert('Evidence must be valid JSON');
-      return;
-    }
-
-    try {
-      cyberData = cyberRaw ? JSON.parse(cyberRaw) : null;
-    } catch (err) {
-      alert('Cyber data must be valid JSON');
+      alert('Vulnerability updates must be valid JSON');
       return;
     }
 
     resultsEl.textContent = 'Calculating…';
     try {
-      let response;
-      if (cyberData) {
-        const payload = {
-          T: Number.isNaN(tValue) ? 3 : tValue,
-          cyber_data: cyberData,
-        };
-        response = await fetch("{% url 'dashboard:risk_assessment_probability' %}", {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-      } else {
-        const payload = {
-          T: Number.isNaN(tValue) ? 3 : tValue,
-          evidence,
-        };
-        if (nodesInput) {
-          payload.nodes = nodesInput.split(',').map(node => node.trim()).filter(Boolean);
-        }
-        response = await fetch("{% url 'dashboard:risk_assessment_evidence' %}", {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+      const payload = {
+        T: Number.isNaN(tValue) ? 3 : tValue,
+      };
+      if (nodesInput) {
+        payload.nodes = nodesInput.split(',').map(node => node.trim()).filter(Boolean);
       }
+      if (Object.keys(vulnerabilities).length) {
+        payload.vulnerabilities = vulnerabilities;
+      }
+      const response = await fetch("{% url 'dashboard:risk_assessment_probability' %}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
       const data = await response.json();
       resultsEl.textContent = response.ok ? JSON.stringify(data, null, 2) : (data.error || 'Calculation error');
     } catch (err) {
@@ -1557,8 +1533,7 @@
   document.getElementById('risk-probability-reset').addEventListener('click', () => {
     document.getElementById('risk-t').value = '3';
     document.getElementById('risk-nodes-input').value = '';
-    document.getElementById('risk-evidence').value = '';
-    document.getElementById('risk-cyber').value = '';
+    document.getElementById('risk-vulnerabilities').value = '';
     resultsEl.textContent = 'Run a probability query to see results.';
   });
 
@@ -1849,6 +1824,9 @@
           return;
         }
         let message = `Converted ${data.variables_count} nodes, ${data.connections_count} edges. Saved ${data.sim_system_path}.`;
+        if (data.risk_model_path) {
+          message += ` Prepared current risk model ${data.risk_model_path}.`;
+        }
         if (data.upload && data.upload.attempted) {
           if (data.upload.success) {
             message += ` Uploaded to ${data.upload.path}.`;

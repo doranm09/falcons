@@ -158,6 +158,24 @@ LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker-compose up --build
 - Sniffer API: http://localhost:5050 or http://sniffer:5000 internally
 - Risk Assessment API: http://localhost:7890
 
+### Local Development Override
+For bind-mounted code with Django live reload, add `docker-compose.local.yml`:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+```
+
+### Debug Override
+For container debugging with `debugpy`, layer `docker-compose.debug.yml` on top of the local override:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.local.yml -f docker-compose.debug.yml up --build
+```
+This keeps the site reachable at `http://localhost:8000` and opens the debugger on `localhost:5678`.
+
+If you need to pause Django startup until the debugger attaches, opt in explicitly:
+```bash
+DEBUGPY_WAIT_FOR_CLIENT=1 docker compose -f docker-compose.yml -f docker-compose.local.yml -f docker-compose.debug.yml up --build
+```
+
 > Note: `docker-compose` expects the risk assessment repo to be available at `../ics-risk-assessment` relative to this project root. If you keep it elsewhere, update the `risk-assessment` build context in `docker-compose.yml`.
 
 If you previously ran containers, rebuild to pick up dependency changes:
@@ -324,8 +342,11 @@ greenbone-community-container/
 ```bash
 sudo mkdir -p /opt/gvm-run
 sudo chmod 777 /opt/gvm-run
-docker compose -f greenbone-community-container/docker-compose.yml up -d
+docker compose up -d --build
 ```
+The default dev compose path now includes the Greenbone services through
+`docker-compose.override.yml`, so `gvmd`, `ospd-openvas`, `gsad`, and the feed
+containers come up alongside the dashboard stack.
 
 ### OpenVAS OT Network Bridge (for full testbed scans)
 When scanning the OT sandbox from OpenVAS, attach the scanner to OT zone networks:
@@ -340,15 +361,12 @@ This makes OpenVAS reach L0/1, L2, L3, L3.5, L4, and L5 (`172.30.0.0/16`).
 For the IAEA RCS demo, use the matching override instead:
 ```bash
 docker compose \
-  -f greenbone-community-container/compose.yaml \
-  -f greenbone-community-container/docker-compose.iaea-networks.yml \
+  -f docker-compose.yml \
+  -f docker-compose.override.yml \
+  -f docker-compose.iaea.yml \
   up -d
 ```
-This gives the scanner containers direct access to the `iaea_rcs_demo` subnets so you can scan every layer in the lab.
-The override uses a split control/data-plane model: only `ospd-openvas` joins the
-lab networks, and it does so with fixed `.250` addresses chosen to avoid the
-testbed's statically assigned device IPs. `openvasd` stays on the internal
-Greenbone network because it does not need direct access to the lab bridges.
+This gives the scanner containers direct access to the `iaea_rcs_demo` subnets so you can scan every layer in the lab. Start the IAEA demo first so those external Docker networks exist. The override uses a split control/data-plane model: only `ospd-openvas` joins the lab networks, and it does so with fixed `.250` addresses chosen to avoid the testbed's statically assigned device IPs. `openvasd` stays on the internal Greenbone network because it does not need direct access to the lab bridges.
 
 ### Configure the Dashboard
 Set these in `.env` (defaults are shown):
@@ -358,13 +376,19 @@ GVM_USER=admin
 GVM_PASS=admin
 GVM_HOST=openvas
 GVM_PORT=9390
+GVMD_POSTGRES_HOST=/var/run/postgresql
+GVMD_POSTGRES_PORT=
+GVMD_POSTGRES_NAME=gvmd
+GVMD_POSTGRES_USER=gvmd
+GVMD_POSTGRES_PASSWORD=
 ```
 
-The web and celery containers mount `/opt/gvm-run` so GMP over Unix socket works out of the box once GVM is running.
+The web and celery containers mount `/opt/gvm-run` so GMP over Unix socket works out of the box once GVM is running. The integrated Greenbone `gvmd` service now binds that same host path into `/run/gvmd`, so the socket is shared directly with the dashboard stack.
+For direct GVMD database lookups, the dashboard now defaults to PostgreSQL's Unix socket at `/var/run/postgresql`, which avoids the separate TCP password required by the `pg-gvm` container. If you intentionally want TCP instead, override `GVMD_POSTGRES_HOST`, `GVMD_POSTGRES_PORT`, and `GVMD_POSTGRES_PASSWORD`.
 If you use TLS instead, unset `GVM_SOCKET_PATH` and set `GVM_HOST` + `GVM_PORT`.
 
 ### Sync the web container with local code
-When the stack is running in the testbed or production profile and you need local Django code changes to show up immediately, add `docker-compose.local.yml` to your compose command. It appends a bind mount (`.:/code`) for both `web` and `celery` without disturbing the existing `/opt/gvm-run` volume:
+When the stack is running in the testbed or production profile and you need local Django code changes to show up immediately, add `docker-compose.local.yml` to your compose command. It appends a bind mount (`.:/code`) for both `web` and `celery`, and switches Django to the live-reload dev server without disturbing the existing `/opt/gvm-run` volume:
 ```
 docker compose -f docker-compose.yml -f docker-compose.testbed.yml -f docker-compose.local.yml up -d --build
 ```
@@ -373,6 +397,12 @@ Or if you are orchestrating the production configuration directly:
 docker compose -f docker-compose.prod.yml -f docker-compose.testbed.yml -f docker-compose.local.yml up -d --build
 ```
 The extra override layer ensures the container sees the repository files so Django reloads while you iterate locally.
+
+If you also want a remote debugger, add `docker-compose.debug.yml` after the local override:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.testbed.yml -f docker-compose.local.yml -f docker-compose.debug.yml up -d --build
+```
+By default the web app still starts immediately. Set `DEBUGPY_WAIT_FOR_CLIENT=1` only when you intentionally want startup to block until the debugger attaches.
 
 ---
 

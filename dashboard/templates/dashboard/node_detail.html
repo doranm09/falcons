@@ -6,7 +6,7 @@
     <div class="col-12 d-flex justify-content-between align-items-center">
       <div>
         <h2 class="mb-1"><i class="bi bi-info-circle"></i> Node Details</h2>
-        <p class="text-muted mb-0">{{ node.name }} — {{ node.ip_address }}</p>
+        <p class="text-muted mb-0">{{ rollup.display_name }} — {{ node.ip_address }}</p>
       </div>
       <div class="d-flex gap-2">
         {% if agent_status %}
@@ -14,9 +14,55 @@
             <i class="bi bi-robot"></i> Agent View
           </a>
         {% endif %}
+        <a class="btn btn-outline-info" href="{% url 'dashboard:network_monitoring' %}">
+          <i class="bi bi-diagram-3"></i> Purdue Topology
+        </a>
         <a class="btn btn-outline-secondary" href="{% url 'dashboard:dashboard-home' %}">
           <i class="bi bi-arrow-left"></i> Back
         </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card h-100 border-primary-subtle shadow-sm">
+        <div class="card-body">
+          <div class="text-uppercase small fw-semibold text-muted mb-2">Purdue Context</div>
+          <div class="fw-semibold"><i class="bi {{ rollup.role_icon }}"></i> {{ rollup.role_label }}</div>
+          <div class="text-muted">{{ rollup.purdue_level }} • {{ rollup.segment_label }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card h-100 border-danger-subtle shadow-sm">
+        <div class="card-body">
+          <div class="text-uppercase small fw-semibold text-muted mb-2">Vulnerability Rollup</div>
+          <div class="fw-semibold">{{ rollup.scan_finding_count }} scan findings</div>
+          <div class="text-muted">{{ rollup.sbom_finding_count }} SBOM-linked findings</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card h-100 border-success-subtle shadow-sm">
+        <div class="card-body">
+          <div class="text-uppercase small fw-semibold text-muted mb-2">Software & Ports</div>
+          <div class="fw-semibold">{{ rollup.library_count }} packages</div>
+          <div class="text-muted">{{ rollup.active_port_count }} active ports • {{ rollup.interface_count }} interfaces</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card h-100 border-warning-subtle shadow-sm">
+        <div class="card-body">
+          <div class="text-uppercase small fw-semibold text-muted mb-2">Traceable Artifacts</div>
+          {% if rollup.recent_reports %}
+            <a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:vuln-detail' rollup.recent_reports.0.id %}">Open Latest Report</a>
+            <div class="text-muted small mt-2">{{ rollup.recent_reports|length }} recent report{{ rollup.recent_reports|pluralize }}</div>
+          {% else %}
+            <div class="text-muted">No linked reports yet.</div>
+          {% endif %}
+        </div>
       </div>
     </div>
   </div>
@@ -56,6 +102,14 @@
             <div class="col-12">
               <div class="text-muted small">Description</div>
               <div>{{ node.description|default:"—" }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-muted small">Hostname</div>
+              <div class="fw-semibold">{{ node.hostname|default:"—" }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-muted small">Agent ID</div>
+              <div class="fw-semibold">{{ node.agent_id|default:"—" }}</div>
             </div>
           </div>
         </div>
@@ -120,23 +174,8 @@
               <div class="text-muted">—</div>
             {% endif %}
           </div>
-          <div class="mb-3">
-            <div class="text-muted small">Installed Libraries (sample)</div>
-            {% if node.installed_libraries %}
-              <ul class="mb-0">
-                {% for lib in node.installed_libraries|slice:":20" %}
-                  <li>{{ lib }}</li>
-                {% endfor %}
-              </ul>
-              {% if node.installed_libraries|length > 20 %}
-                <div class="text-muted small mt-2">Showing first 20 of {{ node.installed_libraries|length }}.</div>
-              {% endif %}
-            {% else %}
-              <div class="text-muted">—</div>
-            {% endif %}
-          </div>
           <div>
-            <div class="text-muted small">Active Ports (sample)</div>
+            <div class="text-muted small">Active Ports</div>
             {% if node.active_ports %}
               <ul class="mb-0">
                 {% for port in node.active_ports|slice:":20" %}
@@ -187,6 +226,93 @@
             </div>
           {% else %}
             <div class="text-muted">No network metadata reported.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if rollup.recent_reports %}
+  <div class="row mb-4">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-journal-text"></i> Recent Reports</h5>
+        </div>
+        <div class="card-body">
+          <div class="d-flex flex-wrap gap-2">
+            {% for scan in rollup.recent_reports %}
+              <a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:vuln-detail' scan.id %}">
+                {{ scan.scan_type|upper }} • {{ scan.cidr }} • {{ scan.timestamp|date:"Y-m-d H:i" }}
+              </a>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="row mb-4">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-bug"></i> OpenVAS Findings</h5>
+        </div>
+        <div class="card-body">
+          {% if network_findings %}
+            <div class="table-responsive">
+              <table class="table table-sm align-middle">
+                <thead>
+                  <tr>
+                    <th>CVE / Plugin</th>
+                    <th>Observed IP</th>
+                    <th>Severity</th>
+                    <th>Score</th>
+                    <th>Description</th>
+                    <th>Source</th>
+                    <th>Report</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for finding in network_findings %}
+                  <tr>
+                    <td>
+                      {% if finding.link_url %}
+                        <a href="{{ finding.link_url }}" target="_blank" rel="noopener">{{ finding.cve_id }}</a>
+                      {% else %}
+                        <code>{{ finding.cve_id }}</code>
+                      {% endif %}
+                      {% if finding.name and finding.name != finding.cve_id %}
+                        <div class="small text-muted">{{ finding.name }}</div>
+                      {% endif %}
+                    </td>
+                    <td><code>{{ finding.host_ip }}</code></td>
+                    <td>{{ finding.severity|default:"—" }}</td>
+                    <td>{% if finding.cvss_score %}{{ finding.cvss_score|floatformat:1 }}{% else %}—{% endif %}</td>
+                    <td>{{ finding.description|default:"—"|truncatechars:180 }}</td>
+                    <td>{{ finding.source_label|default:"OpenVAS" }}</td>
+                    <td>
+                      {% if finding.report_url %}
+                        <a class="btn btn-sm btn-outline-primary" href="{{ finding.report_url }}">Open Report</a>
+                      {% elif finding.report_label %}
+                        <div class="small fw-semibold">{{ finding.report_label }}</div>
+                        {% if finding.report_uuid %}
+                          <div class="small text-muted"><code>{{ finding.report_uuid }}</code></div>
+                        {% elif finding.nvt_oid %}
+                          <div class="small text-muted"><code>{{ finding.nvt_oid }}</code></div>
+                        {% endif %}
+                      {% else %}
+                        <span class="text-muted">—</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="text-muted">No OpenVAS findings linked to this asset yet.</div>
           {% endif %}
         </div>
       </div>

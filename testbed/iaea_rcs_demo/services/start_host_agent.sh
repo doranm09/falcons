@@ -23,6 +23,11 @@ start_host_agent() {
     export AGENT_API_TOKEN
   fi
 
+  if [ -z "${AGENT_ID:-}" ]; then
+    AGENT_ID="$(hostname)"
+    export AGENT_ID
+  fi
+
   HOST_AGENT_DIR="${HOST_AGENT_DIR:-/opt/host_agent}"
   HOST_AGENT_LOG_DIR="${HOST_AGENT_LOG_DIR:-/tmp/host-agent}"
   HOST_AGENT_PYTHON="${HOST_AGENT_PYTHON:-python3}"

@@ -30,7 +30,6 @@ from telemetry import (
 
 # ---- Config (overridden at runtime from --url / env) ----
 SERVER_URL = "http://localhost:8000"   # will be reassigned in __main__
-AGENT_ID = str(uuid.getnode())
 neighbor_table = {}
 tcp_syn_times = {}
 network_graph = {}
@@ -41,6 +40,59 @@ REQ_TIMEOUT = (3.0, 10.0)  # (connect, read) seconds
 AGENT_VERSION = "1.0.0"
 AGENT_NAME = "CyberTwin Host Agent"
 DEFAULT_FIM_BASELINE = os.path.expanduser("~/.cybertwin/fim_baseline.json")
+
+
+def _is_container_runtime() -> bool:
+    return os.path.exists("/.dockerenv")
+
+
+def _read_agent_id_file(path_text: str) -> str:
+    path = os.path.expanduser(str(path_text or "").strip())
+    if not path:
+        return ""
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return handle.read().strip()
+    except OSError:
+        return ""
+
+
+def _write_agent_id_file(path_text: str, agent_id: str) -> None:
+    path = os.path.expanduser(str(path_text or "").strip())
+    if not path:
+        return
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(agent_id)
+    except OSError:
+        pass
+
+
+def _default_agent_id() -> str:
+    explicit = os.environ.get("AGENT_ID", "").strip()
+    if explicit:
+        return explicit
+
+    agent_id_file = os.environ.get("AGENT_ID_FILE", "").strip()
+    if agent_id_file:
+        persisted = _read_agent_id_file(agent_id_file)
+        if persisted:
+            return persisted
+
+    hostname = socket.gethostname().strip().lower()
+    if _is_container_runtime() and hostname:
+        derived = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"cybertwin-agent:{hostname}"))
+    else:
+        derived = str(uuid.getnode())
+
+    if agent_id_file:
+        _write_agent_id_file(agent_id_file, derived)
+
+    return derived
+
+
+AGENT_ID = _default_agent_id()
 
 
 def agent_auth_headers():

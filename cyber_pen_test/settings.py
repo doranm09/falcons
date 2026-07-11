@@ -135,6 +135,14 @@ DATABASES = {
         'PASSWORD': os.environ.get('POSTGRES_PASSWORD'),
         'HOST': 'db',
         'PORT': 5432,
+    },
+    "gvmd": {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('GVMD_POSTGRES_NAME', 'gvmd'),
+        'USER': os.environ.get('GVMD_POSTGRES_USER', 'gvmd'),
+        'PASSWORD': os.environ.get('GVMD_POSTGRES_PASSWORD', ''),
+        'HOST': os.environ.get('GVMD_POSTGRES_HOST', '/var/run/postgresql'),
+        'PORT': os.environ.get('GVMD_POSTGRES_PORT', ''),
     }
 }
 

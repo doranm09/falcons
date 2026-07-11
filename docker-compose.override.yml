@@ -1,11 +1,10 @@
-name: greenbone-community-edition
-
 services:
   vulnerability-tests:
     image: registry.community.greenbone.net/community/vulnerability-tests
     environment:
       FEED_RELEASE: "24.10"
       KEEP_ALIVE: 1
+    networks: [greenbone_net]
     volumes:
       - vt_data_vol:/mnt
 
@@ -13,6 +12,7 @@ services:
     image: registry.community.greenbone.net/community/notus-data
     environment:
       KEEP_ALIVE: 1
+    networks: [greenbone_net]
     volumes:
       - notus_data_vol:/mnt
 
@@ -20,6 +20,7 @@ services:
     image: registry.community.greenbone.net/community/scap-data
     environment:
       KEEP_ALIVE: 1
+    networks: [greenbone_net]
     volumes:
       - scap_data_vol:/mnt
 
@@ -27,6 +28,7 @@ services:
     image: registry.community.greenbone.net/community/cert-bund-data
     environment:
       KEEP_ALIVE: 1
+    networks: [greenbone_net]
     volumes:
       - cert_data_vol:/mnt
 
@@ -34,6 +36,7 @@ services:
     image: registry.community.greenbone.net/community/dfn-cert-data
     environment:
       KEEP_ALIVE: 1
+    networks: [greenbone_net]
     volumes:
       - cert_data_vol:/mnt
     depends_on:
@@ -45,6 +48,7 @@ services:
     environment:
       FEED_RELEASE: "24.10"
       KEEP_ALIVE: 1
+    networks: [greenbone_net]
     volumes:
       - data_objects_vol:/mnt
 
@@ -53,6 +57,7 @@ services:
     environment:
       FEED_RELEASE: "24.10"
       KEEP_ALIVE: 1
+    networks: [greenbone_net]
     volumes:
       - data_objects_vol:/mnt
     depends_on:
@@ -61,22 +66,27 @@ services:
 
   gpg-data:
     image: registry.community.greenbone.net/community/gpg-data
+    networks: [greenbone_net]
     volumes:
       - gpg_data_vol:/mnt
 
   redis-server:
     image: registry.community.greenbone.net/community/redis-server
-    deploy:
-      restart_policy:
-        condition: any
+    networks: [greenbone_net]
     volumes:
       - redis_socket_vol:/run/redis/
 
+  pg-gvm-migrator:
+    image: registry.community.greenbone.net/community/pg-gvm-migrator:stable
+    restart: "no"
+    networks: [greenbone_net]
+    volumes:
+      - psql_data_vol:/var/lib/postgresql
+      - psql_socket_vol:/var/run/postgresql
+
   pg-gvm:
     image: registry.community.greenbone.net/community/pg-gvm:stable
-    deploy:
-      restart_policy:
-        condition: any
+    networks: [greenbone_net]
     volumes:
       - psql_data_vol:/var/lib/postgresql
       - psql_socket_vol:/var/run/postgresql
@@ -84,20 +94,9 @@ services:
       pg-gvm-migrator:
         condition: service_completed_successfully
 
-  pg-gvm-migrator:
-    image: registry.community.greenbone.net/community/pg-gvm-migrator:stable
-    deploy:
-      restart_policy:
-        condition: none
-    volumes:
-      - psql_data_vol:/var/lib/postgresql
-      - psql_socket_vol:/var/run/postgresql
-
   gvmd:
     image: registry.community.greenbone.net/community/gvmd:stable
-    deploy:
-      restart_policy:
-        condition: any
+    networks: [greenbone_net]
     volumes:
       - gvmd_data_vol:/var/lib/gvm
       - scap_data_vol:/var/lib/gvm/scap-data/
@@ -106,6 +105,7 @@ services:
       - vt_data_vol:/var/lib/openvas/plugins
       - psql_data_vol:/var/lib/postgresql
       - gvmd_socket_vol:/run/gvmd
+      - /opt/gvm-run:/run/gvmd
       - ospd_openvas_socket_vol:/run/ospd
       - psql_socket_vol:/var/run/postgresql
     depends_on:
@@ -122,13 +122,14 @@ services:
       report-formats:
         condition: service_healthy
     ports:
-      - 35432:5432
+      - "35432:5432"
 
   gsa:
     image: registry.community.greenbone.net/community/gsa:stable-slim
     environment:
       MOUNT_PATH: "/mnt/web"
       KEEP_ALIVE: 1
+    networks: [greenbone_net]
     healthcheck:
       test: ["CMD-SHELL", "test -e /run/gsa/copying.done"]
       start_period: 5s
@@ -137,13 +138,12 @@ services:
 
   gsad:
     image: registry.community.greenbone.net/community/gsad:stable
-    deploy:
-      restart_policy:
-        condition: any
     environment:
       GSAD_ARGS: "--listen=0.0.0.0 --http-only --api-only -f"
+    networks: [greenbone_net]
     volumes:
       - gvmd_socket_vol:/run/gvmd
+      - /opt/gvm-run:/run/gvmd
     depends_on:
       gvmd:
         condition: service_started
@@ -153,22 +153,21 @@ services:
     environment:
       ENABLE_NGINX_CONFIG: true
       ENABLE_TLS_GENERATION: true
+    networks: [greenbone_net]
     volumes:
       - nginx_config_vol:/mnt/nginx/configs
       - nginx_certificates_vol:/mnt/nginx/certs
 
   nginx:
     image: registry.community.greenbone.net/community/nginx:latest
+    networks: [greenbone_net]
     ports:
-      - 127.0.0.1:443:443
-      - 127.0.0.1:9392:9392
+      - "127.0.0.1:443:443"
+      - "127.0.0.1:9392:9392"
     volumes:
       - nginx_config_vol:/etc/nginx/conf.d:ro
       - nginx_certificates_vol:/etc/nginx/certs:ro
       - gsa_data_vol:/usr/share/nginx/html:ro
-    deploy:
-      restart_policy:
-        condition: any
     depends_on:
       gvm-config:
         condition: service_completed_successfully
@@ -177,11 +176,9 @@ services:
       gsad:
         condition: service_started
 
-  # Sets log level of openvas to the set LOG_LEVEL within the env
-  # and changes log output to /var/log/openvas instead /var/log/gvm
-  # to reduce likelihood of unwanted log interferences
   configure-openvas:
     image: registry.community.greenbone.net/community/openvas-scanner:stable
+    networks: [greenbone_net]
     volumes:
       - openvas_data_vol:/mnt
       - openvas_log_data_vol:/var/log/openvas
@@ -196,9 +193,9 @@ services:
         touch /var/log/openvas/openvas.log
         chmod 666 /var/log/openvas/openvas.log
 
-  # shows logs of openvas
   openvas:
     image: registry.community.greenbone.net/community/openvas-scanner:stable
+    networks: [greenbone_net]
     volumes:
       - openvas_data_vol:/etc/openvas
       - openvas_log_data_vol:/var/log/openvas
@@ -214,12 +211,7 @@ services:
 
   openvasd:
     image: registry.community.greenbone.net/community/openvas-scanner:stable
-    deploy:
-      restart_policy:
-        condition: any
     environment:
-      # `service_notus` is set to disable everything but notus,
-      # if you want to utilize openvasd directly, remove `OPENVASD_MODE`
       OPENVASD_MODE: service_notus
       GNUPGHOME: /etc/openvas/gnupg
       LISTENING: 0.0.0.0:80
@@ -228,9 +220,6 @@ services:
       - openvas_log_data_vol:/var/log/openvas
       - gpg_data_vol:/etc/openvas/gnupg
       - notus_data_vol:/var/lib/notus
-    # enable port forwarding when you want to use the http api from your host machine
-    # ports:
-    #   - 127.0.0.1:3000:80
     depends_on:
       vulnerability-tests:
         condition: service_healthy
@@ -241,19 +230,16 @@ services:
       gpg-data:
         condition: service_completed_successfully
     networks:
-      default:
+      greenbone_net:
         aliases:
           - openvasd
 
   ospd-openvas:
     image: registry.community.greenbone.net/community/ospd-openvas:stable
-    deploy:
-      restart_policy:
-        condition: any
     hostname: ospd-openvas.local
     cap_add:
-      - NET_ADMIN # for capturing packages in promiscuous mode
-      - NET_RAW # for raw sockets e.g. used for the boreas alive detection
+      - NET_ADMIN
+      - NET_RAW
     security_opt:
       - seccomp=unconfined
       - apparmor=unconfined
@@ -268,6 +254,7 @@ services:
         "-m",
         "666",
       ]
+    networks: [greenbone_net]
     volumes:
       - gpg_data_vol:/etc/openvas/gnupg
       - vt_data_vol:/var/lib/openvas/plugins
@@ -290,8 +277,10 @@ services:
 
   gvm-tools:
     image: registry.community.greenbone.net/community/gvm-tools
+    networks: [greenbone_net]
     volumes:
       - gvmd_socket_vol:/run/gvmd
+      - /opt/gvm-run:/run/gvmd
       - ospd_openvas_socket_vol:/run/ospd
     depends_on:
       - gvmd

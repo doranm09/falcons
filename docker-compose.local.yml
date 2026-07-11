@@ -1,6 +1,7 @@
 services:
   web:
     environment:
+      PYTHONUNBUFFERED: "1"
       DJANGO_LIVE_RELOAD: "1"
     volumes:
       - .:/code

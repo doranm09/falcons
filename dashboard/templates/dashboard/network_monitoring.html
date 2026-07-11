@@ -2,6 +2,130 @@
 {% load static %}
 
 {% block content %}
+<style>
+  .purdue-topology-shell {
+    display: grid;
+    gap: 1rem;
+  }
+  .purdue-topology-board {
+    display: grid;
+    gap: 0.85rem;
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+    align-items: start;
+  }
+  .purdue-layer-column {
+    border: 1px solid var(--border-color);
+    border-top-width: 5px;
+    border-radius: 18px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.95), rgba(248,250,252,0.92)),
+      radial-gradient(circle at top, rgba(13, 110, 253, 0.07), transparent 55%);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+    padding: 0.85rem;
+    min-width: 0;
+  }
+  .purdue-layer-column--primary { border-top-color: #0d6efd; }
+  .purdue-layer-column--warning { border-top-color: #f59f00; }
+  .purdue-layer-column--info { border-top-color: #0dcaf0; }
+  .purdue-layer-column--success { border-top-color: #198754; }
+  .purdue-layer-column--secondary { border-top-color: #6c757d; }
+  .purdue-layer-column--dark { border-top-color: #212529; }
+  .purdue-layer-header {
+    display: grid;
+    gap: 0.5rem;
+    margin-bottom: 0.85rem;
+  }
+  .purdue-layer-header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  .purdue-layer-kicker {
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--text-muted);
+  }
+  .purdue-layer-count {
+    white-space: nowrap;
+  }
+  .purdue-layer-flow {
+    display: none;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+  }
+  .purdue-node-grid {
+    display: grid;
+    gap: 0.65rem;
+  }
+  .purdue-node-card {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 0.75rem;
+    background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(241, 245, 249, 0.9));
+    transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+  }
+  .purdue-node-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+    border-color: rgba(13, 110, 253, 0.35);
+  }
+  .purdue-node-card--disabled {
+    pointer-events: none;
+    opacity: 0.8;
+  }
+  .purdue-node-icon {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+    background: rgba(13, 110, 253, 0.12);
+    color: #0d6efd;
+  }
+  .purdue-node-meta {
+    font-size: 0.76rem;
+    color: var(--text-muted);
+  }
+  .purdue-node-title {
+    font-size: 0.94rem;
+    line-height: 1.25;
+    word-break: break-word;
+  }
+  .purdue-node-badges {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+  }
+  @media (min-width: 768px) {
+    .purdue-topology-board {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (min-width: 900px) {
+    .purdue-topology-board {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+  @media (min-width: 1200px) {
+    .purdue-topology-board {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+    .purdue-layer-flow {
+      display: inline-flex;
+    }
+  }
+</style>
 <div class="container-fluid p-4">
     <form id="csrf-form">{% csrf_token %}</form>
     <div class="row mb-4">
@@ -58,7 +182,7 @@
                     </button>
                 </div>
                 <div class="card-body">
-                    <div id="networkTopology" style="height: 400px; background: var(--graph-bg); border: 1px solid var(--border-color); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted);">
+                    <div id="networkTopology" style="min-height: 400px; background: var(--graph-bg); border: 1px solid var(--border-color); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted);">
                         <div class="text-center">
                             <i class="bi bi-diagram-3" style="font-size: 3rem; margin-bottom: 1rem;"></i>
                             <p>Loading network topology...</p>
@@ -330,8 +454,9 @@
 
     function renderNetworkTopology(data) {
         const container = document.getElementById('networkTopology');
+        const layers = Array.isArray(data.layers) ? data.layers : [];
 
-        if (!data.nodes || data.nodes.length === 0) {
+        if (!layers.length || !layers.some(layer => Array.isArray(layer.nodes) && layer.nodes.length > 0)) {
             container.innerHTML = `
                 <div class="text-center text-muted">
                     <i class="bi bi-diagram-3" style="font-size: 3rem; margin-bottom: 1rem;"></i>
@@ -341,57 +466,78 @@
             `;
             return;
         }
-
-        // Simple text-based topology visualization
-        let html = `
-            <div class="p-3">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h6>Network Nodes (${data.nodes.length})</h6>
-                        <div class="mb-3">
-        `;
-
-        data.nodes.forEach(node => {
-            const statusClass = node.status === 'online' ? 'success' : 'warning';
-            html += `
-                <div class="d-flex justify-content-between align-items-center mb-2">
+        const layerHtml = layers.map((layer, index) => {
+            const nodesHtml = (layer.nodes || []).map(node => {
+                const statusClass = node.status === 'online' ? 'success' : (node.status === 'offline' ? 'danger' : 'secondary');
+                const vulnerabilityBadge = Number(node.vulnerability_count || 0) > 0
+                    ? `<span class="badge text-bg-danger">${node.vulnerability_count} findings</span>`
+                    : `<span class="badge text-bg-light border">No findings</span>`;
+                const content = `
+                  <div class="purdue-node-icon"><i class="bi ${node.icon || 'bi-hdd-network-fill'}"></i></div>
+                  <div class="fw-semibold purdue-node-title">${escapeHtml(node.label || node.hostname || node.name || node.ip_address || 'Node')}</div>
+                  <div class="purdue-node-meta mb-2">${escapeHtml(node.ip_address || 'Unknown IP')}</div>
+                  <div class="purdue-node-badges mb-2">
+                    <span class="badge bg-${statusClass}">${escapeHtml(node.status || 'unknown')}</span>
+                    <span class="badge text-bg-light border">${escapeHtml(node.role_label || node.role || 'Asset')}</span>
+                  </div>
+                  <div class="purdue-node-meta mb-2">${escapeHtml(node.segment_label || '')}</div>
+                  <div class="purdue-node-badges">${vulnerabilityBadge}</div>
+                `;
+                if (node.node_url) {
+                    return `<a class="purdue-node-card" href="${escapeHtml(node.node_url)}">${content}</a>`;
+                }
+                return `<div class="purdue-node-card purdue-node-card--disabled">${content}</div>`;
+            }).join('');
+            const nextLabel = index < layers.length - 1 ? escapeHtml(layers[index + 1].label || layers[index + 1].slug || 'Next Layer') : '';
+            return `
+              <div class="purdue-layer-column purdue-layer-column--${escapeHtml(layer.accent || 'secondary')}">
+                <div class="purdue-layer-header">
+                  <div class="purdue-layer-header-top">
                     <div>
-                        <strong>${node.label}</strong>
-                        <br><small class="text-muted">${node.ip_address}</small>
+                      <div class="purdue-layer-kicker">Purdue Layer</div>
+                      <h6 class="mb-0">${escapeHtml(layer.label || layer.slug || 'Layer')}</h6>
                     </div>
-                    <span class="badge bg-${statusClass}">${node.status}</span>
+                    <span class="badge text-bg-light border purdue-layer-count">${(layer.nodes || []).length} host${(layer.nodes || []).length === 1 ? '' : 's'}</span>
+                  </div>
+                  ${nextLabel ? `<div class="purdue-layer-flow"><i class="bi bi-arrow-right"></i><span>Trust boundary to ${nextLabel}</span></div>` : ''}
                 </div>
+                <div class="purdue-node-grid">
+                  ${nodesHtml || '<div class="text-muted small">No hosts mapped into this layer.</div>'}
+                </div>
+              </div>
             `;
-        });
+        }).join('');
 
-        html += `
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <h6>Network Flows (${data.edges.length})</h6>
-                        <div class="mb-3">
-        `;
-
-        data.edges.forEach(edge => {
-            html += `
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <div>
-                        <code>${edge.from}</code> → <code>${edge.to}</code>
-                        <br><small class="text-muted">${edge.protocol}</small>
-                    </div>
-                    <span class="badge bg-info">${edge.connection_count} conn</span>
-                </div>
-            `;
-        });
-
-        html += `
-                        </div>
-                    </div>
-                </div>
+        const edgeCount = Array.isArray(data.edges) ? data.edges.length : 0;
+        container.innerHTML = `
+          <div class="p-3">
+            <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3">
+              <div>
+                <h6 class="mb-1">Purdue Topology</h6>
+                <div class="text-muted small">Click a host to open its node rollup page.</div>
+              </div>
+              <div class="d-flex gap-2 flex-wrap">
+                <span class="badge text-bg-light border">${(data.nodes || []).length} mapped nodes</span>
+                <span class="badge text-bg-light border">${edgeCount} observed flows</span>
+              </div>
             </div>
+            <div class="purdue-topology-shell">
+              <div class="text-muted small">Layout uses a compact board on wide screens and collapses to stacked layers on smaller displays.</div>
+              <div class="purdue-topology-board">
+              ${layerHtml}
+              </div>
+            </div>
+          </div>
         `;
+    }
 
-        container.innerHTML = html;
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     function refreshConnections() {

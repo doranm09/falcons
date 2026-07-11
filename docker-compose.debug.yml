@@ -1,0 +1,14 @@
+services:
+  web:
+    environment:
+      DJANGO_LIVE_RELOAD: "1"
+      PYTHONUNBUFFERED: "1"
+      DEBUGPY_PORT: ${DEBUGPY_PORT:-5678}
+      DEBUGPY_WAIT_FOR_CLIENT: ${DEBUGPY_WAIT_FOR_CLIENT:-0}
+    ports:
+      - "5678:5678"
+    command: >
+      sh -lc "python cyber_pen_test/manage.py migrate &&
+      python setup_sliver.py &&
+      if [ \"$${DEBUGPY_WAIT_FOR_CLIENT}\" = \"1\" ]; then WAIT_FOR_CLIENT='--wait-for-client'; else WAIT_FOR_CLIENT=''; fi &&
+      exec python -m debugpy --listen 0.0.0.0:$${DEBUGPY_PORT} $$WAIT_FOR_CLIENT cyber_pen_test/manage.py runserver 0.0.0.0:8000 --noreload"

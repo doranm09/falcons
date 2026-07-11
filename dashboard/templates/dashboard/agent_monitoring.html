@@ -3,6 +3,7 @@
 
 {% block content %}
 <div class="container-fluid px-3 px-md-4 py-3 py-md-4">
+    <form id="csrf-form" style="display:none;">{% csrf_token %}</form>
     <div class="row g-3 align-items-center mb-4">
         <div class="col-12 col-md">
             <h2><i class="bi bi-robot"></i> Agent Monitoring Dashboard</h2>
@@ -346,9 +347,15 @@
                     'X-CSRFToken': getCsrfToken()
                 }
             });
-            const data = await response.json();
+            const text = await response.text();
+            let data = {};
+            try {
+                data = JSON.parse(text);
+            } catch (error) {
+                data = {};
+            }
             if (!response.ok) {
-                throw new Error(data.error || 'Failed to delete agent');
+                throw new Error(data.error || text || 'Failed to delete agent');
             }
             refreshAgentStatus();
         } catch (error) {
@@ -374,9 +381,15 @@
                     'X-CSRFToken': getCsrfToken()
                 }
             });
-            const data = await response.json();
+            const text = await response.text();
+            let data = {};
+            try {
+                data = JSON.parse(text);
+            } catch (error) {
+                data = {};
+            }
             if (!response.ok) {
-                throw new Error(data.error || 'Failed to delete offline agents');
+                throw new Error(data.error || text || 'Failed to delete offline agents');
             }
             refreshAgentStatus();
         } catch (error) {

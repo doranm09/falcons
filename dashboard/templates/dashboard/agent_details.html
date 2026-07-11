@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block content %}
-<div class="container-fluid p-4">
+<div class="container-fluid agent-page px-3 px-md-4 py-4">
     <div class="row mb-4">
         <div class="col-12">
             <nav aria-label="breadcrumb">
@@ -12,12 +12,12 @@
                     <li class="breadcrumb-item active">{{ agent.hostname }}</li>
                 </ol>
             </nav>
-            <div class="d-flex justify-content-between align-items-center">
+            <div class="agent-heading">
                 <div>
                     <h2><i class="bi bi-robot"></i> {{ agent.hostname }}</h2>
                     <p class="text-muted">Agent ID: <code>{{ agent.agent_id }}</code></p>
                 </div>
-                <div class="d-flex align-items-center gap-2">
+                <div class="agent-toolbar justify-content-md-end">
                     <a href="{% url 'dashboard:agent_analysis' agent.agent_id %}" class="btn btn-outline-primary">
                         <i class="bi bi-graph-up"></i> Analysis
                     </a>
@@ -148,9 +148,10 @@
     <div class="row mb-4">
         <div class="col-md-12">
             <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="card-header">
+                    <div class="agent-heading">
                     <h5 class="mb-0"><i class="bi bi-journal-code"></i> SBOM Reports</h5>
-                    <div class="d-flex gap-2">
+                    <div class="agent-toolbar justify-content-md-end">
                         {% if sbom_reports or node and node.installed_libraries %}
                         <a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:agent_sbom_export' agent.agent_id %}">
                             <i class="bi bi-table"></i> Table View
@@ -173,6 +174,7 @@
                         <span class="text-muted small align-self-center">
                             {% if sbom_reports %}{{ sbom_reports|length }} recent{% elif node and node.installed_libraries %}cyber data{% else %}0 recent{% endif %}
                         </span>
+                    </div>
                     </div>
                 </div>
                 <div class="card-body">
@@ -462,18 +464,6 @@
                         <div class="col-md-6">
                             <h6>Operating System</h6>
                             <p>{{ node.os_info|default:"Not collected" }}</p>
-
-                            <h6>Installed Libraries ({{ node.installed_libraries|length }})</h6>
-                            <div class="d-flex flex-wrap gap-1">
-                                {% for lib in node.installed_libraries|slice:":20" %}
-                                    <span class="badge bg-secondary">{{ lib }}</span>
-                                {% empty %}
-                                    <p class="text-muted small">None collected</p>
-                                {% endfor %}
-                            </div>
-                            {% if node.installed_libraries|length > 20 %}
-                                <p class="text-muted small mt-1">... and {{ node.installed_libraries|length|add:"-20" }} more</p>
-                            {% endif %}
                         </div>
                         <div class="col-md-6">
                             <h6>MAC Addresses ({{ node.mac_addresses|length }})</h6>

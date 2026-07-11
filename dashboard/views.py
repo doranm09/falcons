@@ -13,6 +13,7 @@ from .models import (
     RiskNodeMapping,
     SbomReport,
     ScanRun,
+    ScanVulnerability,
     SiemEvent,
     Vulnerability,
     AlertRule,
@@ -122,6 +123,39 @@ from .pid_drawio import (
     store_drawio_upload,
     upload_sim_system,
 )
+from .gvmd import fetch_gvmd_findings_for_ips
+
+
+def _node_asset_ips(node: Node) -> set[str]:
+    ips = set()
+    primary_ip = str(getattr(node, "ip_address", "") or "").strip()
+    if primary_ip:
+        ips.add(primary_ip)
+    for iface in getattr(node, "interfaces", []).all():
+        iface_ip = str(getattr(iface, "ip", "") or "").strip()
+        if iface_ip:
+            ips.add(iface_ip)
+    return ips
+
+
+def _hostname_for_node(node: Optional[Node], fallback_ip: str = "") -> str:
+    if node:
+        hostname = str(getattr(node, "hostname", "") or "").strip()
+        if hostname:
+            return hostname
+        candidate = str(getattr(node, "name", "") or "").strip()
+        if candidate and candidate != str(fallback_ip or "").strip():
+            return candidate
+    return ""
+
+
+def _latest_nodes_by_asset_ip(nodes):
+    latest_node_by_ip = {}
+    for node in nodes:
+        for ip_text in _node_asset_ips(node):
+            if ip_text and ip_text not in latest_node_by_ip:
+                latest_node_by_ip[ip_text] = node
+    return latest_node_by_ip
 from knowledge_extraction.drawio import DrawioParseError
 from .pid_system import (
     build_system_elements,
@@ -151,6 +185,248 @@ def _sbom_severity_rank(value: str) -> int:
         "": 0,
     }
     return ranks.get(str(value or "").strip().lower(), 0)
+
+
+PURDUE_TOPOLOGY_LAYERS = [
+    {"slug": "L4", "label": "Level 4 / Enterprise IT", "accent": "primary"},
+    {"slug": "L3.5", "label": "Level 3.5 / DMZ & Firewalls", "accent": "warning"},
+    {"slug": "L3", "label": "Level 3 / Operations", "accent": "info"},
+    {"slug": "L2", "label": "Level 2 / Supervisory", "accent": "success"},
+    {"slug": "L1", "label": "Level 1 / Control", "accent": "secondary"},
+    {"slug": "L0", "label": "Level 0 / Process", "accent": "dark"},
+]
+
+IAEA_TESTBED_STATIC_TOPOLOGY = [
+    {"hostname": "database", "label": "database", "ip_address": "10.4.50.20", "layer": "L4", "role_slug": "database", "role_label": "Database", "icon": "bi-database-fill", "segment_label": "Enterprise LAN"},
+    {"hostname": "metasploit", "label": "metasploit", "ip_address": "10.4.50.10", "layer": "L4", "role_slug": "offensive", "role_label": "Offensive Host", "icon": "bi-bug-fill", "segment_label": "Enterprise LAN"},
+    {"hostname": "postgres", "label": "postgres", "ip_address": "10.4.50.41", "layer": "L4", "role_slug": "database", "role_label": "Database", "icon": "bi-database-fill", "segment_label": "Enterprise LAN"},
+    {"hostname": "historian-db", "label": "historian-db", "ip_address": "10.4.50.30", "layer": "L4", "role_slug": "database", "role_label": "Database", "icon": "bi-database-fill", "segment_label": "Enterprise LAN"},
+    {"hostname": "firewall-2", "label": "firewall-2", "ip_address": "10.3.50.254", "layer": "L3.5", "role_slug": "firewall", "role_label": "Firewall", "icon": "bi-shield-lock-fill", "segment_label": "Operations LAN"},
+    {"hostname": "firewall-1", "label": "firewall-1", "ip_address": "10.2.50.254", "layer": "L3.5", "role_slug": "firewall", "role_label": "Firewall", "icon": "bi-shield-lock-fill", "segment_label": "Supervisory LAN"},
+    {"hostname": "historian", "label": "historian", "ip_address": "10.2.50.31", "layer": "L3", "role_slug": "server", "role_label": "Server", "icon": "bi-server", "segment_label": "Operations LAN"},
+    {"hostname": "hmi", "label": "hmi", "ip_address": "10.2.50.10", "layer": "L2", "role_slug": "supervisory", "role_label": "Supervisory", "icon": "bi-display-fill", "segment_label": "Supervisory LAN"},
+    {"hostname": "ignition", "label": "ignition", "ip_address": "10.2.50.40", "layer": "L2", "role_slug": "supervisory", "role_label": "Supervisory", "icon": "bi-display-fill", "segment_label": "Supervisory LAN"},
+    {"hostname": "engineer-ws", "label": "engineer-ws", "ip_address": "10.2.50.20", "layer": "L2", "role_slug": "workstation", "role_label": "Workstation", "icon": "bi-laptop-fill", "segment_label": "Supervisory LAN"},
+    {"hostname": "l2-jump", "label": "l2-jump", "ip_address": "10.2.50.30", "layer": "L2", "role_slug": "workstation", "role_label": "Workstation", "icon": "bi-laptop-fill", "segment_label": "Supervisory LAN"},
+    {"hostname": "firewall-0", "label": "firewall-0", "ip_address": "10.1.13.253", "layer": "L1", "role_slug": "firewall", "role_label": "Firewall", "icon": "bi-shield-lock-fill", "segment_label": "Main Control Cell"},
+    {"hostname": "firewall-main-cell", "label": "firewall-main-cell", "ip_address": "10.1.13.252", "layer": "L1", "role_slug": "firewall", "role_label": "Firewall", "icon": "bi-shield-lock-fill", "segment_label": "Main Control Cell"},
+    {"hostname": "firewall-backup-cell", "label": "firewall-backup-cell", "ip_address": "10.2.23.252", "layer": "L1", "role_slug": "firewall", "role_label": "Firewall", "icon": "bi-shield-lock-fill", "segment_label": "Backup Control Cell"},
+    {"hostname": "plc-backup", "label": "plc-backup", "ip_address": "10.2.23.10", "layer": "L1", "role_slug": "controller", "role_label": "Controller", "icon": "bi-cpu-fill", "segment_label": "Backup Control Cell"},
+    {"hostname": "vc-hv455a", "label": "vc-hv455a", "ip_address": "10.3.13.1", "layer": "L0", "role_slug": "actuator", "role_label": "Actuator", "icon": "bi-sliders", "segment_label": "Main Process Cell"},
+    {"hostname": "vc-pv455b", "label": "vc-pv455b", "ip_address": "10.3.13.2", "layer": "L0", "role_slug": "actuator", "role_label": "Actuator", "icon": "bi-sliders", "segment_label": "Main Process Cell"},
+    {"hostname": "vc-pv455c", "label": "vc-pv455c", "ip_address": "10.3.13.3", "layer": "L0", "role_slug": "actuator", "role_label": "Actuator", "icon": "bi-sliders", "segment_label": "Main Process Cell"},
+    {"hostname": "heat-ctrl", "label": "heat-ctrl", "ip_address": "10.3.13.5", "layer": "L0", "role_slug": "actuator", "role_label": "Actuator", "icon": "bi-sliders", "segment_label": "Main Process Cell"},
+    {"hostname": "pt-455", "label": "pt-455", "ip_address": "10.3.13.11", "layer": "L0", "role_slug": "sensor", "role_label": "Sensor", "icon": "bi-speedometer2", "segment_label": "Main Process Cell"},
+    {"hostname": "pt-456", "label": "pt-456", "ip_address": "10.3.13.12", "layer": "L0", "role_slug": "sensor", "role_label": "Sensor", "icon": "bi-speedometer2", "segment_label": "Main Process Cell"},
+    {"hostname": "pt-457", "label": "pt-457", "ip_address": "10.3.13.13", "layer": "L0", "role_slug": "sensor", "role_label": "Sensor", "icon": "bi-speedometer2", "segment_label": "Main Process Cell"},
+    {"hostname": "pt-458", "label": "pt-458", "ip_address": "10.4.23.14", "layer": "L0", "role_slug": "sensor", "role_label": "Sensor", "icon": "bi-speedometer2", "segment_label": "Backup Process Cell"},
+]
+
+
+def _topology_identity_text(*parts) -> str:
+    for part in parts:
+        text = str(part or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _infer_topology_role(name: str = "", hostname: str = "", ip_address: str = "", description: str = "") -> tuple[str, str, str]:
+    text = " ".join([str(name or ""), str(hostname or ""), str(description or "")]).lower()
+    if any(token in text for token in ["firewall", "gateway"]):
+        return "firewall", "Firewall", "bi-shield-lock-fill"
+    if any(token in text for token in ["metasploit", "attacker", "kali", "red-team"]):
+        return "offensive", "Offensive Host", "bi-bug-fill"
+    if any(token in text for token in ["database", "postgres", "db", "historian-db", "influx"]):
+        return "database", "Database", "bi-database-fill"
+    if any(token in text for token in ["historian", "opc", "collector", "server"]):
+        return "server", "Server", "bi-server"
+    if any(token in text for token in ["engineer", "eng-ws", "workstation", "jump", "desktop", "laptop"]):
+        return "workstation", "Workstation", "bi-laptop-fill"
+    if any(token in text for token in ["hmi", "ignition", "scada", "supervisory"]):
+        return "supervisory", "Supervisory", "bi-display-fill"
+    if any(token in text for token in ["plc", "controller", "rtu", "ied", "dcs"]):
+        return "controller", "Controller", "bi-cpu-fill"
+    if any(token in text for token in ["valve", "vc-", "hv", "pv", "cv"]):
+        return "actuator", "Actuator", "bi-sliders"
+    if any(token in text for token in ["pt-", "lt-", "tt-", "ft-", "sensor", "transmitter"]):
+        return "sensor", "Sensor", "bi-speedometer2"
+    if "10.4.50." in ip_address:
+        return "enterprise", "Enterprise", "bi-building"
+    return "asset", "Asset", "bi-hdd-network-fill"
+
+
+def _infer_purdue_layer(name: str = "", hostname: str = "", ip_address: str = "", description: str = "") -> str:
+    text = " ".join([str(name or ""), str(hostname or ""), str(description or "")]).upper()
+    ip_text = str(ip_address or "").strip()
+    if "HISTORIAN" in text and "DB" not in text and "DATABASE" not in text:
+        return "L3"
+    if any(token in text for token in ["FIREWALL", "DMZ", "GATEWAY"]):
+        return "L3.5"
+    if ip_text.startswith("10.4.50."):
+        return "L4"
+    if ip_text.startswith("10.3.50."):
+        return "L3"
+    if ip_text.startswith("10.2.50."):
+        return "L2"
+    if any(ip_text.startswith(prefix) for prefix in ["10.1.13.", "10.2.23.", "10.0.13.", "10.0.23."]):
+        return "L1"
+    if any(ip_text.startswith(prefix) for prefix in ["10.3.13.", "10.4.23."]):
+        return "L0"
+    if any(token in text for token in ["ERP", "MES", "CORP", "ENTERPRISE", "BUSINESS", "IT", "OFFICE", "METASPLOIT", "DATABASE", "POSTGRES"]):
+        return "L4"
+    if any(token in text for token in ["HISTORIAN", "OPC"]):
+        return "L3"
+    if any(token in text for token in ["HMI", "IGNITION", "ENGINEER", "JUMP", "SCADA", "SUPERVISOR"]):
+        return "L2"
+    if any(token in text for token in ["PLC", "RTU", "IED", "DCS", "CONTROLLER", "CTRL"]):
+        return "L1"
+    if any(token in text for token in ["SENSOR", "VALVE", "PUMP", "MOTOR", "HEATER", "HV", "PV", "CV", "PT", "LT", "TT", "FT", "PORV"]):
+        return "L0"
+    return "L2"
+
+
+def _topology_segment_label(ip_address: str = "") -> str:
+    ip_text = str(ip_address or "").strip()
+    segment_map = {
+        "10.4.50.": "Enterprise LAN",
+        "10.3.50.": "Operations LAN",
+        "10.2.50.": "Supervisory LAN",
+        "10.1.13.": "Main Control Cell",
+        "10.2.23.": "Backup Control Cell",
+        "10.3.13.": "Main Process Cell",
+        "10.4.23.": "Backup Process Cell",
+        "10.0.13.": "Main Management",
+        "10.0.23.": "Backup Management",
+    }
+    for prefix, label in segment_map.items():
+        if ip_text.startswith(prefix):
+            return label
+    return "Observed Network"
+
+
+def _topology_layer_meta(slug: str) -> dict:
+    for layer in PURDUE_TOPOLOGY_LAYERS:
+        if layer["slug"] == slug:
+            return layer
+    return {"slug": slug, "label": slug, "accent": "secondary"}
+
+
+IAEA_TOPOLOGY_BY_IP = {item["ip_address"]: item for item in IAEA_TESTBED_STATIC_TOPOLOGY}
+IAEA_TOPOLOGY_BY_HOSTNAME = {item["hostname"]: item for item in IAEA_TESTBED_STATIC_TOPOLOGY}
+
+
+def _iaea_topology_override(hostname: str = "", name: str = "", ip_address: str = "") -> dict | None:
+    hostname = str(hostname or "").strip().lower()
+    name = str(name or "").strip().lower()
+    ip_address = str(ip_address or "").strip()
+    if ip_address and ip_address in IAEA_TOPOLOGY_BY_IP:
+        return IAEA_TOPOLOGY_BY_IP[ip_address]
+    if hostname and hostname in IAEA_TOPOLOGY_BY_HOSTNAME:
+        return IAEA_TOPOLOGY_BY_HOSTNAME[hostname]
+    if name and name in IAEA_TOPOLOGY_BY_HOSTNAME:
+        return IAEA_TOPOLOGY_BY_HOSTNAME[name]
+    return None
+
+
+def _is_iaea_testbed_active(node_candidates, agents) -> bool:
+    known_ranges = (
+        "10.4.50.",
+        "10.3.50.",
+        "10.2.50.",
+        "10.1.13.",
+        "10.2.23.",
+        "10.3.13.",
+        "10.4.23.",
+        "10.0.13.",
+        "10.0.23.",
+    )
+    for obj in list(node_candidates) + list(agents):
+        ip_text = str(getattr(obj, "ip_address", "") or "").strip()
+        hostname = str(getattr(obj, "hostname", "") or "").strip().lower()
+        name = str(getattr(obj, "name", "") or "").strip().lower()
+        if any(ip_text.startswith(prefix) for prefix in known_ranges):
+            return True
+        if hostname in IAEA_TOPOLOGY_BY_HOSTNAME or name in IAEA_TOPOLOGY_BY_HOSTNAME:
+            return True
+    return False
+
+
+def _normalize_host_identity_text(value: str = "") -> str:
+    return str(value or "").strip()
+
+
+def _rekey_agent_identity(old_agent_id: str, new_agent_id: str) -> None:
+    old_agent_id = _normalize_host_identity_text(old_agent_id)
+    new_agent_id = _normalize_host_identity_text(new_agent_id)
+    if not old_agent_id or not new_agent_id or old_agent_id == new_agent_id:
+        return
+
+    AgentCommand.objects.filter(agent_id=old_agent_id).update(agent_id=new_agent_id)
+    CommandResult.objects.filter(agent_id=old_agent_id).update(agent_id=new_agent_id)
+    SbomReport.objects.filter(agent_id=old_agent_id).update(agent_id=new_agent_id)
+
+
+def _claim_existing_agent_identity(agent_id: str, hostname: str, ip_address: str):
+    agent_id = _normalize_host_identity_text(agent_id)
+    hostname = _normalize_host_identity_text(hostname)
+    ip_address = _normalize_host_identity_text(ip_address)
+    if not agent_id:
+        return None
+
+    existing = AgentStatus.objects.filter(agent_id=agent_id).first()
+    if existing:
+        return existing
+
+    candidate_qs = AgentStatus.objects.exclude(agent_id=agent_id)
+    if hostname and ip_address:
+        candidate_qs = candidate_qs.filter(hostname__iexact=hostname, ip_address=ip_address)
+    elif ip_address:
+        candidate_qs = candidate_qs.filter(ip_address=ip_address)
+    elif hostname:
+        candidate_qs = candidate_qs.filter(hostname__iexact=hostname)
+    else:
+        return None
+
+    candidate = candidate_qs.order_by("-last_heartbeat", "-id").first()
+    if not candidate:
+        return None
+
+    old_agent_id = candidate.agent_id
+    _rekey_agent_identity(old_agent_id, agent_id)
+    candidate.agent_id = agent_id
+    candidate.save(update_fields=["agent_id"])
+    return candidate
+
+
+def _claim_existing_node_identity(agent_id: str, hostname: str, ip_address: str):
+    agent_id = _normalize_host_identity_text(agent_id)
+    hostname = _normalize_host_identity_text(hostname)
+    ip_address = _normalize_host_identity_text(ip_address)
+    if not agent_id:
+        return None
+
+    existing = Node.objects.filter(agent_id=agent_id).first()
+    if existing:
+        return existing
+
+    candidate_qs = Node.objects.filter(scan_run__isnull=True).exclude(agent_id=agent_id)
+    if hostname and ip_address:
+        candidate_qs = candidate_qs.filter(hostname__iexact=hostname, ip_address=ip_address)
+    elif ip_address:
+        candidate_qs = candidate_qs.filter(ip_address=ip_address)
+    elif hostname:
+        candidate_qs = candidate_qs.filter(hostname__iexact=hostname)
+    else:
+        return None
+
+    candidate = candidate_qs.order_by("-last_heartbeat", "-id").first()
+    if not candidate:
+        return None
+
+    candidate.agent_id = agent_id
+    candidate.save(update_fields=["agent_id"])
+    return candidate
 
 
 def _sort_sbom_vulnerability_rows(rows):
@@ -360,7 +636,7 @@ def home(request):
     running_scans = ScanRun.objects.filter(status="RUNNING").count()
     pending_scans = ScanRun.objects.filter(status="PENDING").count()
 
-    return render(request, "dashboard/network_scan_home.html", {
+    return render(request, "dashboard/network_monitoring.html", {
         "scan_history": scan_history,
         "running_scans": running_scans,
         "pending_scans": pending_scans,
@@ -1222,11 +1498,14 @@ def node_details(request, node_id):
     node_data = {
         "id": node.id,
         "name": node.name,
+        "hostname": node.hostname,
         "ip_address": node.ip_address,
         "status": node.status,
         "description": node.description,
         "last_heartbeat": node.last_heartbeat.strftime('%Y-%m-%d %H:%M:%S') if node.last_heartbeat else "Never",
         "agent_id": node.agent_id,
+        "purdue_level": _infer_purdue_layer(node.name, node.hostname, str(node.ip_address), node.description),
+        "role": _infer_topology_role(node.name, node.hostname, str(node.ip_address), node.description)[1],
         "cyber_data": node.get_cyber_template_data(),
         "system_info": {
             "cpu_count": node.cpu_count,
@@ -1272,11 +1551,97 @@ def node_detail_page(request, node_id):
     if agent_status:
         network_metadata = NetworkMetadata.objects.filter(agent=agent_status).order_by('-timestamp').first()
 
+    purdue_level = _infer_purdue_layer(node.name, node.hostname, str(node.ip_address), node.description)
+    role_slug, role_label, role_icon = _infer_topology_role(node.name, node.hostname, str(node.ip_address), node.description)
+    asset_ips = sorted(_node_asset_ips(node))
+    imported_network_findings = list(
+        ScanVulnerability.objects.filter(host_ip__in=asset_ips)
+        .select_related("scan_run")
+        .order_by("-cvss_score", "-timestamp", "cve_id")
+    )
+    gvmd_findings = fetch_gvmd_findings_for_ips(asset_ips)
+    sbom_finding_count = node.vulnerability_set.count()
+    recent_report_scans = list(
+        ScanRun.objects.filter(vulnerabilities__host_ip__in=asset_ips)
+        .distinct()
+        .order_by("-timestamp")[:5]
+    )
+    if not recent_report_scans and node.scan_run_id:
+        recent_report_scans = [node.scan_run]
+
+    context_rollup = {
+        "display_name": _topology_identity_text(node.hostname, node.name, node.ip_address),
+        "purdue_level": purdue_level,
+        "segment_label": _topology_segment_label(str(node.ip_address)),
+        "role_slug": role_slug,
+        "role_label": role_label,
+        "role_icon": role_icon,
+        "scan_finding_count": 0,
+        "sbom_finding_count": sbom_finding_count,
+        "interface_count": node.interfaces.count(),
+        "library_count": len(node.installed_libraries or []),
+        "active_port_count": len(node.active_ports or []),
+        "recent_reports": recent_report_scans,
+    }
+
+    network_finding_rows = []
+    seen_network_keys = set()
+    for finding in imported_network_findings:
+        row_key = (str(finding.host_ip), str(finding.cve_id))
+        if row_key in seen_network_keys:
+            continue
+        seen_network_keys.add(row_key)
+        cve_id = str(finding.cve_id or "")
+        network_finding_rows.append(
+            {
+                "host_ip": str(finding.host_ip),
+                "cve_id": cve_id,
+                "name": str(finding.name or ""),
+                "severity": str(finding.severity or ""),
+                "cvss_score": finding.cvss_score,
+                "description": str(finding.description or ""),
+                "scan_id": finding.scan_run_id,
+                "scan_timestamp": getattr(finding.scan_run, "timestamp", None),
+                "report_url": reverse("dashboard:vuln-detail", args=[finding.scan_run_id]) if finding.scan_run_id else "",
+                "link_url": f"https://nvd.nist.gov/vuln/detail/{cve_id}" if cve_id.startswith("CVE-") else "",
+                "source_label": "Imported",
+                "report_label": f"Django report #{finding.scan_run_id}" if finding.scan_run_id else "",
+            }
+        )
+
+    for finding in gvmd_findings:
+        row_key = (str(finding.get("host_ip") or ""), str(finding.get("cve_id") or ""))
+        if row_key in seen_network_keys:
+            continue
+        seen_network_keys.add(row_key)
+        network_finding_rows.append(
+            {
+                "host_ip": str(finding.get("host_ip") or ""),
+                "cve_id": str(finding.get("cve_id") or ""),
+                "name": str(finding.get("name") or ""),
+                "severity": str(finding.get("severity") or ""),
+                "cvss_score": finding.get("cvss_score"),
+                "description": str(finding.get("description") or ""),
+                "scan_id": None,
+                "scan_timestamp": None,
+                "report_url": "",
+                "link_url": str(finding.get("link_url") or ""),
+                "source_label": "GVMD",
+                "report_label": str(finding.get("task_name") or finding.get("task_uuid") or finding.get("report_uuid") or finding.get("nvt_oid") or ""),
+                "report_uuid": str(finding.get("report_uuid") or ""),
+                "nvt_oid": str(finding.get("nvt_oid") or ""),
+            }
+        )
+
+    context_rollup["scan_finding_count"] = len(network_finding_rows)
+
     return render(request, 'dashboard/node_detail.html', {
         'node': node,
         'interfaces': node.interfaces.all(),
         'agent_status': agent_status,
         'network_metadata': network_metadata,
+        'rollup': context_rollup,
+        'network_findings': network_finding_rows,
     })
 
 def get_interfaces(request):
@@ -1391,54 +1756,58 @@ def agent_report(request):
           if external_interfaces
           else (interfaces[0].get("ip", "192.168.0.1") if interfaces else "192.168.0.1"))
 
-    # Update or create AgentStatus record
-    agent_status, created = AgentStatus.objects.update_or_create(
-        agent_id=agent_id,
-        defaults={
-            "hostname": hostname,
-            "ip_address": ip,
-            "status": "online",
-            "os_type": data.get("os", ""),
-            "os_version": data.get("os_version", ""),
-            "platform": data.get("platform", ""),
-            "cpu_count": data.get("cpu_count"),
-            "memory_total": data.get("memory_total"),
-            "interfaces": interfaces,
-            "processes": data.get("processes", []),
-            "agent_version": data.get("agent_version", ""),
-            "last_version_check": now(),
-        }
-    )
+    with transaction.atomic():
+        _claim_existing_agent_identity(agent_id, hostname, ip)
+        _claim_existing_node_identity(agent_id, hostname, ip)
 
-    # Record the heartbeat
-    agent_status.record_heartbeat(data)
-
-    # Also update/create Node record for backward compatibility
-    node, _ = Node.objects.update_or_create(
-        agent_id=agent_id,
-        defaults={
-            "name": hostname,
-            "hostname": hostname or "",
-            "ip_address": ip,
-            "description": f"Reported from agent {agent_id}",
-            "status": "online",
-            "cpu_count": data.get("cpu_count"),
-            "memory_total": data.get("memory_total"),
-            "platform_info": data.get("platform"),
-        }
-    )
-
-    # Clear old interfaces
-    node.interfaces.all().delete()
-
-    # Save current interfaces
-    for iface in interfaces:
-        NodeInterface.objects.create(
-            node=node,
-            name=iface.get("name", "unknown"),
-            ip=iface.get("ip", "0.0.0.0"),
-            mac=iface.get("mac", "00:00:00:00:00:00")
+        # Update or create AgentStatus record
+        agent_status, created = AgentStatus.objects.update_or_create(
+            agent_id=agent_id,
+            defaults={
+                "hostname": hostname,
+                "ip_address": ip,
+                "status": "online",
+                "os_type": data.get("os", ""),
+                "os_version": data.get("os_version", ""),
+                "platform": data.get("platform", ""),
+                "cpu_count": data.get("cpu_count"),
+                "memory_total": data.get("memory_total"),
+                "interfaces": interfaces,
+                "processes": data.get("processes", []),
+                "agent_version": data.get("agent_version", ""),
+                "last_version_check": now(),
+            }
         )
+
+        # Record the heartbeat
+        agent_status.record_heartbeat(data)
+
+        # Also update/create Node record for backward compatibility
+        node, _ = Node.objects.update_or_create(
+            agent_id=agent_id,
+            defaults={
+                "name": hostname,
+                "hostname": hostname or "",
+                "ip_address": ip,
+                "description": f"Reported from agent {agent_id}",
+                "status": "online",
+                "cpu_count": data.get("cpu_count"),
+                "memory_total": data.get("memory_total"),
+                "platform_info": data.get("platform"),
+            }
+        )
+
+        # Clear old interfaces
+        node.interfaces.all().delete()
+
+        # Save current interfaces
+        for iface in interfaces:
+            NodeInterface.objects.create(
+                node=node,
+                name=iface.get("name", "unknown"),
+                ip=iface.get("ip", "0.0.0.0"),
+                mac=iface.get("mac", "00:00:00:00:00:00")
+            )
 
     return JsonResponse({"status": "ok", "node_id": node.id, "agent_status_id": agent_status.id})
 
@@ -2710,12 +3079,14 @@ def delete_agent(request, agent_id=None):
         command_result_count, _ = CommandResult.objects.filter(agent_id=agent_id).delete()
         agent_command_count, _ = AgentCommand.objects.filter(agent_id=agent_id).delete()
         sbom_report_count, _ = SbomReport.objects.filter(agent_id=agent_id).delete()
+        deleted_node_record_count, _ = Node.objects.filter(agent_id=agent_id).delete()
         deleted_agent_record_count, _ = AgentStatus.objects.filter(agent_id=agent_id).delete()
 
     return JsonResponse({
         "status": "agent_deleted",
         "agent_id": agent_id,
         "deleted_agent_records": deleted_agent_record_count,
+        "deleted_nodes": deleted_node_record_count,
         "deleted_command_results": command_result_count,
         "deleted_commands": agent_command_count,
         "deleted_sbom_reports": sbom_report_count,
@@ -2740,12 +3111,14 @@ def delete_offline_agents(request):
         command_result_count, _ = CommandResult.objects.filter(agent_id__in=offline_agent_ids).delete()
         agent_command_count, _ = AgentCommand.objects.filter(agent_id__in=offline_agent_ids).delete()
         sbom_report_count, _ = SbomReport.objects.filter(agent_id__in=offline_agent_ids).delete()
+        deleted_node_record_count, _ = Node.objects.filter(agent_id__in=offline_agent_ids).delete()
         deleted_agent_record_count, _ = AgentStatus.objects.filter(agent_id__in=offline_agent_ids).delete()
 
     return JsonResponse({
         "status": "offline_agents_deleted",
         "deleted_agents": len(offline_agent_ids),
         "deleted_agent_records": deleted_agent_record_count,
+        "deleted_nodes": deleted_node_record_count,
         "deleted_agent_ids": offline_agent_ids,
         "deleted_command_results": command_result_count,
         "deleted_commands": agent_command_count,
@@ -3056,24 +3429,23 @@ def _build_consolidated_scan_vulnerabilities(scan):
         network = None
 
     candidate_nodes = []
-    for node in Node.objects.exclude(ip_address__isnull=True).prefetch_related("vulnerability_set").order_by("-id"):
-        ip_text = str(node.ip_address or "")
-        if not ip_text:
+    for node in Node.objects.exclude(ip_address__isnull=True).prefetch_related("vulnerability_set", "interfaces").order_by("-id"):
+        asset_ips = _node_asset_ips(node)
+        if not asset_ips:
             continue
-        in_scope = bool(node.scan_run_id == scan.id or ip_text in scan_host_ips)
+        in_scope = bool(node.scan_run_id == scan.id or asset_ips.intersection(scan_host_ips))
         if not in_scope and network is not None:
-            try:
-                in_scope = ipaddress.ip_address(ip_text) in network
-            except ValueError:
-                in_scope = False
+            for ip_text in asset_ips:
+                try:
+                    if ipaddress.ip_address(ip_text) in network:
+                        in_scope = True
+                        break
+                except ValueError:
+                    continue
         if in_scope:
             candidate_nodes.append(node)
 
-    latest_node_by_ip = {}
-    for node in candidate_nodes:
-        ip_text = str(node.ip_address or "")
-        if ip_text and ip_text not in latest_node_by_ip:
-            latest_node_by_ip[ip_text] = node
+    latest_node_by_ip = _latest_nodes_by_asset_ip(candidate_nodes)
 
     agent_hostname_by_ip = {
         str(agent.ip_address): str(agent.hostname or "").strip()
@@ -3083,11 +3455,8 @@ def _build_consolidated_scan_vulnerabilities(scan):
     def _hostname_for_ip(ip_text):
         node = latest_node_by_ip.get(str(ip_text or ""))
         if node:
-            hostname = str(getattr(node, "hostname", "") or "").strip()
-            if hostname:
-                return hostname
-            candidate = str(node.name or "").strip()
-            if candidate and candidate != str(ip_text or "").strip():
+            candidate = _hostname_for_node(node, fallback_ip=str(ip_text or ""))
+            if candidate:
                 return candidate
         return str(agent_hostname_by_ip.get(str(ip_text or ""), "") or "").strip()
 
@@ -3116,7 +3485,11 @@ def _build_consolidated_scan_vulnerabilities(scan):
             }
         )
 
+    seen_sbom_nodes = set()
     for ip_text, node in latest_node_by_ip.items():
+        if node.id in seen_sbom_nodes:
+            continue
+        seen_sbom_nodes.add(node.id)
         for vuln in node.vulnerability_set.all():
             key = ("sbom", ip_text, str(vuln.cve_id))
             if key in seen_keys:
@@ -3585,7 +3958,7 @@ def network_monitoring_dashboard(request):
     # Get active connections across all agents
     recent_connections = NetworkConnection.objects.all().order_by('-last_seen')[:50]
 
-    # Get interface statistics
+    # Gqet interface statistics
     interface_stats = []
     for metadata in recent_metadata:
         if metadata.interface_statistics:
@@ -4637,23 +5010,117 @@ def network_connections_api(request):
 @require_GET
 def network_topology_api(request):
     """API endpoint for network topology visualization."""
-    # Get all agents and their recent connections
-    agents = AgentStatus.objects.filter(status='online')
+    agents = list(AgentStatus.objects.filter(status='online').order_by('-last_heartbeat'))
+    node_candidates = list(Node.objects.exclude(ip_address__isnull=True).order_by('-id'))
+    iaea_testbed_active = _is_iaea_testbed_active(node_candidates, agents)
 
-    nodes = []
+    topology_nodes = []
     edges = []
+    seen_node_keys = set()
+    node_by_agent_id = {str(node.agent_id): node for node in node_candidates if node.agent_id}
+    node_by_ip = {}
+    for node in node_candidates:
+        ip_text = str(node.ip_address or "").strip()
+        if ip_text and ip_text not in node_by_ip:
+            node_by_ip[ip_text] = node
+    layer_map = {layer["slug"]: {"slug": layer["slug"], "label": layer["label"], "accent": layer["accent"], "nodes": []} for layer in PURDUE_TOPOLOGY_LAYERS}
+    layer_order = {layer["slug"]: index for index, layer in enumerate(PURDUE_TOPOLOGY_LAYERS)}
 
-    # Add agent nodes
+    def _append_topology_node(node_obj=None, agent_obj=None):
+        ip_text = ""
+        if node_obj and node_obj.ip_address:
+            ip_text = str(node_obj.ip_address)
+        elif agent_obj and agent_obj.ip_address:
+            ip_text = str(agent_obj.ip_address)
+        key = str(node_obj.id) if node_obj else str(agent_obj.agent_id if agent_obj else ip_text)
+        if key in seen_node_keys:
+            return
+        seen_node_keys.add(key)
+
+        name = _topology_identity_text(getattr(node_obj, "name", ""), getattr(agent_obj, "hostname", ""))
+        hostname = _topology_identity_text(getattr(node_obj, "hostname", ""), getattr(agent_obj, "hostname", ""), name)
+        override = _iaea_topology_override(hostname, name, ip_text) if iaea_testbed_active else None
+        if override:
+            layer = override["layer"]
+            role_slug = override["role_slug"]
+            role_label = override["role_label"]
+            role_icon = override["icon"]
+            label = override["label"]
+            segment_label = override["segment_label"]
+        else:
+            layer = _infer_purdue_layer(name, hostname, ip_text, getattr(node_obj, "description", ""))
+            role_slug, role_label, role_icon = _infer_topology_role(name, hostname, ip_text, getattr(node_obj, "description", ""))
+            label = _topology_identity_text(hostname, name, ip_text)
+            segment_label = _topology_segment_label(ip_text)
+        node_url = reverse("dashboard:node_detail_page", args=[node_obj.id]) if node_obj else ""
+        payload = {
+            "id": str(getattr(node_obj, "id", "") or getattr(agent_obj, "agent_id", "") or ip_text),
+            "node_id": getattr(node_obj, "id", None),
+            "label": label,
+            "hostname": hostname,
+            "name": name,
+            "ip_address": ip_text,
+            "type": "node" if node_obj else "agent",
+            "status": getattr(agent_obj, "status", getattr(node_obj, "status", "unknown")) or "unknown",
+            "os_type": getattr(agent_obj, "os_type", ""),
+            "last_heartbeat": (
+                getattr(agent_obj, "last_heartbeat", None).strftime('%Y-%m-%d %H:%M:%S')
+                if getattr(agent_obj, "last_heartbeat", None) else
+                (getattr(node_obj, "last_heartbeat", None).strftime('%Y-%m-%d %H:%M:%S') if getattr(node_obj, "last_heartbeat", None) else 'Never')
+            ),
+            "purdue_level": layer,
+            "purdue_label": _topology_layer_meta(layer)["label"],
+            "segment_label": segment_label,
+            "role": role_slug,
+            "role_label": role_label,
+            "icon": role_icon,
+            "node_url": node_url,
+            "agent_id": getattr(agent_obj, "agent_id", getattr(node_obj, "agent_id", "")),
+            "vulnerability_count": (
+                ScanVulnerability.objects.filter(host_ip=ip_text).count() if ip_text else 0
+            ) + (node_obj.vulnerability_set.count() if node_obj else 0),
+        }
+        topology_nodes.append(payload)
+        layer_map.setdefault(layer, {"slug": layer, "label": _topology_layer_meta(layer)["label"], "accent": _topology_layer_meta(layer)["accent"], "nodes": []})
+        layer_map[layer]["nodes"].append(payload)
+
+    for node in node_candidates:
+        _append_topology_node(node_obj=node, agent_obj=None)
     for agent in agents:
-        nodes.append({
-            'id': agent.agent_id,
-            'label': agent.hostname,
-            'ip_address': agent.ip_address,
-            'type': 'agent',
-            'status': agent.status,
-            'os_type': agent.os_type,
-            'last_heartbeat': agent.last_heartbeat.strftime('%Y-%m-%d %H:%M:%S') if agent.last_heartbeat else 'Never'
-        })
+        _append_topology_node(node_obj=node_by_agent_id.get(str(agent.agent_id)) or node_by_ip.get(str(agent.ip_address)), agent_obj=agent)
+    if iaea_testbed_active:
+        for static_node in IAEA_TESTBED_STATIC_TOPOLOGY:
+            if static_node["ip_address"] in node_by_ip:
+                continue
+            if static_node["ip_address"] in {item["ip_address"] for item in topology_nodes}:
+                continue
+            layer = static_node["layer"]
+            payload = {
+                "id": f"static:{static_node['hostname']}",
+                "node_id": None,
+                "label": static_node["label"],
+                "hostname": static_node["hostname"],
+                "name": static_node["label"],
+                "ip_address": static_node["ip_address"],
+                "type": "static",
+                "status": "modeled",
+                "os_type": "",
+                "last_heartbeat": "N/A",
+                "purdue_level": layer,
+                "purdue_label": _topology_layer_meta(layer)["label"],
+                "segment_label": static_node["segment_label"],
+                "role": static_node["role_slug"],
+                "role_label": static_node["role_label"],
+                "icon": static_node["icon"],
+                "node_url": "",
+                "agent_id": "",
+                "vulnerability_count": 0,
+            }
+            topology_nodes.append(payload)
+            layer_map.setdefault(layer, {"slug": layer, "label": _topology_layer_meta(layer)["label"], "accent": _topology_layer_meta(layer)["accent"], "nodes": []})
+            layer_map[layer]["nodes"].append(payload)
+
+    nodes = sorted(topology_nodes, key=lambda item: (layer_order.get(item["purdue_level"], 99), item["label"]))
 
     # Get recent connections to build edges
     recent_connections = NetworkConnection.objects.filter(
@@ -4686,9 +5153,20 @@ def network_topology_api(request):
             'connection_count': flow['connection_count']
         })
 
+    layers = []
+    for layer in PURDUE_TOPOLOGY_LAYERS:
+        layer_payload = layer_map.get(layer["slug"], {"nodes": []})
+        layers.append({
+            "slug": layer["slug"],
+            "label": layer["label"],
+            "accent": layer["accent"],
+            "nodes": sorted(layer_payload.get("nodes", []), key=lambda item: item["label"]),
+        })
+
     return JsonResponse({
         'nodes': nodes,
         'edges': edges,
+        'layers': layers,
         'timestamp': now().strftime('%Y-%m-%d %H:%M:%S')
     })
 

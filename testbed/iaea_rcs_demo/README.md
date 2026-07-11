@@ -15,112 +15,118 @@ This lab turns your diagram into a runnable Docker Compose environment that appr
 
 ```mermaid
 flowchart TB
-  classDef layer fill:#e2e8f0,stroke:#94a3b8,stroke-width:1.5px,color:#0f172a;
-  classDef device fill:#f8fafc,stroke:#cbd5e1,stroke-width:1px,color:#0f172a;
-  classDef firewall fill:#fff7ed,stroke:#fb923c,stroke-width:1.5px,color:#9a3412;
 
-  subgraph L4["Level 4 / Enterprise IT"]
-    direction LR
-    MSF["metasploit<br/>10.4.50.10"]:::device
-    DB["database<br/>10.4.50.20"]:::device
-    PG["postgres<br/>10.4.50.41"]:::device
-  end
-  style L4 fill:#e2e8f0,color:#0f172a
+subgraph Enterprise_Layer
+    WS4A["Workstation 10.4.50.10"]
+    PG["Postgres 10.4.50.20"]
+end
 
-  FW2["firewall-2<br/>L4 10.4.50.254<br/>L3 10.3.50.254"]:::firewall
+FW2["Firewall-2 L3:10.4.50.254 L2:10.3.50.254"]
 
-  subgraph L3["Level 3 / Operations"]
-    direction LR
-    HIST["historian<br/>10.3.50.10"]:::device
-  end
-  style L3 fill:#e2e8f0,color:#0f172a
+subgraph Operations_Layer
+    HIST["Historian 10.3.50.10"]
+end
 
-  FW1["firewall-1<br/>L3 10.3.50.253<br/>L2 10.2.50.254"]:::firewall
+FW1["Firewall-1 L3:10.3.50.253 L2:10.2.50.254"]
 
-  subgraph L2["Level 2 / Supervisory"]
-    direction LR
-    HMI["hmi<br/>10.2.50.10"]:::device
-    IGN["ignition<br/>10.2.50.40"]:::device
-    ENG["engineer-ws<br/>10.2.50.20"]:::device
-    JUMP["l2-jump<br/>10.2.50.30"]:::device
-  end
-  style L2 fill:#e2e8f0,color:#0f172a
+subgraph Supervisory_Layer
+    WS2["Workstation 10.2.50.20"]
+    HMI["HMI 10.2.50.10"]
+end
 
-  FW0["firewall-0<br/>L2 10.2.50.253<br/>L1M 10.1.13.253<br/>L1B 10.2.23.253"]:::firewall
+FW0["Firewall-0 L2:10.2.50.253 L1A:10.1.1.253 L1B:10.1.2.253"]
 
-  subgraph L1["Level 1 / Control"]
-    direction LR
-    PLCM["plc-main<br/>10.1.13.10<br/>mgmt 10.0.13.10"]:::device
-    PLCB["plc-backup<br/>10.2.23.10<br/>mgmt 10.0.23.10"]:::device
-  end
-  style L1 fill:#e2e8f0,color:#0f172a
+subgraph Control_Layer
+    RCN["Redundant Control Network 10.1.1.x / 10.1.2.x"]
+    PLCM["PLC Main 10.1.1.14 / 10.1.2.14"]
+    PLCB["PLC Backup 10.1.1.15 / 10.1.2.15"]
+    CHA["Channel A 10.1.1.10 / 10.1.2.10"]
+    CHB["Channel B 10.1.1.11 / 10.1.2.11"]
+    CHC["Channel C 10.1.1.12 / 10.1.2.12"]
+    CHD["Channel D 10.1.1.13 / 10.1.2.13"]
+end
 
-  subgraph L0["Level 0 / Process"]
-    direction TB
-    FWM["firewall-main-cell<br/>L1 10.1.13.252<br/>L0 10.3.13.253"]:::firewall
-    subgraph MAIN["Main Cell / p13_net"]
-      direction LR
-      PT455["pt-455<br/>10.3.13.11"]:::device
-      PT456M["pt-456<br/>10.3.13.12"]:::device
-      PT457M["pt-457<br/>10.3.13.13"]:::device
-      V455AM["vc-hv455a<br/>10.3.13.1"]:::device
-      V455BM["vc-pv455b<br/>10.3.13.2"]:::device
-      V455CM["vc-pv455c<br/>10.3.13.3"]:::device
-      HEATM["heat-ctrl<br/>10.3.13.5"]:::device
-    end
+subgraph Field_Layer
+    HC["Heat Controller"]
+    VC1["Valve Controller 1"]
+    VC2["Valve Controller 2"]
+    VC3["Valve Controller 3"]
+    VC4["Valve Controller 4"]
+    PT457["PT-457 Analog Input"]
+    PT458["PT-458 Analog Input"]
+    RFN["Redundant Field Network 10.1.1.x / 10.1.2.x"]
+    PT455["PT-455 10.1.1.9 / 10.1.2.9"]
+    PT456["PT-456 10.1.1.8 / 10.1.2.8"]
+    SPR1["Spray"]
+    SPR2["Spray"]
+    PR1["Pressure Relief"]
+    PR2["Pressure Relief"]
+end
 
-    FWB["firewall-backup-cell<br/>L1 10.2.23.252<br/>L0 10.4.23.253"]:::firewall
-    subgraph BACKUP["Backup Cell / p23_net"]
-      direction LR
-      PT456B["pt-456<br/>10.4.23.12"]:::device
-      PT457B["pt-457<br/>10.4.23.13"]:::device
-      PT458["pt-458<br/>10.4.23.14"]:::device
-      V455AB["vc-hv455a<br/>10.4.23.1"]:::device
-      V455BB["vc-pv455b<br/>10.4.23.2"]:::device
-      V455CB["vc-pv455c<br/>10.4.23.3"]:::device
-      HEATB["heat-ctrl<br/>10.4.23.5"]:::device
-    end
-  end
-  style L0 fill:#e2e8f0,color:#0f172a
+WS4A -->|5432| PG
+PG -->|5432| FW2
+FW2 -->|5432| HIST
+HIST -->|443 / 4840| FW1
+FW1 -->|443 / 4840| WS2
+FW1 -->|502 / 44818| HMI
+WS2 -->|443 / 4840| FW0
+HMI -->|502| FW0
+FW0 --> RCN
+RCN --> PLCM
+RCN --> PLCB
+PLCM -->|502| CHA
+PLCM -->|502| CHB
+PLCM -->|502| CHC
+PLCM -->|502| CHD
+PLCB -->|502| CHA
+PLCB -->|502| CHB
+PLCB -->|502| CHC
+PLCB -->|502| CHD
+CHA -->|502 / 44818| RFN
+CHB -->|502 / 44818| RFN
+RFN -->|502| PT455
+RFN -->|502| PT456
+CHC -->|Analog| PT457
+CHD -->|Analog| PT458
+CHC -->|Analog| HC
+CHC -->|Analog| VC1
+CHC -->|Analog| VC2
+CHD -->|Anaog| VC3
+CHD -->|Analog| VC4
+VC1 --> SPR1
+VC2 --> SPR2
+VC3 --> PR1
+VC4 --> PR2
 
-  %% Layer chaining
-  L4 --> FW2 --> L3 --> FW1 --> L2 --> FW0 --> L1 --> L0
-
-  %% ---- ENTERPRISE TO DMZ ----
-  MSF -->|"443 / 4840"| FW2
-  FW2 --> HIST
-
-  MSF -->|"5432"| DB
-
-  %% ---- DMZ TO L2 ----
-  HMI -->|"443 / 4840"| FW1
-  ENG -->|"443 / 4840"| FW1
-  FW1 --> HIST
-
-  %% ---- L2 TO L1 ----
-  HMI -->|"502 / 44818"| FW0
-  ENG -->|"502 / 44818"| FW0
-  FW0 --> PLCM
-  FW0 --> PLCB
-
-  %% ---- L1 TO L0 ----
-  PLCM -->|"502"| FWM
-  FWM --> PT455
-  FWM --> PT456M
-  FWM --> PT457M
-  FWM --> V455AM
-  FWM --> V455BM
-  FWM --> V455CM
-  FWM --> HEATM
-
-  PLCB -->|"502"| FWB
-  FWB --> PT456B
-  FWB --> PT457B
-  FWB --> PT458
-  FWB --> V455AB
-  FWB --> V455BB
-  FWB --> V455CB
-  FWB --> HEATB
+style WS4A fill:#dce8f7,stroke:#7ea6d8
+style PG fill:#dce8f7,stroke:#7ea6d8
+style HIST fill:#dcefd8,stroke:#7cb66b
+style WS2 fill:#dce8f7,stroke:#7ea6d8
+style HMI fill:#dce8f7,stroke:#7ea6d8
+style FW2 fill:#ffd9d9,stroke:#d66
+style FW1 fill:#ffd9d9,stroke:#d66
+style FW0 fill:#ffd9d9,stroke:#d66
+style RCN fill:#dcefd8,stroke:#7cb66b
+style RFN fill:#dcefd8,stroke:#7cb66b
+style PLCM fill:#efe3b8,stroke:#c7a94a
+style PLCB fill:#efe3b8,stroke:#c7a94a
+style CHA fill:#ddd3e8,stroke:#9b7db8
+style CHB fill:#ddd3e8,stroke:#9b7db8
+style CHC fill:#ddd3e8,stroke:#9b7db8
+style CHD fill:#ddd3e8,stroke:#9b7db8
+style PT457 fill:#f8d7d3,stroke:#c56a5f
+style PT458 fill:#f8d7d3,stroke:#c56a5f
+style HC fill:#dce8f7,stroke:#7ea6d8
+style VC1 fill:#dce8f7,stroke:#7ea6d8
+style VC2 fill:#dce8f7,stroke:#7ea6d8
+style VC3 fill:#dce8f7,stroke:#7ea6d8
+style VC4 fill:#dce8f7,stroke:#7ea6d8
+style SPR1 fill:#dce8f7,stroke:#7ea6d8
+style SPR2 fill:#dce8f7,stroke:#7ea6d8
+style PR1 fill:#dce8f7,stroke:#7ea6d8
+style PR2 fill:#dce8f7,stroke:#7ea6d8
+style PT455 fill:#dcefd8,stroke:#7cb66b
+style PT456 fill:#dcefd8,stroke:#7cb66b
 ```
 
 Policy notes:

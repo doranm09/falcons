@@ -37,6 +37,11 @@ services:
       GVM_USER: ${GVM_USER:-admin}
       GVM_PASS: ${GVM_PASS:-admin}
       GVM_SOCKET_PATH: ${GVM_SOCKET_PATH:-/opt/gvm-run/gvmd.sock}
+      GVMD_POSTGRES_HOST: ${GVMD_POSTGRES_HOST:-/var/run/postgresql}
+      GVMD_POSTGRES_PORT: ${GVMD_POSTGRES_PORT:-}
+      GVMD_POSTGRES_NAME: ${GVMD_POSTGRES_NAME:-gvmd}
+      GVMD_POSTGRES_USER: ${GVMD_POSTGRES_USER:-gvmd}
+      GVMD_POSTGRES_PASSWORD: ${GVMD_POSTGRES_PASSWORD:-}
       RISK_ASSESSMENT_API_URL: ${RISK_ASSESSMENT_API_URL:-http://risk-assessment:7890}
       TRIVY_CACHE_DIR: /tmp/cyber-sbom-cache/trivy
       GRYPE_DB_CACHE_DIR: /tmp/cyber-sbom-cache/grype/db
@@ -47,11 +52,12 @@ services:
         condition: service_started
       risk-assessment:
         condition: service_started
-    networks: [appnet]
+    networks: [appnet, greenbone_net]
     ports: ["8000:8000"]
     volumes:
       - .:/code
       - /opt/gvm-run:/opt/gvm-run
+      - psql_socket_vol:/var/run/postgresql
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8000/ || exit 1"]
       interval: 10s
@@ -91,6 +97,11 @@ services:
       GVM_USER: ${GVM_USER:-admin}
       GVM_PASS: ${GVM_PASS:-admin}
       GVM_SOCKET_PATH: ${GVM_SOCKET_PATH:-/opt/gvm-run/gvmd.sock}
+      GVMD_POSTGRES_HOST: ${GVMD_POSTGRES_HOST:-/var/run/postgresql}
+      GVMD_POSTGRES_PORT: ${GVMD_POSTGRES_PORT:-}
+      GVMD_POSTGRES_NAME: ${GVMD_POSTGRES_NAME:-gvmd}
+      GVMD_POSTGRES_USER: ${GVMD_POSTGRES_USER:-gvmd}
+      GVMD_POSTGRES_PASSWORD: ${GVMD_POSTGRES_PASSWORD:-}
       RISK_ASSESSMENT_API_URL: ${RISK_ASSESSMENT_API_URL:-http://risk-assessment:7890}
       TRIVY_CACHE_DIR: /tmp/cyber-sbom-cache/trivy
       GRYPE_DB_CACHE_DIR: /tmp/cyber-sbom-cache/grype/db
@@ -101,10 +112,11 @@ services:
         condition: service_started
       risk-assessment:
         condition: service_started
-    networks: [appnet]
+    networks: [appnet, greenbone_net]
     volumes:
       - .:/code
       - /opt/gvm-run:/opt/gvm-run
+      - psql_socket_vol:/var/run/postgresql
     healthcheck:
       test: ["CMD-SHELL", "celery -A cyber_pen_test inspect ping -t 5 || exit 1"]
       interval: 30s
@@ -195,7 +207,9 @@ services:
 
 networks:
   appnet:
+  greenbone_net:
 
 volumes:
   redis_data:
   opensearch_data:
+  psql_socket_vol:

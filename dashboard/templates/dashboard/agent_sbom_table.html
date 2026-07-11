@@ -1,9 +1,10 @@
 {% extends "dashboard/base.html" %}
 
 {% block content %}
-<div class="container-fluid p-4">
+<div class="container-fluid agent-page px-3 px-md-4 py-4">
   <div class="row mb-3">
-    <div class="col-12 d-flex justify-content-between align-items-center">
+    <div class="col-12">
+      <div class="agent-heading">
       <div>
         <h2 class="mb-1"><i class="bi bi-table"></i> SBOM Table</h2>
         <p class="text-muted mb-0">
@@ -14,7 +15,7 @@
           via {{ source_label|default:"SBOM report" }}
         </p>
       </div>
-      <div class="d-flex gap-2">
+      <div class="agent-toolbar justify-content-md-end">
         <a class="btn btn-outline-primary" href="{% url 'dashboard:agent_details' agent_id %}">
           <i class="bi bi-robot"></i> Agent View
         </a>
@@ -29,6 +30,7 @@
             <i class="bi bi-archive"></i> Bundle
           </a>
         {% endif %}
+      </div>
       </div>
     </div>
   </div>

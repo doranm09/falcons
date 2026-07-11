@@ -7,6 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.test import override_settings
 from unittest.mock import patch, MagicMock
 from decimal import Decimal
 import ipaddress
@@ -634,6 +635,12 @@ class AgentViewTests(TestCase):
             agent_id=offline_agent.agent_id,
             document={"bomFormat": "CycloneDX"},
         )
+        Node.objects.create(
+            agent_id=offline_agent.agent_id,
+            hostname="offline-host",
+            name="offline-host",
+            ip_address="192.168.1.200",
+        )
 
         online_agent = AgentStatus.objects.create(
             agent_id="online-agent-001",
@@ -655,6 +662,7 @@ class AgentViewTests(TestCase):
         self.assertFalse(AgentCommand.objects.filter(agent_id=offline_agent.agent_id).exists())
         self.assertFalse(CommandResult.objects.filter(agent_id=offline_agent.agent_id).exists())
         self.assertFalse(SbomReport.objects.filter(agent_id=offline_agent.agent_id).exists())
+        self.assertFalse(Node.objects.filter(agent_id=offline_agent.agent_id).exists())
 
     def test_agent_details_view(self):
         """Test individual agent details view."""
@@ -718,9 +726,11 @@ class AgentViewTests(TestCase):
         self.assertEqual(data['error'], 'Agent not found')
 
 
+@override_settings(AGENT_API_TOKEN="test-token", AGENT_API_TOKEN_REQUIRED=True)
 class AgentAPITests(TestCase):
     def setUp(self):
         self.client = Client()
+        self.agent_headers = {"HTTP_X_AGENT_TOKEN": "test-token"}
         self.agent = AgentStatus.objects.create(
             agent_id="test-agent-api",
             hostname="test-host-api",
@@ -747,7 +757,8 @@ class AgentAPITests(TestCase):
         response = self.client.post(
             reverse('dashboard:agent_report'),
             json.dumps(report_data),
-            content_type='application/json'
+            content_type='application/json',
+            **self.agent_headers
         )
 
         self.assertEqual(response.status_code, 200)
@@ -759,6 +770,51 @@ class AgentAPITests(TestCase):
         self.assertEqual(self.agent.hostname, 'updated-hostname')
         self.assertEqual(self.agent.os_type, 'Ubuntu')
         self.assertEqual(self.agent.status, 'online')
+
+    def test_agent_report_reclaims_existing_host_identity(self):
+        """Test that a new agent_id for the same host/IP reuses the existing records."""
+        self.agent.hostname = "stable-host"
+        self.agent.ip_address = "192.168.1.110"
+        self.agent.status = "offline"
+        self.agent.save(update_fields=["hostname", "ip_address", "status"])
+        node = Node.objects.create(
+            agent_id=self.agent.agent_id,
+            hostname="stable-host",
+            name="stable-host",
+            ip_address="192.168.1.110",
+        )
+        AgentCommand.objects.create(agent_id=self.agent.agent_id, action="ping", acknowledged=False)
+
+        report_data = {
+            'agent_id': 'replacement-agent-id',
+            'hostname': 'stable-host',
+            'interfaces': [
+                {'name': 'eth0', 'ip': '192.168.1.110', 'mac': '00:11:22:33:44:66'},
+            ],
+            'os': 'Ubuntu',
+            'os_version': '22.04',
+            'platform': 'x86_64',
+            'cpu_count': 4,
+            'memory_total': 8*1024*1024*1024,
+            'agent_version': '1.1.0'
+        }
+
+        response = self.client.post(
+            reverse('dashboard:agent_report'),
+            json.dumps(report_data),
+            content_type='application/json',
+            **self.agent_headers
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(AgentStatus.objects.filter(agent_id='replacement-agent-id').exists())
+        self.assertFalse(AgentStatus.objects.filter(agent_id='test-agent-api').exists())
+        self.assertEqual(AgentStatus.objects.filter(hostname='stable-host', ip_address='192.168.1.110').count(), 1)
+
+        node.refresh_from_db()
+        self.assertEqual(node.agent_id, 'replacement-agent-id')
+        self.assertEqual(Node.objects.filter(hostname='stable-host', ip_address='192.168.1.110').count(), 1)
+        self.assertTrue(AgentCommand.objects.filter(agent_id='replacement-agent-id').exists())
 
     def test_agent_cyber_report(self):
         """Test agent cyber template report."""
@@ -782,7 +838,8 @@ class AgentAPITests(TestCase):
         response = self.client.post(
             reverse('dashboard:agent_cyber_report'),
             json.dumps(cyber_data),
-            content_type='application/json'
+            content_type='application/json',
+            **self.agent_headers
         )
 
         self.assertEqual(response.status_code, 200)
@@ -804,7 +861,8 @@ class AgentAPITests(TestCase):
         )
 
         response = self.client.get(
-            reverse('dashboard:agent_commands') + f'?agent_id={self.agent.agent_id}'
+            reverse('dashboard:agent_commands') + f'?agent_id={self.agent.agent_id}',
+            **self.agent_headers
         )
 
         self.assertEqual(response.status_code, 200)
@@ -832,7 +890,8 @@ class AgentAPITests(TestCase):
         response = self.client.post(
             reverse('dashboard:agent_command_result'),
             json.dumps(result_data),
-            content_type='application/json'
+            content_type='application/json',
+            **self.agent_headers
         )
 
         self.assertEqual(response.status_code, 200)
@@ -1140,6 +1199,81 @@ class NodeViewTests(TestCase):
         self.assertEqual(data['name'], 'test-node')
         self.assertEqual(data['ip_address'], '192.168.1.1')
         self.assertEqual(data['system_info']['cpu_count'], 4)
+        self.assertIn('purdue_level', data)
+        self.assertIn('role', data)
+
+    def test_node_detail_page_rollup(self):
+        ScanVulnerability.objects.create(
+            scan_run=self.scan,
+            host_ip="192.168.1.1",
+            cve_id="CVE-2026-NODE",
+            name="Node detail vuln",
+            severity="High",
+            cvss_score=8.0,
+            description="Node detail vulnerability",
+        )
+
+        response = self.client.get(reverse('dashboard:node_detail_page', args=[self.node.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'dashboard/node_detail.html')
+        self.assertContains(response, "Purdue Context")
+        self.assertContains(response, "Vulnerability Rollup")
+        self.assertContains(response, "Open Latest Report")
+        self.assertContains(response, "OpenVAS Findings")
+        self.assertContains(response, "CVE-2026-NODE")
+        self.assertContains(response, "Node detail vulnerability")
+
+    def test_node_detail_page_matches_openvas_findings_by_interface_ip(self):
+        NodeInterface.objects.create(
+            node=self.node,
+            name="eth1",
+            ip="192.168.1.44",
+            mac="00:11:22:33:44:55",
+        )
+        ScanVulnerability.objects.create(
+            scan_run=self.scan,
+            host_ip="192.168.1.44",
+            cve_id="CVE-2026-IFACE",
+            name="Interface-linked vuln",
+            severity="Medium",
+            cvss_score=5.6,
+            description="Matched through NodeInterface.ip",
+        )
+
+        response = self.client.get(reverse('dashboard:node_detail_page', args=[self.node.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "CVE-2026-IFACE")
+        self.assertContains(response, "192.168.1.44")
+        self.assertContains(response, "Matched through NodeInterface.ip")
+
+    @patch("dashboard.views.fetch_gvmd_findings_for_ips")
+    def test_node_detail_page_includes_gvmd_findings(self, mock_fetch_gvmd_findings):
+        mock_fetch_gvmd_findings.return_value = [
+            {
+                "host_ip": "192.168.1.1",
+                "cve_id": "CVE-2026-GVMD",
+                "name": "GVMD-backed vuln",
+                "severity": "High",
+                "cvss_score": 8.8,
+                "description": "Directly read from gvmd database",
+                "report_uuid": "report-uuid-123",
+                "task_name": "IAEA Scan",
+                "task_uuid": "task-uuid-123",
+                "nvt_oid": "1.3.6.1.4.1.test",
+                "link_url": "https://nvd.nist.gov/vuln/detail/CVE-2026-GVMD",
+            }
+        ]
+
+        response = self.client.get(reverse('dashboard:node_detail_page', args=[self.node.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "CVE-2026-GVMD")
+        self.assertContains(response, "GVMD-backed vuln")
+        self.assertContains(response, "Directly read from gvmd database")
+        self.assertContains(response, "GVMD")
+        self.assertContains(response, "IAEA Scan")
 
     def test_node_details_not_found(self):
         """Test node details for non-existent node."""
@@ -1236,6 +1370,29 @@ class HistoryViewTests(TestCase):
         self.assertContains(response, "CVE-2023-TEST")
         self.assertContains(response, "sbom-host")
         self.assertContains(response, reverse('dashboard:vuln-detail', args=[self.scan.id]))
+
+    def test_history_view_resolves_hostname_from_interface_ip_for_network_findings(self):
+        NodeInterface.objects.create(
+            node=self.history_node,
+            name="eth1",
+            ip="192.168.1.44",
+            mac="00:aa:bb:cc:dd:ee",
+        )
+        ScanVulnerability.objects.create(
+            scan_run=self.scan,
+            host_ip="192.168.1.44",
+            cve_id="CVE-2024-IFACE-HISTORY",
+            name="Interface inventory finding",
+            severity="Medium",
+            cvss_score=6.0,
+            description="History should map hostname by interface IP",
+        )
+
+        response = self.client.get(reverse('dashboard:vulnerabilities'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "CVE-2024-IFACE-HISTORY")
+        self.assertContains(response, "inventory-host")
 
     def test_scan_history_api(self):
         """Test scan history API."""
@@ -1575,6 +1732,15 @@ class NetworkTopologyTests(TestCase):
             ip_address="192.168.1.100",
             status="online"
         )
+        self.scan = ScanRun.objects.create(cidr="10.2.50.0/24")
+        self.node = Node.objects.create(
+            scan_run=self.scan,
+            ip_address="10.2.50.10",
+            name="hmi",
+            hostname="hmi",
+            agent_id=self.agent.agent_id,
+            status="online",
+        )
 
     def test_network_topology_api(self):
         """Test network topology API."""
@@ -1584,11 +1750,28 @@ class NetworkTopologyTests(TestCase):
         data = response.json()
         self.assertIn('nodes', data)
         self.assertIn('edges', data)
+        self.assertIn('layers', data)
 
-        # Should include the agent node
         nodes = data['nodes']
-        self.assertEqual(len(nodes), 1)
-        self.assertEqual(nodes[0]['id'], self.agent.agent_id)
+        self.assertTrue(any(node['ip_address'] == '10.2.50.10' for node in nodes))
+        self.assertTrue(any(layer['slug'] == 'L2' for layer in data['layers']))
+        l2_nodes = next(layer['nodes'] for layer in data['layers'] if layer['slug'] == 'L2')
+        self.assertTrue(any(node['node_url'].endswith(f"/node/{self.node.id}/") for node in l2_nodes))
+
+    def test_network_topology_api_includes_iaea_static_assets(self):
+        """Test that the IAEA topology includes historian, firewalls, and Layer 0 assets."""
+        response = self.client.get(reverse('dashboard:network_topology_api'))
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        historian = next(node for node in data['nodes'] if node['label'] == 'historian')
+        self.assertEqual(historian['purdue_level'], 'L3')
+
+        self.assertTrue(any(node['label'] == 'firewall-1' for node in data['nodes']))
+        self.assertTrue(any(node['label'] == 'pt-455' for node in data['nodes']))
+
+        l0_nodes = next(layer['nodes'] for layer in data['layers'] if layer['slug'] == 'L0')
+        self.assertTrue(any(node['label'] == 'pt-455' for node in l0_nodes))
 
 
 class AgentNetworkMetadataTests(TestCase):

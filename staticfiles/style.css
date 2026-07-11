@@ -811,6 +811,63 @@ input:checked + .slider .moon-icon {
     word-break: break-word;
 }
 
+.agent-page {
+    min-width: 0;
+}
+
+.agent-page .card,
+.agent-page .card-body,
+.agent-page .row,
+.agent-page [class*="col-"] {
+    min-width: 0;
+}
+
+.agent-page .table-responsive {
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+}
+
+.agent-page .table {
+    margin-top: 0;
+}
+
+.agent-page .table th,
+.agent-page .table td {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    vertical-align: top;
+}
+
+.agent-page .table td code,
+.agent-page .table th code,
+.agent-page code,
+.agent-page .badge {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.agent-page .agent-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.agent-page .agent-toolbar > * {
+    min-width: 0;
+}
+
+.agent-page .agent-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
 /* Main content area enhancement */
 main {
     margin-left: 250px;
@@ -890,6 +947,24 @@ main {
         font-size: 0.875rem;
     }
 
+    .agent-page .table th,
+    .agent-page .table td {
+        padding: 0.6rem 0.75rem;
+    }
+
+    .agent-page .table {
+        font-size: 0.8125rem;
+    }
+
+    .agent-page .agent-heading {
+        align-items: flex-start;
+    }
+
+    .agent-page .agent-toolbar {
+        width: 100%;
+        align-items: stretch;
+    }
+
     .btn {
         padding: var(--spacing-xs) var(--spacing-md);
         font-size: var(--font-size-sm);
@@ -950,6 +1025,17 @@ main {
 
     .agent-mobile-card__header {
         flex-direction: column;
+    }
+
+    .agent-page .card-header,
+    .agent-page .card-body {
+        padding-left: var(--spacing-md);
+        padding-right: var(--spacing-md);
+    }
+
+    .agent-page .table-responsive {
+        margin-left: -0.25rem;
+        margin-right: -0.25rem;
     }
 }
 
@@ -1055,4 +1141,66 @@ main {
 
 .skip-link:focus {
     top: 6px;
+}
+
+/* Vulnerability Table Enhancements */
+.sortable-vulnerability-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.sortable-vulnerability-table th,
+.sortable-vulnerability-table td {
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+
+  /* important: undo the nowrap/ellipsis behavior */
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.sortable-vulnerability-table th button {
+  display: block;
+  width: 100%;
+  text-align: center;
+  white-space: normal;
+}
+
+/* column sizing */
+.sortable-vulnerability-table th:nth-child(1),
+.sortable-vulnerability-table td:nth-child(1) { width: 12%; }  /* CVE */
+
+.sortable-vulnerability-table th:nth-child(2),
+.sortable-vulnerability-table td:nth-child(2) { width: 7%; }   /* Package */
+
+.sortable-vulnerability-table th:nth-child(3),
+.sortable-vulnerability-table td:nth-child(3) { width: 8%; }   /* Installed */
+
+.sortable-vulnerability-table th:nth-child(4),
+.sortable-vulnerability-table td:nth-child(4) { width: 8%; }   /* Fixed */
+
+.sortable-vulnerability-table th:nth-child(5),
+.sortable-vulnerability-table td:nth-child(5) { width: 7%; }   /* Severity */
+
+.sortable-vulnerability-table th:nth-child(6),
+.sortable-vulnerability-table td:nth-child(6) { width: 5%; }   /* Score */
+
+.sortable-vulnerability-table th:nth-child(7),
+.sortable-vulnerability-table td:nth-child(7) { width: 15%; }  /* Source */
+
+.sortable-vulnerability-table th:nth-child(8),
+.sortable-vulnerability-table td:nth-child(8) { width: 30%; }  /* Description */
+
+.sortable-vulnerability-table th:nth-child(9),
+.sortable-vulnerability-table td:nth-child(9) { width: 8%; }   /* References */
+
+/* keep small fields neat */
+.sortable-vulnerability-table td:nth-child(5),
+.sortable-vulnerability-table td:nth-child(6) {
+  text-align: center;
+  white-space: nowrap;
 }

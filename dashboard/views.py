@@ -6,30 +6,75 @@ import os
 def pentest_page(request):
     return render(request, "dashboard/pentest.html")
 
+
+PENTEST_API_REQUEST_TIMEOUT_SEC = 65
+
+
+def _pentest_api_base_urls() -> list[str]:
+    explicit_base_url = str(os.environ.get("PENTEST_API_BASE_URL", "")).strip()
+    configured_urls = [
+        item.strip().rstrip("/")
+        for item in str(os.environ.get("PENTEST_API_BASE_URLS", "")).split(",")
+        if item.strip()
+    ]
+
+    default_urls = [
+        "http://host.docker.internal:5001",
+        "http://127.0.0.1:5001",
+        "http://localhost:5001",
+        "http://kali-attacker:5001",
+    ]
+    if not os.path.exists("/.dockerenv"):
+        default_urls = [
+            "http://127.0.0.1:5001",
+            "http://localhost:5001",
+            "http://host.docker.internal:5001",
+            "http://kali-attacker:5001",
+        ]
+
+    candidates: list[str] = []
+    for base_url in ([explicit_base_url] if explicit_base_url else []) + configured_urls + default_urls:
+        normalized = base_url.rstrip("/")
+        if normalized and normalized not in candidates:
+            candidates.append(normalized)
+    return candidates
+
+
+def _call_pentest_api(path: str) -> "JsonResponse":
+    attempted_urls: list[str] = []
+    errors: list[str] = []
+
+    for base_url in _pentest_api_base_urls():
+        attempted_urls.append(base_url)
+        try:
+            response = requests.post(f"{base_url}{path}", timeout=PENTEST_API_REQUEST_TIMEOUT_SEC)
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                errors.append(f"{base_url}: invalid JSON response ({exc})")
+                continue
+            return JsonResponse(payload, status=response.status_code)
+        except requests.RequestException as exc:
+            errors.append(f"{base_url}: {exc}")
+
+    return JsonResponse(
+        {
+            "error": "Unable to reach the pentest backend",
+            "attempted_urls": attempted_urls,
+            "details": errors,
+        },
+        status=502,
+    )
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def pentest_nmap(request):
-    # Call the Flask API in the kali-attacker container via host.docker.internal
-    import requests
-    try:
-        # Use host.docker.internal to reach the published port from inside the container
-        resp = requests.post("http://host.docker.internal:5001/attack/nmap", timeout=65)
-        data = resp.json()
-        return JsonResponse(data, status=resp.status_code)
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+    return _call_pentest_api("/attack/nmap")
 
 @csrf_exempt
 @require_http_methods(["POST"])
 def pentest_modbus(request):
-    # Call the Flask API in the kali-attacker container via host.docker.internal
-    import requests
-    try:
-        resp = requests.post("http://host.docker.internal:5001/attack/modbus", timeout=65)
-        data = resp.json()
-        return JsonResponse(data, status=resp.status_code)
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+    return _call_pentest_api("/attack/modbus")
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.contrib import messages
@@ -46,6 +91,7 @@ from .models import (
     SbomReport,
     ScanRun,
     SiemEvent,
+    SiemSensorStatus,
     Vulnerability,
     AlertRule,
     Alert,
@@ -116,13 +162,14 @@ import tempfile
 from collections import Counter, defaultdict
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from ipaddress import ip_network
 from pathlib import Path
 import time
 from datetime import timedelta
 from functools import wraps
 from typing import Optional
+from urllib.parse import urlencode
 from .siem import normalize_siem_event, parse_siem_search_params, SiemNormalizeError, SiemQueryError
 from .siem_adapters import (
     adapt_agent_status,
@@ -131,6 +178,8 @@ from .siem_adapters import (
     adapt_vulnerability,
 )
 from .siem_pipeline import transform_pipeline_events, SiemPipelineError
+from .siem_suricata import transform_suricata_events
+from .siem_zeek import transform_zeek_events
 from .opensearch_client import bulk_index_events, OpensearchError
 from .siem_query import parse_search_request, search_siem_events
 from .siem_pivot import resolve_siem_pivot
@@ -161,6 +210,12 @@ from .pid_drawio import (
     convert_drawio_to_sim_system,
     store_drawio_upload,
     upload_sim_system,
+)
+from .sim_system import (
+    build_risk_service_compatible_sim_system,
+    legacy_to_sectioned_sim_system,
+    load_sim_system_json,
+    write_sim_system_json,
 )
 from knowledge_extraction.drawio import DrawioParseError
 from .pid_system import (
@@ -2165,18 +2220,20 @@ def sbom_ingest(request):
 
 
 def _check_siem_token(request) -> bool:
-    token = getattr(settings, "SIEM_INGEST_TOKEN", "")
     required = getattr(settings, "SIEM_INGEST_TOKEN_REQUIRED", True)
     if not required:
         return True
-    # OT lab mode: when token enforcement is enabled but no token is configured,
-    # allow ingest to prevent silent outage of telemetry pipelines.
-    if not token:
-        return True
+    tokens = []
+    for attr in ("SIEM_INGEST_TOKEN", "SIEM_SENSOR_TOKEN"):
+        token = str(getattr(settings, attr, "") or "").strip()
+        if token and token not in tokens:
+            tokens.append(token)
+    if not tokens:
+        return False
     header = request.headers.get("X-SIEM-Token") or request.headers.get("Authorization", "")
     if header.startswith("Bearer "):
         header = header.split(" ", 1)[1].strip()
-    return header == token
+    return header in tokens
 
 
 def _check_agent_token(request) -> bool:
@@ -2220,9 +2277,17 @@ def _persist_normalized_events(normalized):
             "timestamp": item.get("timestamp"),
             "source": item.get("source"),
             "event_type": item.get("event_type"),
+            "event_module": item.get("event_module", ""),
+            "event_dataset": item.get("event_dataset", ""),
+            "observer_name": item.get("observer_name", ""),
             "severity": item.get("severity"),
             "asset_id": item.get("asset_id"),
             "asset_ip": item.get("asset_ip"),
+            "source_ip": item.get("source_ip"),
+            "source_port": item.get("source_port"),
+            "destination_ip": item.get("destination_ip"),
+            "destination_port": item.get("destination_port"),
+            "network_community_id": item.get("network_community_id", ""),
             "summary": item.get("summary"),
             "raw": _json_safe(item.get("raw")),
         }
@@ -2324,6 +2389,273 @@ def siem_pipeline_ingest(request):
 
     response_payload = _persist_normalized_events(normalized)
     return JsonResponse(response_payload, status=201)
+
+
+def _sensor_identifier(sensor: dict, sensor_type: str) -> str:
+    return (
+        str(sensor.get("sensor_id") or "").strip()
+        or str(sensor.get("hostname") or "").strip()
+        or f"{sensor_type}-sensor"
+    )
+
+
+def _sensor_interfaces(sensor: dict) -> list[str]:
+    interfaces = []
+    interface = str(sensor.get("interface") or "").strip()
+    if interface:
+        interfaces.append(interface)
+    for item in sensor.get("interfaces") or []:
+        item_text = str(item or "").strip()
+        if item_text and item_text not in interfaces:
+            interfaces.append(item_text)
+    return interfaces
+
+
+def _upsert_siem_sensor_status(sensor_type: str, sensor: dict | None, event_count: int = 0, last_error: str = "") -> SiemSensorStatus:
+    sensor = sensor if isinstance(sensor, dict) else {}
+    sensor_id = _sensor_identifier(sensor, sensor_type)
+    hostname = str(sensor.get("hostname") or sensor_id).strip()
+    interfaces = _sensor_interfaces(sensor)
+    now_ts = timezone.now()
+    status = "error" if last_error else "online"
+
+    defaults = {
+        "sensor_type": sensor_type,
+        "hostname": hostname,
+        "status": status,
+        "last_seen": now_ts,
+        "event_count": max(0, int(event_count or 0)),
+        "interface_names": interfaces,
+        "last_error": str(last_error or "").strip(),
+        "metadata": _json_safe(sensor),
+    }
+    sensor_status, created = SiemSensorStatus.objects.get_or_create(sensor_id=sensor_id, defaults=defaults)
+    if not created:
+        sensor_status.sensor_type = sensor_type
+        sensor_status.hostname = hostname
+        sensor_status.status = status
+        sensor_status.last_seen = now_ts
+        sensor_status.interface_names = interfaces
+        sensor_status.last_error = str(last_error or "").strip()
+        sensor_status.metadata = _json_safe(sensor)
+        if event_count:
+            sensor_status.event_count = int(sensor_status.event_count or 0) + int(event_count)
+        sensor_status.save(
+            update_fields=[
+                "sensor_type",
+                "hostname",
+                "status",
+                "last_seen",
+                "event_count",
+                "interface_names",
+                "last_error",
+                "metadata",
+                "updated_at",
+            ]
+        )
+    return sensor_status
+
+
+def _sensor_row(sensor: SiemSensorStatus, now_ts=None) -> dict:
+    now_ts = now_ts or timezone.now()
+    lookback_sec = int(getattr(settings, "SIEM_SENSOR_HEALTH_LOOKBACK_SEC", 300) or 300)
+    stale_cutoff = now_ts - timedelta(seconds=max(1, lookback_sec))
+    status = str(sensor.status or "unknown")
+    if status == "online" and sensor.last_seen and sensor.last_seen < stale_cutoff:
+        status = "stale"
+    return {
+        "sensor_id": sensor.sensor_id,
+        "sensor_type": sensor.sensor_type,
+        "hostname": sensor.hostname,
+        "status": status,
+        "last_seen": sensor.last_seen,
+        "event_count": sensor.event_count,
+        "interfaces": list(sensor.interface_names or []),
+        "last_error": sensor.last_error,
+        "metadata": sensor.metadata or {},
+    }
+
+
+def _sensor_health_payload() -> dict:
+    now_ts = timezone.now()
+    sensors = [_sensor_row(sensor, now_ts=now_ts) for sensor in SiemSensorStatus.objects.all()]
+    summary = {
+        "total": len(sensors),
+        "online": sum(1 for sensor in sensors if sensor["status"] == "online"),
+        "stale": sum(1 for sensor in sensors if sensor["status"] == "stale"),
+        "error": sum(1 for sensor in sensors if sensor["status"] == "error"),
+    }
+    return {"summary": summary, "sensors": sensors}
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def siem_suricata_sensor_ingest(request):
+    if not _check_siem_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    try:
+        sensor, transformed = transform_suricata_events(payload)
+    except SiemPipelineError as exc:
+        _upsert_siem_sensor_status("suricata", payload.get("sensor") if isinstance(payload, dict) else {}, last_error=str(exc))
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    normalized = []
+    errors = []
+    for idx, event in enumerate(transformed):
+        try:
+            normalized.append(normalize_siem_event(event))
+        except SiemNormalizeError as exc:
+            errors.append({"index": idx, "error": str(exc)})
+
+    if errors:
+        _upsert_siem_sensor_status("suricata", sensor, last_error="Invalid Suricata payload")
+        return JsonResponse({"error": "Invalid event payload", "details": errors}, status=400)
+
+    response_payload = _persist_normalized_events(normalized)
+    response_payload["sensor"] = _sensor_row(
+        _upsert_siem_sensor_status("suricata", sensor, event_count=len(normalized))
+    )
+    return JsonResponse(response_payload, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def siem_zeek_sensor_ingest(request):
+    if not _check_siem_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    try:
+        sensor, transformed = transform_zeek_events(payload)
+    except SiemPipelineError as exc:
+        _upsert_siem_sensor_status("zeek", payload.get("sensor") if isinstance(payload, dict) else {}, last_error=str(exc))
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    normalized = []
+    errors = []
+    for idx, event in enumerate(transformed):
+        try:
+            normalized.append(normalize_siem_event(event))
+        except SiemNormalizeError as exc:
+            errors.append({"index": idx, "error": str(exc)})
+
+    if errors:
+        _upsert_siem_sensor_status("zeek", sensor, last_error="Invalid Zeek payload")
+        return JsonResponse({"error": "Invalid event payload", "details": errors}, status=400)
+
+    response_payload = _persist_normalized_events(normalized)
+    response_payload["sensor"] = _sensor_row(
+        _upsert_siem_sensor_status("zeek", sensor, event_count=len(normalized))
+    )
+    return JsonResponse(response_payload, status=201)
+
+
+@require_http_methods(["GET"])
+def siem_sensor_health_api(request):
+    return JsonResponse(_sensor_health_payload())
+
+
+@require_http_methods(["GET"])
+def siem_sensor_health_page(request):
+    payload = _sensor_health_payload()
+    return render(
+        request,
+        "dashboard/siem_sensor_health.html",
+        {
+            "summary": payload["summary"],
+            "sensors": payload["sensors"],
+            "opensearch": get_opensearch_overview(),
+        },
+    )
+
+
+def _talker_policy_tags(asset_ip: str | None) -> list[str]:
+    ip_text = str(asset_ip or "").strip().lower()
+    if ip_text.startswith("fe80:"):
+        return ["link_local_ipv6"]
+    return []
+
+
+@require_http_methods(["GET"])
+def siem_soc_overview(request):
+    now_ts = timezone.now()
+    since = now_ts - timedelta(hours=24)
+    recent_qs = SiemEvent.objects.filter(timestamp__gte=since)
+    ids_qs = recent_qs.filter(Q(event_module__in=["suricata", "zeek"]) | Q(source__in=["suricata", "zeek"]))
+    sensor_payload = _sensor_health_payload()
+
+    recent_events = list(
+        recent_qs.exclude(event_dataset__endswith=".stats")
+        .exclude(event_type__endswith=".stats")
+        .order_by("-timestamp")[:20]
+    )
+    top_modules = list(
+        ids_qs.exclude(event_module="")
+        .values("event_module")
+        .annotate(count=Count("id"))
+        .order_by("-count", "event_module")[:5]
+    )
+    top_datasets = list(
+        ids_qs.exclude(event_dataset="")
+        .values("event_dataset")
+        .annotate(count=Count("id"))
+        .order_by("-count", "event_dataset")[:8]
+    )
+    top_asset_ips = [
+        {
+            "asset_ip": row["asset_ip"],
+            "count": row["count"],
+            "policy_tags": _talker_policy_tags(row["asset_ip"]),
+        }
+        for row in recent_qs.exclude(asset_ip__isnull=True)
+        .exclude(asset_ip="")
+        .values("asset_ip")
+        .annotate(count=Count("id"))
+        .order_by("-count", "asset_ip")[:8]
+    ]
+    recent_alerts = [
+        {
+            "alert": alert,
+            "explorer_url": f"{reverse('dashboard:siem_event_explorer')}?{urlencode({'event_type': alert.event_type, 'asset_ip': alert.asset_ip or ''})}",
+        }
+        for alert in Alert.objects.filter(status=Alert.Status.OPEN).order_by("-last_seen")[:5]
+    ]
+
+    return render(
+        request,
+        "dashboard/siem_overview.html",
+        {
+            "summary": {
+                "ids_events_24h": ids_qs.count(),
+                "hybrid_connection_events_24h": recent_qs.filter(event_dataset="agent.network_connection").count(),
+                "suricata_alerts_24h": recent_qs.filter(event_dataset="suricata.alert").count(),
+                "zeek_events_24h": recent_qs.filter(event_module="zeek").count(),
+                "open_alerts": Alert.objects.filter(status=Alert.Status.OPEN).count(),
+                "high_alerts": Alert.objects.filter(status=Alert.Status.OPEN, severity__gte=7).count(),
+                "open_cases": Case.objects.filter(status=Case.Status.OPEN).count(),
+                "open_hunts": Hunt.objects.filter(status=Hunt.Status.OPEN).count(),
+                "live_sensors": sensor_payload["summary"]["online"],
+                "stale_sensors": sensor_payload["summary"]["stale"] + sensor_payload["summary"]["error"],
+            },
+            "opensearch": get_opensearch_overview(),
+            "top_modules": top_modules,
+            "top_datasets": top_datasets,
+            "top_asset_ips": top_asset_ips,
+            "sensor_rows": sensor_payload["sensors"][:6],
+            "recent_alerts": recent_alerts,
+            "recent_events": recent_events,
+        },
+    )
 
 
 @require_http_methods(["GET"])
@@ -4263,6 +4595,52 @@ def agent_version_api(request):
 # -----------------------------
 # Network Metadata and Security Onion-like Monitoring
 # -----------------------------
+def _split_endpoint(value, port=None):
+    host = str(value or "").strip()
+    parsed_port = None
+
+    if port not in (None, ""):
+        try:
+            parsed_port = int(port)
+        except (TypeError, ValueError):
+            parsed_port = None
+        return host, parsed_port
+
+    if not host:
+        return "", None
+
+    if host.startswith("[") and "]:" in host:
+        base, suffix = host.rsplit("]:", 1)
+        if suffix.isdigit():
+            return base.lstrip("["), int(suffix)
+    if host.count(":") == 1:
+        base, suffix = host.rsplit(":", 1)
+        if suffix.isdigit():
+            return base, int(suffix)
+    return host, None
+
+
+def _preferred_agent_metadata_ip(interfaces):
+    ranked = []
+    for iface in interfaces or []:
+        if not isinstance(iface, dict):
+            continue
+        ip_text = str(iface.get("ip") or "").strip()
+        if not ip_text or ip_text.startswith("127.") or ip_text == "::1":
+            continue
+        if ip_text.startswith("10."):
+            rank = 0
+        elif ip_text.startswith("192.168."):
+            rank = 1
+        elif ip_text.startswith("172.31.250."):
+            rank = 3
+        else:
+            rank = 2
+        ranked.append((rank, ip_text))
+    ranked.sort()
+    return ranked[0][1] if ranked else ""
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def agent_network_metadata(request):
@@ -4288,6 +4666,37 @@ def agent_network_metadata(request):
     except AgentStatus.DoesNotExist:
         return JsonResponse({"error": "Agent not found"}, status=404)
 
+    preferred_ip = _preferred_agent_metadata_ip(interfaces) or str(agent.ip_address or "").strip()
+    if preferred_ip:
+        agent.ip_address = preferred_ip
+    agent.interfaces = interfaces
+    agent.active_ports = active_ports
+    agent.status = "online"
+    agent.save(update_fields=["ip_address", "interfaces", "active_ports", "status", "last_heartbeat"])
+
+    node_defaults = {
+        "ip_address": preferred_ip or agent.ip_address,
+        "name": agent.hostname or agent.agent_id,
+        "hostname": agent.hostname or "",
+        "status": "online",
+        "last_heartbeat": timezone.now(),
+        "active_ports": active_ports,
+    }
+    node, _ = Node.objects.update_or_create(agent_id=agent.agent_id, defaults=node_defaults)
+    for iface in interfaces:
+        if not isinstance(iface, dict):
+            continue
+        name = str(iface.get("name") or "").strip()
+        ip_text = str(iface.get("ip") or "").strip()
+        mac = str(iface.get("mac") or "").strip()
+        if not name or not ip_text:
+            continue
+        NodeInterface.objects.update_or_create(
+            node=node,
+            name=name,
+            defaults={"ip": ip_text, "mac": mac},
+        )
+
     # Create network metadata record
     metadata = NetworkMetadata.objects.create(
         agent=agent,
@@ -4301,17 +4710,22 @@ def agent_network_metadata(request):
 
     # Create individual connection records for detailed analysis
     for conn_data in network_connections:
+        process = conn_data.get("process", {}) if isinstance(conn_data.get("process"), dict) else {}
+        local_address, local_port = _split_endpoint(conn_data.get("local_address"), conn_data.get("local_port"))
+        remote_address, remote_port = _split_endpoint(conn_data.get("remote_address"), conn_data.get("remote_port"))
         NetworkConnection.objects.create(
             metadata=metadata,
             agent=agent,
             protocol=conn_data.get("protocol", "TCP"),
-            local_address=conn_data.get("local_address"),
-            remote_address=conn_data.get("remote_address"),
+            local_address=local_address,
+            local_port=local_port,
+            remote_address=remote_address,
+            remote_port=remote_port,
             status=conn_data.get("status", "UNKNOWN"),
-            process_pid=conn_data.get("process", {}).get("pid"),
-            process_name=conn_data.get("process", {}).get("name"),
-            process_username=conn_data.get("process", {}).get("username"),
-            process_cmdline=conn_data.get("process", {}).get("cmdline")
+            process_pid=process.get("pid"),
+            process_name=process.get("name"),
+            process_username=process.get("username"),
+            process_cmdline=process.get("cmdline") or "",
         )
 
     return JsonResponse({

@@ -23,6 +23,7 @@ from ids_process import (
 
 
 DEFAULT_PIPELINE_URL = "http://host.docker.internal:8000/dashboard/siem/pipeline/ingest/"
+DEFAULT_HISTORIAN_STATUS_URL = "http://historian:4840/"
 
 
 def _iso_now() -> str:
@@ -60,8 +61,85 @@ def _build_event(sample_record: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _fetch_json(url: str, timeout_sec: float) -> Dict[str, Any]:
+    with request.urlopen(url, timeout=timeout_sec) as response:
+        payload = json.load(response)
+    if not isinstance(payload, dict):
+        raise ValueError("historian status payload must be a JSON object")
+    return payload
+
+
+def _historian_status_row(payload: Dict[str, Any], profile: str) -> Dict[str, Any] | None:
+    profiles = payload.get("profiles")
+    if not isinstance(profiles, dict):
+        return None
+
+    profile_payload = profiles.get(profile)
+    if not isinstance(profile_payload, dict):
+        return None
+    if not profile_payload.get("connected"):
+        return None
+
+    values = profile_payload.get("values")
+    if not isinstance(values, dict) or not values:
+        return None
+
+    updated_at = profile_payload.get("updated_at") or payload.get("generated_at") or time.time()
+    updated_at_epoch = float(updated_at)
+    row = dict(values)
+    row["_time"] = datetime.fromtimestamp(updated_at_epoch, tz=timezone.utc).isoformat()
+    row["_updated_at_epoch"] = updated_at_epoch
+    return row
+
+
+def iter_scored_historian_status_samples(
+    historian_status_url: str,
+    profile: str,
+    measurement: str,
+    tag_keys: list[str],
+    poll_interval: float,
+    model_path: Path,
+    decision_threshold: float | None,
+):
+    """Yield scored process samples directly from the historian status endpoint."""
+    context = _load_live_inference_context(model_path, decision_threshold)
+    last_seen_epoch = 0.0
+    timeout_sec = max(1.0, min(5.0, poll_interval + 1.0))
+
+    while True:
+        try:
+            payload = _fetch_json(historian_status_url, timeout_sec=timeout_sec)
+            row = _historian_status_row(payload, profile)
+            if row:
+                updated_at_epoch = float(row.get("_updated_at_epoch", 0.0) or 0.0)
+                if updated_at_epoch > last_seen_epoch:
+                    sample_ts = str(row.get("_time") or _iso_now())
+                    scored = _score_row(row, context)
+                    yield {
+                        "profile": profile,
+                        "measurement": measurement,
+                        "timestamp": sample_ts,
+                        "anomaly": scored["anomaly"],
+                        "score": scored["score"],
+                        "decision_threshold": scored["decision_threshold"],
+                        "raw_time": sample_ts,
+                        "fields": {key: row.get(key) for key in tag_keys},
+                    }
+                    last_seen_epoch = updated_at_epoch
+        except Exception as exc:
+            print(
+                f"[ids-process-forwarder] historian status polling error: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
+
+        time.sleep(poll_interval)
+
+
 def iter_scored_process_samples(
+    source_mode: str,
     influx_url: str,
+    historian_status_url: str,
     influx_token: str,
     influx_org: str,
     influx_bucket: str,
@@ -74,6 +152,18 @@ def iter_scored_process_samples(
     decision_threshold: float | None,
 ):
     """Yield scored process sample dictionaries from historian polling."""
+    if source_mode == "historian_status":
+        yield from iter_scored_historian_status_samples(
+            historian_status_url=historian_status_url,
+            profile=profile,
+            measurement=measurement,
+            tag_keys=tag_keys,
+            poll_interval=poll_interval,
+            model_path=model_path,
+            decision_threshold=decision_threshold,
+        )
+        return
+
     context = _load_live_inference_context(model_path, decision_threshold)
     feature_keys: list[str] = context["feature_keys"]
 
@@ -132,9 +222,11 @@ def main() -> int:
     )
 
     influx_url = os.environ.get("INFLUX_URL", "http://historian-db:8086")
+    historian_status_url = os.environ.get("IDS_PROCESS_HISTORIAN_STATUS_URL", DEFAULT_HISTORIAN_STATUS_URL)
     influx_token = os.environ.get("INFLUX_TOKEN", "iaea-historian-token")
     influx_org = os.environ.get("INFLUX_ORG", "iaea")
     influx_bucket = os.environ.get("INFLUX_BUCKET", "iaea_rcs")
+    source_mode = os.environ.get("IDS_PROCESS_SOURCE", "auto").strip().lower() or "auto"
     profile = os.environ.get("IDS_PROCESS_PROFILE", "main")
     measurement = os.environ.get("IDS_PROCESS_MEASUREMENT", "rcs_metrics")
     tag_keys = _parse_tag_keys(os.environ.get("IDS_PROCESS_TAG_KEYS", ""))
@@ -143,13 +235,19 @@ def main() -> int:
 
     model_path = Path(os.environ.get("IDS_PROCESS_MODEL_PATH", "/models/ids-process/autoencoder.joblib"))
     decision_threshold = _default_threshold_from_env()
+    if source_mode not in {"auto", "influx", "historian_status"}:
+        print(f"[ids-process-forwarder] invalid IDS_PROCESS_SOURCE={source_mode}", file=sys.stderr, flush=True)
+        return 1
+    if source_mode == "auto":
+        source_mode = "influx" if influx_url.strip() else "historian_status"
 
     print(
         (
             f"[ids-process-forwarder] profile={profile} measurement={measurement} "
             f"tags={len(tag_keys)} poll={poll_interval}s model={model_path} "
             f"watch_range={watch_range_start} threshold={decision_threshold} "
-            f"forwarding={pipeline_url} anomaly_only={anomaly_only}"
+            f"forwarding={pipeline_url} anomaly_only={anomaly_only} "
+            f"source={source_mode}"
         ),
         file=sys.stderr,
         flush=True,
@@ -157,7 +255,9 @@ def main() -> int:
 
     try:
         sample_iter = iter_scored_process_samples(
+            source_mode=source_mode,
             influx_url=influx_url,
+            historian_status_url=historian_status_url,
             influx_token=influx_token,
             influx_org=influx_org,
             influx_bucket=influx_bucket,

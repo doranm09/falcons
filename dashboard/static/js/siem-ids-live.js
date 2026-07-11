@@ -223,9 +223,67 @@
     }
   }
 
+  // Pentest demo handler
+  function runPentestDemo(button, url, attackType) {
+    if (!button || !url) return;
+    
+    const originalText = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Running...';
+    
+    const csrfToken = window.CSRF_TOKEN || document.querySelector('[name=csrftoken]')?.value || '';
+    
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': csrfToken,
+        'Content-Type': 'application/json'
+      },
+      signal: AbortSignal.timeout(70000)
+    })
+    .then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+      return r.json();
+    })
+    .then(data => {
+      if (data.error) {
+        alert(`Error: ${data.error}`);
+      } else {
+        alert(`${attackType} completed successfully. Check the live IDS feed for events.`);
+      }
+    })
+    .catch(error => {
+      alert(`Error: ${error.message}`);
+    })
+    .finally(() => {
+      // Re-enable button
+      button.disabled = false;
+      button.innerHTML = originalText;
+    });
+  }
+  
+  // Event listeners for buttons
   clearButton.addEventListener('click', () => {
+    const emptyRow = tbody.querySelector(`td[colspan="${emptyColspan()}"]`);
+    if (emptyRow) {
+      emptyRow.closest('tr')?.remove();
+    }
     tbody.innerHTML = `<tr><td colspan="${emptyColspan()}" class="text-muted text-center">Live table cleared. Waiting for new IDS events...</td></tr>`;
   });
+
+  const networkScanBtn = document.getElementById('ids-network-scan-demo');
+  if (networkScanBtn) {
+    networkScanBtn.addEventListener('click', () => {
+      runPentestDemo(networkScanBtn, networkScanBtn.dataset.url, 'Network Scan');
+    });
+  }
+
+  const modbusAttackBtn = document.getElementById('ids-modbus-attack-demo');
+  if (modbusAttackBtn) {
+    modbusAttackBtn.addEventListener('click', () => {
+      runPentestDemo(modbusAttackBtn, modbusAttackBtn.dataset.url, 'Modbus Attack');
+    });
+  }
 
   tbody.addEventListener('click', (event) => {
     const target = event.target;

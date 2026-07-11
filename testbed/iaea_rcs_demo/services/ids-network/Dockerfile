@@ -17,9 +17,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
    pip install --no-cache-dir pyod joblib numpy scipy scikit-learn tqdm matplotlib
 
-# Torch is heavy; isolate it so edits to other deps don't invalidate this layer.
+# CPU-only torch is sufficient for the lab IDS models and avoids multi-GB CUDA wheels.
 RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
-   pip install --no-cache-dir torch
+   pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch
 
 WORKDIR /app
 

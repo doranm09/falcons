@@ -6,8 +6,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
    pip install --no-cache-dir influxdb-client numpy pyod joblib tqdm
 
+# CPU-only torch is sufficient for the lab IDS models and avoids multi-GB CUDA wheels.
 RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
-   pip install --no-cache-dir torch
+   pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch
 
 WORKDIR /app
 

@@ -17,13 +17,13 @@
 
   <ul class="nav nav-tabs mb-4">
     <li class="nav-item">
-      <a class="nav-link" href="{% url 'dashboard:siem_event_explorer' %}">Event Explorer</a>
-    </li>
-    <li class="nav-item">
       <a class="nav-link {% if live_kind == 'network' %}active{% endif %}" href="{% url 'dashboard:siem_ids_network_live_page' %}">IDS Network Live</a>
     </li>
     <li class="nav-item">
       <a class="nav-link {% if live_kind == 'process' %}active{% endif %}" href="{% url 'dashboard:siem_ids_process_live_page' %}">IDS Process Live</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="{% url 'dashboard:siem_event_explorer' %}">Event Explorer</a>
     </li>
   </ul>
 
@@ -32,7 +32,14 @@
       <div class="card shadow-sm h-100">
         <div class="card-body">
           <h5 class="card-title">Stream Controls</h5>
-          <button class="btn btn-outline-secondary btn-sm" id="ids-clear-table">Clear Live Rows</button>
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <button class="btn btn-outline-secondary btn-sm" id="ids-clear-table">Clear Live Rows</button>
+            {% if live_kind == 'network' %}
+            <button class="btn btn-danger btn-sm" id="ids-network-scan-demo" data-url="{% url 'dashboard:pentest_nmap' %}">Network Scan (demo)</button>
+            {% elif live_kind == 'process' %}
+            <button class="btn btn-danger btn-sm" id="ids-modbus-attack-demo" data-url="{% url 'dashboard:pentest_modbus' %}">Modbus Injection Attack (demo)</button>
+            {% endif %}
+          </div>
           <p class="text-muted small mt-3 mb-0">Keep this tab open to watch score and threshold changes in real time.</p>
         </div>
       </div>
@@ -125,5 +132,9 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script>
+  // Make CSRF token available to siem-ids-live.js
+  window.CSRF_TOKEN = '{{ csrf_token }}';
+</script>
 <script src="{% static 'js/siem-ids-live.js' %}"></script>
 {% endblock %}

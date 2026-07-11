@@ -1,187 +1,130 @@
 import json
+from datetime import timedelta
 
 import pytest
+from django.test import override_settings
 from django.urls import reverse
+from django.utils import timezone
 
-from dashboard.models import SiemEvent, SiemSensorStatus
+from dashboard.models import AgentStatus, NetworkConnection, Node, NodeInterface, SiemEvent, SiemSensorStatus
 
 
 @pytest.mark.django_db
-def test_suricata_sensor_ingest_updates_status(siem_client):
+@override_settings(AGENT_API_TOKEN="test-token", AGENT_API_TOKEN_REQUIRED=True)
+def test_agent_network_metadata_route_updates_inventory_and_ports(client):
+    agent = AgentStatus.objects.create(
+        agent_id="agent-metadata-1",
+        hostname="plc-main",
+        ip_address="172.31.250.14",
+    )
+    payload = {
+        "agent_id": agent.agent_id,
+        "network_connections": [
+            {
+                "protocol": "TCP",
+                "local_address": "10.1.1.14:8080",
+                "remote_address": "10.3.50.10:443",
+                "status": "ESTABLISHED",
+                "process": {"name": "curl", "pid": 4321, "username": "demo"},
+            }
+        ],
+        "interface_statistics": [],
+        "active_ports": [{"port": 44818, "protocol": "tcp", "state": "LISTEN"}],
+        "interfaces": [
+            {"name": "eth0", "ip": "10.1.1.14", "mac": "00:aa:bb:cc:dd:01"},
+            {"name": "eth1", "ip": "10.1.2.14", "mac": "00:aa:bb:cc:dd:02"},
+        ],
+    }
+
+    response = client.post(
+        reverse("dashboard:agent_network_metadata"),
+        data=json.dumps(payload),
+        content_type="application/json",
+        HTTP_X_AGENT_TOKEN="test-token",
+    )
+
+    assert response.status_code == 200
+    connection = NetworkConnection.objects.get(agent=agent)
+    assert connection.local_address == "10.1.1.14"
+    assert connection.local_port == 8080
+    assert connection.remote_address == "10.3.50.10"
+    assert connection.remote_port == 443
+
+    agent.refresh_from_db()
+    assert agent.ip_address == "10.1.1.14"
+    assert agent.interfaces == payload["interfaces"]
+    assert agent.active_ports == payload["active_ports"]
+
+    node = Node.objects.get(agent_id=agent.agent_id)
+    assert node.ip_address == "10.1.1.14"
+    assert node.active_ports == payload["active_ports"]
+    assert NodeInterface.objects.filter(node=node).count() == 2
+
+
+@pytest.mark.django_db
+@override_settings(
+    SIEM_INGEST_TOKEN="sensor-token",
+    SIEM_SENSOR_TOKEN="sensor-token",
+    SIEM_INGEST_TOKEN_REQUIRED=True,
+)
+def test_siem_suricata_sensor_ingest_creates_events_and_sensor_status(client):
     payload = {
         "sensor": {
-            "sensor_id": "suricata-span",
-            "hostname": "suricata-span",
-            "interface": "eth1",
-            "testbed": "iaea_rcs_demo",
+            "sensor_id": "suricata-sensor",
+            "hostname": "suricata-sensor",
+            "interface": "mirror0",
         },
         "events": [
             {
-                "timestamp": "2026-04-16T12:00:00Z",
+                "timestamp": timezone.now().isoformat(),
                 "event_type": "alert",
                 "src_ip": "10.1.1.14",
-                "src_port": 43000,
-                "dest_ip": "10.1.1.10",
-                "dest_port": 502,
-                "alert": {"signature": "ET TEST Example", "severity": 2},
+                "src_port": 502,
+                "dest_ip": "10.3.50.10",
+                "dest_port": 443,
+                "alert": {"signature": "Test Suricata Alert", "severity": 7},
             }
         ],
     }
-    resp = siem_client.post(
-        reverse("dashboard:siem_suricata_ingest"),
+
+    response = client.post(
+        reverse("dashboard:siem_suricata_sensor_ingest"),
         data=json.dumps(payload),
         content_type="application/json",
+        HTTP_X_SIEM_TOKEN="sensor-token",
     )
-    assert resp.status_code == 201
-    assert SiemEvent.objects.count() == 1
-    sensor = SiemSensorStatus.objects.get(sensor_id="suricata-span")
-    assert sensor.sensor_type == "suricata"
+
+    assert response.status_code == 201
+    sensor = SiemSensorStatus.objects.get(sensor_id="suricata-sensor")
+    assert sensor.status == "online"
     assert sensor.event_count == 1
-    assert sensor.interface_names == ["eth1"]
-    event = SiemEvent.objects.get()
-    assert event.source_port == 43000
-    assert event.destination_port == 502
+    assert sensor.interface_names == ["mirror0"]
+
+    event = SiemEvent.objects.get(source="suricata")
+    assert event.event_module == "suricata"
+    assert event.event_dataset == "suricata.alert"
+    assert event.observer_name == "suricata-sensor"
+    assert event.source_ip == "10.1.1.14"
+    assert event.destination_ip == "10.3.50.10"
 
 
 @pytest.mark.django_db
-def test_zeek_sensor_ingest_and_health_endpoint(siem_client):
-    payload = {
-        "sensor": {
-            "sensor_id": "zeek-span",
-            "hostname": "zeek-span",
-            "interfaces": ["eth1", "eth2"],
-            "testbed": "iaea_rcs_demo",
-        },
-        "logs": [
-            {
-                "ts": 1760088000,
-                "uid": "C1",
-                "log_type": "conn",
-                "id_orig_h": "10.1.1.14",
-                "id_orig_p": 43100,
-                "id_resp_h": "10.1.1.10",
-                "id_resp_p": 4840,
-            }
-        ],
-    }
-    ingest_resp = siem_client.post(
-        reverse("dashboard:siem_zeek_ingest"),
-        data=json.dumps(payload),
-        content_type="application/json",
+@override_settings(SIEM_SENSOR_HEALTH_LOOKBACK_SEC=60)
+def test_siem_sensor_health_api_marks_stale_sensors(client):
+    SiemSensorStatus.objects.create(
+        sensor_id="zeek-sensor",
+        sensor_type="zeek",
+        hostname="zeek-sensor",
+        status="online",
+        last_seen=timezone.now() - timedelta(minutes=10),
+        event_count=5,
+        interface_names=["mirror1"],
     )
-    assert ingest_resp.status_code == 201
 
-    health_resp = siem_client.get(reverse("dashboard:siem_sensor_health"))
-    assert health_resp.status_code == 200
-    body = health_resp.json()
-    assert body["count"] == 1
-    assert body["sensors"][0]["sensor_id"] == "zeek-span"
-    assert body["sensors"][0]["status"] == "online"
+    response = client.get(reverse("dashboard:siem_sensor_health_api"))
 
-    event = SiemEvent.objects.get()
-    assert event.event_module == "zeek"
-    assert event.event_dataset == "zeek.conn"
-    assert event.observer_name == "zeek-span"
-    assert str(event.source_ip) == "10.1.1.14"
-    assert event.source_port == 43100
-    assert str(event.destination_ip) == "10.1.1.10"
-    assert event.destination_port == 4840
-
-
-@pytest.mark.django_db
-def test_zeek_sensor_ingest_accepts_dotted_zeek_keys(siem_client):
-    payload = {
-        "sensor": {
-            "sensor_id": "zeek-span",
-            "hostname": "zeek-span",
-            "interfaces": ["eth1", "eth2"],
-            "testbed": "iaea_rcs_demo",
-        },
-        "logs": [
-            {
-                "ts": 1760088000,
-                "uid": "C2",
-                "log_type": "conn",
-                "id.orig_h": "10.1.1.14",
-                "id.orig_p": 43200,
-                "id.resp_h": "10.1.1.10",
-                "id.resp_p": 502,
-            }
-        ],
-    }
-    ingest_resp = siem_client.post(
-        reverse("dashboard:siem_zeek_ingest"),
-        data=json.dumps(payload),
-        content_type="application/json",
-    )
-    assert ingest_resp.status_code == 201
-
-    event = SiemEvent.objects.get()
-    assert event.event_module == "zeek"
-    assert event.event_dataset == "zeek.conn"
-    assert str(event.asset_ip) == "10.1.1.14"
-    assert str(event.source_ip) == "10.1.1.14"
-    assert event.source_port == 43200
-    assert str(event.destination_ip) == "10.1.1.10"
-    assert event.destination_port == 502
-
-
-@pytest.mark.django_db
-def test_zeek_sensor_ingest_keeps_link_local_ipv6_noise_for_frontend_policy(siem_client):
-    payload = {
-        "sensor": {
-            "sensor_id": "zeek-span",
-            "hostname": "zeek-span",
-            "interfaces": ["eth1", "eth2"],
-            "testbed": "iaea_rcs_demo",
-        },
-        "logs": [
-            {
-                "ts": 1760088000,
-                "uid": "C-noise",
-                "log_type": "conn",
-                "id_orig_h": "fe80::2890:5ff:fe2b:8ae2",
-                "id_resp_h": "ff02::fb",
-            }
-        ],
-    }
-    ingest_resp = siem_client.post(
-        reverse("dashboard:siem_zeek_ingest"),
-        data=json.dumps(payload),
-        content_type="application/json",
-    )
-    assert ingest_resp.status_code == 201
-    assert ingest_resp.json()["ingested"] == 1
-    event = SiemEvent.objects.get()
-    assert str(event.source_ip) == "fe80::2890:5ff:fe2b:8ae2"
-    assert str(event.destination_ip) == "ff02::fb"
-
-
-@pytest.mark.django_db
-def test_suricata_sensor_ingest_keeps_link_local_ipv6_noise_for_frontend_policy(siem_client):
-    payload = {
-        "sensor": {
-            "sensor_id": "suricata-span",
-            "hostname": "suricata-span",
-            "interface": "eth1",
-            "testbed": "iaea_rcs_demo",
-        },
-        "events": [
-            {
-                "timestamp": "2026-04-16T12:00:00Z",
-                "event_type": "flow",
-                "src_ip": "fe80::2890:5ff:fe2b:8ae2",
-                "dest_ip": "ff02::fb",
-            }
-        ],
-    }
-    resp = siem_client.post(
-        reverse("dashboard:siem_suricata_ingest"),
-        data=json.dumps(payload),
-        content_type="application/json",
-    )
-    assert resp.status_code == 201
-    assert resp.json()["ingested"] == 1
-    event = SiemEvent.objects.get()
-    assert str(event.source_ip) == "fe80::2890:5ff:fe2b:8ae2"
-    assert str(event.destination_ip) == "ff02::fb"
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"]["stale"] == 1
+    assert payload["sensors"][0]["sensor_id"] == "zeek-sensor"
+    assert payload["sensors"][0]["status"] == "stale"

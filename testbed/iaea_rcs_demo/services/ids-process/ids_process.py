@@ -4,8 +4,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
+import time
 from pathlib import Path
 from typing import Any, Dict
+from urllib import request
 
 import joblib
 import numpy as np
@@ -68,6 +71,19 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path(os.environ.get("IDS_PROCESS_JSONL_PATH", "")) or None,
         help="path to JSONL file for training (optional, overrides InfluxDB)",
+    )
+    train_parser.add_argument(
+        "--historian-status-url",
+        dest="historian_status_url",
+        default=os.environ.get("IDS_PROCESS_HISTORIAN_STATUS_URL", "http://historian:4840/"),
+        help="historian status endpoint URL for live training data collection",
+    )
+    train_parser.add_argument(
+        "--training-duration",
+        dest="training_duration",
+        type=float,
+        default=float(os.environ.get("IDS_PROCESS_TRAINING_DURATION", "30.0")),
+        help="training data collection duration in seconds (default: 30.0)",
     )
     train_parser.add_argument(
         "--model-path",
@@ -310,6 +326,104 @@ def train_from_influx(args: argparse.Namespace) -> int:
     return 0
 
 
+def train_from_historian_status(args: argparse.Namespace) -> int:
+    """Train model by directly sampling from historian status HTTP endpoint."""
+    feature_keys = _parse_tag_keys(args.tag_keys)
+    if not feature_keys:
+        feature_keys = ["average_pressure"]  # Default feature
+    
+    print(f"[*] Training from historian status endpoint: {args.historian_status_url}")
+    print(f"[*] Duration: {args.training_duration}s")
+    print(f"[*] Features: {feature_keys}")
+    print(f"[*] Collecting samples...", flush=True)
+    
+    records = []
+    start_time = time.monotonic()
+    last_error_time = time.monotonic()
+    max_error_time = 30.0  # Stop if no data for 30 seconds
+    
+    while time.monotonic() - start_time < args.training_duration:
+        try:
+            with request.urlopen(args.historian_status_url, timeout=5.0) as response:
+                payload = json.load(response)
+                if not isinstance(payload, dict):
+                    continue
+                
+                profiles = payload.get("profiles", {})
+                profile_data = profiles.get(args.profile, {})
+                if not profile_data.get("connected"):
+                    continue
+                
+                values = profile_data.get("values", {})
+                if not values:
+                    continue
+                
+                # Create a record with fields dict structure
+                record = {"fields": {k: values.get(k) for k in feature_keys if k in values}}
+                if record["fields"]:
+                    records.append(record)
+                    if len(records) % 100 == 0:
+                        print(f"[*] Collected {len(records)} samples...", flush=True)
+                    last_error_time = time.monotonic()
+                
+        except Exception as e:
+            error_msg = f"Error fetching status: {e}"
+            if time.monotonic() - last_error_time > 3.0:
+                print(f"[!] {error_msg}", file=sys.stderr, flush=True)
+            last_error_time = time.monotonic()
+        
+        time.sleep(0.1)  # Poll every 100ms
+    
+    if not records:
+        raise SystemExit(f"no samples collected from {args.historian_status_url}")
+    
+    print(f"\n[+] Collected {len(records)} samples", flush=True)
+    
+    # Build matrix from records
+    matrix = _matrix_from_jsonl(records, feature_keys)
+    if matrix.size == 0:
+        raise SystemExit("no valid samples in collected data")
+    
+    print(f"[*] Matrix shape: {matrix.shape}", flush=True)
+    
+    # Compute statistics
+    matrix, feature_mean, feature_std = _standardize_matrix(matrix)
+    model = _build_model(int(matrix.shape[0]), args.model_type)
+    print(f"[*] Training {args.model_type} on {matrix.shape[0]} process samples...", flush=True)
+    model.fit(matrix)
+    scores = model.decision_function(matrix)
+    
+    payload = {
+        "model": model,
+        "model_type": args.model_type,
+        "feature_keys": feature_keys,
+        "feature_mean": feature_mean,
+        "feature_std": feature_std,
+        "train_score_min": float(np.min(scores)),
+        "train_score_max": float(np.max(scores)),
+        "train_score_mean": float(np.mean(scores)),
+        "train_score_std": float(np.std(scores)),
+        "trained_samples": int(matrix.shape[0]),
+        "trained_features": int(matrix.shape[1]),
+    }
+    
+    model_path = Path(args.model_path) if not isinstance(args.model_path, Path) else args.model_path
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(payload, model_path)
+    print(f"[+] Saved model to {model_path}", flush=True)
+    
+    # Print summary
+    print(f"\n[+] Training data summary:")
+    avg_pressures = [r["fields"]["average_pressure"] for r in records if "average_pressure" in r["fields"]]
+    if avg_pressures:
+        print(f"    Average pressure range: {min(avg_pressures)} - {max(avg_pressures)}")
+        print(f"    Average pressure mean: {np.mean(avg_pressures):.2f}")
+    print(f"    Training score range: {np.min(scores):.2f} - {np.max(scores):.2f}")
+    print(f"    Training score mean: {np.mean(scores):.2f}")
+    
+    return 0
+
+
 def train_from_jsonl(args: argparse.Namespace) -> int:
     if not args.jsonl_path:
         raise ValueError("--jsonl-path required for JSONL training")
@@ -405,8 +519,13 @@ def infer_from_influx(args: argparse.Namespace) -> int:
 def main() -> int:
     args = parse_args()
     if args.command == "train":
-        if args.jsonl_path:
+        # Train from JSONL file if explicitly provided (not the default "./")
+        if args.jsonl_path and args.jsonl_path != Path("."):
             return train_from_jsonl(args)
+        # Train from historian status if INFLUX_URL is empty or explicitly set
+        influx_url = os.environ.get("INFLUX_URL", "").strip()
+        if not influx_url:
+            return train_from_historian_status(args)
         return train_from_influx(args)
     if args.command == "infer":
         return infer_from_influx(args)

@@ -96,10 +96,12 @@ services:
     environment:
       SIEM_PIPELINE_URL: "${SIEM_PIPELINE_URL:-http://host.docker.internal:8000/dashboard/siem/pipeline/ingest/}"
       SIEM_INGEST_TOKEN: "${SIEM_INGEST_TOKEN:-iaea-demo-siem-token}"
-      INFLUX_URL: "${IDS_PROCESS_INFLUX_URL:-http://historian-db:8086}"
+      IDS_PROCESS_SOURCE: "${IDS_PROCESS_SOURCE:-auto}"
+      INFLUX_URL: "${IDS_PROCESS_INFLUX_URL:-}"
       INFLUX_TOKEN: "${IDS_PROCESS_INFLUX_TOKEN:-iaea-historian-token}"
       INFLUX_ORG: "${IDS_PROCESS_INFLUX_ORG:-iaea}"
       INFLUX_BUCKET: "${IDS_PROCESS_INFLUX_BUCKET:-iaea_rcs}"
+      IDS_PROCESS_HISTORIAN_STATUS_URL: "${IDS_PROCESS_HISTORIAN_STATUS_URL:-http://historian:4840/}"
       IDS_PROCESS_PROFILE: "${IDS_PROCESS_PROFILE:-main}"
       IDS_PROCESS_MEASUREMENT: "${IDS_PROCESS_MEASUREMENT:-rcs_metrics}"
       IDS_PROCESS_TAG_KEYS: "${IDS_PROCESS_TAG_KEYS:-average_pressure}"
@@ -109,7 +111,6 @@ services:
       IDS_PROCESS_WATCH_RANGE_START: "${IDS_PROCESS_WATCH_RANGE_START:--5s}"
       IDS_PROCESS_WATCH_ANOMALY_ONLY: "${IDS_PROCESS_WATCH_ANOMALY_ONLY:-1}"
     depends_on:
-      - historian-db
       - historian
     volumes:
       - ./services/ids-process:/app
@@ -289,13 +290,11 @@ services:
       # Historian sits on Layer 2, so it follows the same route model as the
       # HMI and engineering workstation.
       STATIC_ROUTES: "10.3.50.0/24 via 10.2.50.254;10.4.50.0/24 via 10.2.50.254;10.1.13.0/24 via 10.2.50.253;10.2.23.0/24 via 10.2.50.253"
-      INFLUX_URL: "http://historian-db:8086"
+      INFLUX_URL: "${HISTORIAN_INFLUX_URL:-}"
       INFLUX_TOKEN: iaea-historian-token
       INFLUX_ORG: iaea
       INFLUX_BUCKET: iaea_rcs
       HISTORIAN_POLL_INTERVAL: "0.5"
-    depends_on:
-      - historian-db
     networks:
       l2_net:
         ipv4_address: 10.2.50.31

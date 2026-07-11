@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+"""Legacy pre-hybrid topology verifier retained for reference.
+
+For the current validated demo path, use `verify_hybrid_runtime.py` instead.
+"""
+
 import ipaddress
 import json
 import subprocess

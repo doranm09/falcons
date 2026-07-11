@@ -40,6 +40,22 @@ observed_connections_last_flush = time.monotonic()
 REQ_TIMEOUT = (3.0, 10.0)  # (connect, read) seconds
 OBSERVED_CONNECTION_BATCH_SIZE = max(1, int(os.environ.get("HOST_AGENT_OBSERVED_BATCH_SIZE", "25")))
 OBSERVED_CONNECTION_FLUSH_SEC = max(1.0, float(os.environ.get("HOST_AGENT_OBSERVED_FLUSH_SEC", "5")))
+NETWORK_METADATA_MAX_BODY_BYTES = max(
+    64 * 1024,
+    int(os.environ.get("HOST_AGENT_NETWORK_METADATA_MAX_BODY_BYTES", str(1024 * 1024))),
+)
+NETWORK_METADATA_MAX_CONNECTIONS_PER_POST = max(
+    1,
+    int(os.environ.get("HOST_AGENT_NETWORK_METADATA_MAX_CONNECTIONS_PER_POST", "250")),
+)
+NETWORK_METADATA_MAX_CMDLINE_CHARS = max(
+    0,
+    int(os.environ.get("HOST_AGENT_NETWORK_METADATA_MAX_CMDLINE_CHARS", "256")),
+)
+NETWORK_METADATA_MAX_ACTIVE_PORTS = max(
+    1,
+    int(os.environ.get("HOST_AGENT_NETWORK_METADATA_MAX_ACTIVE_PORTS", "256")),
+)
 
 # Agent version information
 AGENT_VERSION = "1.0.0"
@@ -121,6 +137,128 @@ def http_post_json(url, payload, headers=None):
     except Exception as e:
         print(f"[http] POST {url} failed: {e}")
         return None
+
+
+def _truncate_text(value, limit):
+    text = str(value or "")
+    if limit <= 0 or len(text) <= limit:
+        return text
+    if limit <= 3:
+        return text[:limit]
+    return text[: limit - 3] + "..."
+
+
+def _json_size_bytes(payload):
+    return len(json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+
+
+def _sanitize_network_connection(connection):
+    if not isinstance(connection, dict):
+        return connection
+    sanitized = dict(connection)
+    process = sanitized.get("process")
+    if isinstance(process, dict):
+        sanitized_process = dict(process)
+        sanitized_process["cmdline"] = _truncate_text(
+            sanitized_process.get("cmdline"),
+            NETWORK_METADATA_MAX_CMDLINE_CHARS,
+        )
+        sanitized["process"] = sanitized_process
+    return sanitized
+
+
+def _iter_network_metadata_payloads(
+    *,
+    agent_id,
+    timestamp_text,
+    network_connections,
+    interface_statistics,
+    active_ports,
+    interfaces,
+):
+    base_payload = {
+        "agent_id": agent_id,
+        "timestamp": timestamp_text,
+        "interface_statistics": list(interface_statistics or []),
+        "active_ports": list(active_ports or [])[:NETWORK_METADATA_MAX_ACTIVE_PORTS],
+        "interfaces": list(interfaces or []),
+    }
+
+    while base_payload["interface_statistics"] and _json_size_bytes({**base_payload, "network_connections": []}) > NETWORK_METADATA_MAX_BODY_BYTES:
+        if len(base_payload["interface_statistics"]) <= 1:
+            base_payload["interface_statistics"] = []
+        else:
+            base_payload["interface_statistics"] = base_payload["interface_statistics"][: len(base_payload["interface_statistics"]) // 2]
+    while base_payload["active_ports"] and _json_size_bytes({**base_payload, "network_connections": []}) > NETWORK_METADATA_MAX_BODY_BYTES:
+        if len(base_payload["active_ports"]) <= 1:
+            base_payload["active_ports"] = []
+        else:
+            base_payload["active_ports"] = base_payload["active_ports"][: len(base_payload["active_ports"]) // 2]
+
+    sanitized_connections = [
+        _sanitize_network_connection(connection)
+        for connection in (network_connections or [])
+        if isinstance(connection, dict)
+    ]
+    if not sanitized_connections:
+        yield {**base_payload, "network_connections": []}
+        return
+
+    chunk = []
+    for connection in sanitized_connections:
+        candidate_chunk = chunk + [connection]
+        candidate_payload = {**base_payload, "network_connections": candidate_chunk}
+        if chunk and (
+            len(candidate_chunk) > NETWORK_METADATA_MAX_CONNECTIONS_PER_POST
+            or _json_size_bytes(candidate_payload) > NETWORK_METADATA_MAX_BODY_BYTES
+        ):
+            yield {**base_payload, "network_connections": chunk}
+            chunk = [connection]
+        else:
+            chunk = candidate_chunk
+
+    if chunk:
+        yield {**base_payload, "network_connections": chunk}
+
+
+def _post_network_metadata(
+    *,
+    network_connections,
+    interface_statistics,
+    active_ports,
+    interfaces,
+    log_label,
+):
+    timestamp_text = datetime.now().isoformat()
+    payloads = list(
+        _iter_network_metadata_payloads(
+            agent_id=AGENT_ID,
+            timestamp_text=timestamp_text,
+            network_connections=network_connections,
+            interface_statistics=interface_statistics,
+            active_ports=active_ports,
+            interfaces=interfaces,
+        )
+    )
+    url = f"{SERVER_URL.rstrip('/')}/agent/network_metadata/"
+    total_connections = len(network_connections or [])
+
+    for index, payload in enumerate(payloads, start=1):
+        res = http_post_json(url, payload, headers=agent_auth_headers())
+        if res is None:
+            print(f"[{log_label}] failed to send chunk={index}/{len(payloads)}")
+            return False
+        if res.status_code >= 400:
+            print(
+                f"[{log_label}] status={res.status_code} chunk={index}/{len(payloads)} "
+                f"connections={len(payload.get('network_connections') or [])}"
+            )
+            return False
+        print(
+            f"[{log_label}] status={res.status_code} chunk={index}/{len(payloads)} "
+            f"connections={len(payload.get('network_connections') or [])} total_connections={total_connections}"
+        )
+    return True
 
 
 def http_get_json(url, headers=None):
@@ -487,24 +625,13 @@ def send_siem_events(events):
 def send_network_metadata():
     """Send detailed network connection and interface metadata to server"""
     try:
-        # Collect comprehensive network data
-        network_data = {
-            "agent_id": AGENT_ID,
-            "timestamp": datetime.now().isoformat(),
-            "network_connections": get_network_connections(),
-            "interface_statistics": get_interface_statistics(),
-            "active_ports": get_active_ports(),
-            "interfaces": get_interfaces()
-        }
-
-        url = f"{SERVER_URL.rstrip('/')}/agent/network_metadata/"
-        res = http_post_json(url, network_data, headers=agent_auth_headers())
-        if res:
-            print(f"[network_metadata] status={res.status_code}")
-            return True
-        else:
-            print("[network_metadata] failed to send")
-            return False
+        return _post_network_metadata(
+            network_connections=get_network_connections(),
+            interface_statistics=get_interface_statistics(),
+            active_ports=get_active_ports(),
+            interfaces=get_interfaces(),
+            log_label="network_metadata",
+        )
     except Exception as e:
         print(f"[network_metadata] error: {e}")
         return False
@@ -573,18 +700,13 @@ def flush_observed_network_metadata(force=False):
         observed_connections_last_flush = now_monotonic
 
     try:
-        network_data = {
-            "agent_id": AGENT_ID,
-            "timestamp": datetime.now().isoformat(),
-            "network_connections": snapshot,
-            "interface_statistics": [],
-            "active_ports": [],
-            "interfaces": get_interfaces(),
-        }
-        url = f"{SERVER_URL.rstrip('/')}/agent/network_metadata/"
-        res = http_post_json(url, network_data, headers=agent_auth_headers())
-        if res:
-            print(f"[passive_network_metadata] status={res.status_code} connections={len(snapshot)}")
+        if _post_network_metadata(
+            network_connections=snapshot,
+            interface_statistics=[],
+            active_ports=[],
+            interfaces=get_interfaces(),
+            log_label="passive_network_metadata",
+        ):
             return True
         print("[passive_network_metadata] failed to send")
     except Exception as e:
@@ -946,8 +1068,11 @@ def run_dijkstra_interactive():
 
 # ---- Main loop ----
 def main_loop():
+    initial_network_metadata_sent = False
     while True:
         send_heartbeat()
+        if not initial_network_metadata_sent and send_network_metadata():
+            initial_network_metadata_sent = True
         poll_for_commands()
         time.sleep(30)
 

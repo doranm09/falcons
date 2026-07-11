@@ -31,7 +31,7 @@ def get_namespace_index(client, namespace_uri):
 
 def main():
     parser = argparse.ArgumentParser(description="Read one or more OPC UA nodes from a PLC bridge")
-    parser.add_argument("endpoint", help="OPC UA endpoint, for example opc.tcp://10.1.13.10:4840/main")
+    parser.add_argument("endpoint", help="OPC UA endpoint, for example opc.tcp://10.1.1.14:4840/main")
     parser.add_argument(
         "--namespace",
         required=True,

@@ -282,6 +282,22 @@ Kali attacker service is included by default in the testbed overlay:
 docker compose -f docker-compose.yml -f docker-compose.testbed.yml up -d --build
 ```
 
+## IAEA Demo Path
+
+For the current IAEA cyber village demo path, use the validated hybrid compose
+and runbook instead of older overlay notes:
+
+- `testbed/iaea_rcs_demo/docker-compose-hybrid.yml`
+- `docs/iaea_demo_video_runbook.md`
+- `testbed/iaea_rcs_demo/README.md`
+
+Important:
+
+- `database`, `historian-db`, `ignition`, and `l2-jump` are not part of the
+  current validated hybrid demo compose.
+- `pt-457` and `pt-458` remain analog Level 0 signals, not standalone IP nodes
+  on the current dashboard topology.
+
 ## Optional Host Agent
 
 To run the host agent outside the containers:
@@ -329,6 +345,7 @@ export LOCAL_GID=$(id -g)
 ## Related Docs
 
 - `docs/security_onion_soc_architecture.md`
+- `docs/iaea_demo_video_runbook.md`
 - `docs/siem_feature_overview.md`
 - `docs/event_schema.md`
 - `docs/opensearch.md`

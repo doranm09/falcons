@@ -1,3 +1,6 @@
+# Legacy pre-hybrid compose retained for reference.
+# The current validated demo path uses docker-compose-hybrid.yml.
+
 x-endpoint: &endpoint
   build:
     context: ../..

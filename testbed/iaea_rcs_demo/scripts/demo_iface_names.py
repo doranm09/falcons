@@ -23,39 +23,37 @@ NETWORKS = (
     NetworkInfo("iaea_rcs_demo_l4_net", "br_rcs_l4", "l4", ipaddress.ip_network("10.4.50.0/24")),
     NetworkInfo("iaea_rcs_demo_l3_net", "br_rcs_l3", "l3", ipaddress.ip_network("10.3.50.0/24")),
     NetworkInfo("iaea_rcs_demo_l2_net", "br_rcs_l2", "l2", ipaddress.ip_network("10.2.50.0/24")),
-    NetworkInfo("iaea_rcs_demo_l1_main", "br_rcs_l1m", "l1m", ipaddress.ip_network("10.1.13.0/24")),
-    NetworkInfo("iaea_rcs_demo_l1_backup", "br_rcs_l1b", "l1b", ipaddress.ip_network("10.2.23.0/24")),
-    NetworkInfo("iaea_rcs_demo_p13_net", "br_rcs_p13", "p13", ipaddress.ip_network("10.3.13.0/24")),
-    NetworkInfo("iaea_rcs_demo_p23_net", "br_rcs_p23", "p23", ipaddress.ip_network("10.4.23.0/24")),
-    NetworkInfo("iaea_rcs_demo_mgmt13_net", "br_rcs_m13", "m13", ipaddress.ip_network("10.0.13.0/24")),
-    NetworkInfo("iaea_rcs_demo_mgmt23_net", "br_rcs_m23", "m23", ipaddress.ip_network("10.0.23.0/24")),
+    NetworkInfo("iaea_rcs_demo_net_10_1_1", "net_10_1_1", "l1a", ipaddress.ip_network("10.1.1.0/24")),
+    NetworkInfo("iaea_rcs_demo_net_10_1_2", "net_10_1_2", "l1b", ipaddress.ip_network("10.1.2.0/24")),
+    NetworkInfo("iaea_rcs_demo_oob_mgmt", "br_rcs_oob", "oob", ipaddress.ip_network("172.31.250.0/24")),
 )
 
 NETWORK_BY_CODE = {network.code: network for network in NETWORKS}
 NETWORK_BY_SUBNET = {network.subnet: network for network in NETWORKS}
 
 SERVICE_CODES = {
-    "database": "db",
     "metasploit": "msf",
+    "postgres": "pg",
     "historian": "hist",
     "firewall-2": "fw2",
     "firewall-1": "fw1",
     "firewall-0": "fw0",
-    "firewall-main-cell": "fwmc",
-    "firewall-backup-cell": "fwbc",
     "hmi": "hmi",
     "engineer-ws": "eng",
-    "l2-jump": "jump",
     "plc-main": "plcm",
     "plc-backup": "plcb",
+    "channel-a": "cha",
+    "channel-b": "chb",
+    "channel-c": "chc",
+    "channel-d": "chd",
     "pt-455": "pt455",
     "pt-456": "pt456",
-    "pt-457": "pt457",
-    "pt-458": "pt458",
-    "vc-hv455a": "hv455a",
-    "vc-pv455b": "pv455b",
-    "vc-pv455c": "pv455c",
-    "heat-ctrl": "heat",
+    "span-l1a": "sp1a",
+    "span-l1b": "sp1b",
+    "suricata-sensor": "suri",
+    "zeek-sensor": "zeek",
+    "siem-forwarder": "siemf",
+    "kali-attacker": "kali",
 }
 
 LINK_RE = re.compile(r"^(?P<index>\d+): (?P<name>[^:@]+)(?:@[^:]+)?:")

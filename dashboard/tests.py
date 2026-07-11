@@ -1371,6 +1371,27 @@ class NodeViewTests(TestCase):
         self.assertContains(response, "CVE-2026-NODE")
         self.assertContains(response, "Node detail vulnerability")
 
+    def test_node_detail_page_uses_topology_role_label_and_agent_heartbeat_fallback(self):
+        agent = AgentStatus.objects.create(
+            agent_id="postgres",
+            hostname="postgres",
+            ip_address="10.4.50.20",
+            status="online",
+        )
+        self.node.name = "postgres"
+        self.node.hostname = "postgres"
+        self.node.agent_id = agent.agent_id
+        self.node.ip_address = "10.4.50.20"
+        self.node.last_heartbeat = None
+        self.node.save(update_fields=["name", "hostname", "agent_id", "ip_address", "last_heartbeat"])
+
+        response = self.client.get(reverse('dashboard:node_detail_page', args=[self.node.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Database")
+        self.assertContains(response, agent.last_heartbeat.strftime("%Y-%m-%d %H:%M:%S"))
+        self.assertNotContains(response, "Last Heartbeat</div>\n              <div class=\"fw-semibold node-detail-copy\">\n                Never")
+
     def test_node_detail_page_matches_openvas_findings_by_interface_ip(self):
         NodeInterface.objects.create(
             node=self.node,
@@ -1940,6 +1961,134 @@ class AgentDetailsEnvironmentSummaryTests(TestCase):
         observed_peer_labels = {peer["label"] for peer in response.context["observed_peers"]}
         self.assertIn("historian", observed_peer_labels)
         self.assertIn("plc-main", observed_peer_labels)
+
+    def test_agent_details_falls_back_to_modeled_peers_without_live_connections(self):
+        NetworkConnection.objects.filter(agent=self.agent).delete()
+        NetworkMetadata.objects.filter(agent=self.agent).delete()
+
+        response = self.client.get(reverse("dashboard:agent_details", args=[self.agent.agent_id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Validated topology baseline")
+        observed_peers = response.context["observed_peers"]
+        observed_peer_labels = {peer["label"] for peer in observed_peers}
+        self.assertIn("historian", observed_peer_labels)
+        self.assertIn("plc-main", observed_peer_labels)
+        self.assertTrue(all(peer["modeled"] for peer in observed_peers))
+
+    def test_agent_details_matches_expected_paths_when_ports_are_stored_separately(self):
+        NetworkConnection.objects.filter(agent=self.agent).delete()
+        metadata = NetworkMetadata.objects.create(
+            agent=self.agent,
+            total_connections=1,
+            total_interfaces=1,
+            active_ports=[{"port": 44818, "protocol": "tcp", "state": "LISTEN"}],
+            interfaces=[{"name": "eth0", "ip": "10.2.50.20", "mac": "00:11:22:33:44:55"}],
+        )
+        NetworkConnection.objects.create(
+            metadata=metadata,
+            agent=self.agent,
+            protocol="TCP",
+            local_address="10.2.50.20",
+            local_port=51000,
+            remote_address="10.3.50.10",
+            remote_port=443,
+            status="ESTABLISHED",
+            process_name="engineering-suite",
+        )
+
+        response = self.client.get(reverse("dashboard:agent_details", args=[self.agent.agent_id]))
+
+        self.assertEqual(response.status_code, 200)
+        expected_paths = response.context["environment_expected_paths"]
+        self.assertTrue(any(path["peer_label"] == "historian" and path["observed"] for path in expected_paths))
+        observed_peer = next(peer for peer in response.context["observed_peers"] if peer["label"] == "historian")
+        self.assertEqual(observed_peer["service_summary"], "443/TCP")
+        self.assertTrue(observed_peer["expected"])
+
+    def test_agent_details_normalizes_host_agent_port_rows(self):
+        self.agent.active_ports = [
+            {
+                "id": "0.0.0.0:443",
+                "Protocol": "TCP",
+                "status": "LISTEN",
+                "local_address": "0.0.0.0:443",
+            },
+            {
+                "id": ":::5900",
+                "Protocol": "TCP",
+                "status": "LISTEN",
+                "local_address": ":::5900",
+            },
+        ]
+        self.agent.save(update_fields=["active_ports"])
+
+        response = self.client.get(reverse("dashboard:agent_details", args=[self.agent.agent_id]))
+
+        self.assertEqual(response.status_code, 200)
+        listening_ports = response.context["listening_ports"]
+        self.assertTrue(any(port["port"] == "443" for port in listening_ports))
+        self.assertTrue(any(port["port"] == "5900" for port in listening_ports))
+
+
+class HmiAgentDetailsEnvironmentSummaryTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.agent = AgentStatus.objects.create(
+            agent_id="hmi-agent-001",
+            hostname="hmi",
+            ip_address="10.2.50.10",
+            status="online",
+            interfaces=[
+                {"name": "eth0", "ip": "10.2.50.10", "mac": "00:11:22:33:44:66"},
+            ],
+            active_ports=[
+                {"port": 80, "protocol": "tcp", "state": "LISTEN"},
+                {"port": 443, "protocol": "tcp", "state": "LISTEN"},
+            ],
+        )
+        self.node = Node.objects.create(
+            agent_id=self.agent.agent_id,
+            hostname="hmi",
+            name="hmi",
+            ip_address="10.2.50.10",
+            os_info="Debian 12",
+        )
+        metadata = NetworkMetadata.objects.create(
+            agent=self.agent,
+            total_connections=1,
+            total_interfaces=1,
+            active_ports=[
+                {"port": 80, "protocol": "tcp", "state": "LISTEN"},
+                {"port": 443, "protocol": "tcp", "state": "LISTEN"},
+            ],
+            interfaces=[{"name": "eth0", "ip": "10.2.50.10", "mac": "00:11:22:33:44:66"}],
+        )
+        NetworkConnection.objects.create(
+            metadata=metadata,
+            agent=self.agent,
+            protocol="TCP",
+            local_address="10.2.50.10:51000",
+            local_port=51000,
+            remote_address="10.1.1.14:4840",
+            remote_port=4840,
+            status="ESTABLISHED",
+            process_name="python",
+        )
+
+    def test_agent_details_matches_hmi_opc_validated_paths(self):
+        response = self.client.get(reverse("dashboard:agent_details", args=[self.agent.agent_id]))
+
+        self.assertEqual(response.status_code, 200)
+        expected_paths = response.context["environment_expected_paths"]
+        plc_paths = [path for path in expected_paths if path["peer_label"] in {"plc-main", "plc-backup"}]
+        self.assertTrue(plc_paths)
+        self.assertTrue(all(path["ports"] == "4840" for path in plc_paths))
+        self.assertTrue(any(path["peer_label"] == "plc-main" and path["observed"] for path in expected_paths))
+
+        observed_peer = next(peer for peer in response.context["observed_peers"] if peer["label"] == "plc-main")
+        self.assertEqual(observed_peer["service_summary"], "4840/TCP")
+        self.assertTrue(observed_peer["expected"])
 
 
 class ShortestPathsTests(TestCase):
@@ -2532,6 +2681,64 @@ class AgentNetworkMetadataTests(TestCase):
         self.assertEqual(plc_main['id'], 'static:plc-main')
         self.assertEqual(plc_main['ip_addresses'], ['10.1.1.14', '10.1.2.14'])
 
+    def test_agent_network_metadata_accepts_connections_without_process_block(self):
+        metadata_data = {
+            'agent_id': self.agent.agent_id,
+            'network_connections': [
+                {
+                    'protocol': 'TCP',
+                    'local_address': '192.168.1.100:41070',
+                    'remote_address': '10.3.50.10:443',
+                    'status': 'TIME_WAIT',
+                }
+            ],
+            'interface_statistics': [],
+            'active_ports': [],
+            'interfaces': [{'name': 'eth0', 'ip': '192.168.1.100', 'mac': '00:11:22:33:44:55'}],
+        }
+
+        response = self.client.post(
+            reverse('dashboard:agent_network_metadata'),
+            json.dumps(metadata_data),
+            content_type='application/json',
+            **self.agent_headers
+        )
+
+        self.assertEqual(response.status_code, 200)
+        connection = NetworkConnection.objects.latest('id')
+        self.assertEqual(connection.process_name, '')
+        self.assertEqual(connection.process_username, '')
+
+    @override_settings(AGENT_NETWORK_METADATA_MAX_BODY_BYTES=128, DATA_UPLOAD_MAX_MEMORY_SIZE=128)
+    def test_agent_network_metadata_rejects_oversized_request(self):
+        metadata_data = {
+            'agent_id': self.agent.agent_id,
+            'network_connections': [
+                {
+                    'protocol': 'TCP',
+                    'local_address': '192.168.1.100:8080',
+                    'remote_address': '10.3.50.10:443',
+                    'status': 'ESTABLISHED',
+                    'process': {'name': 'curl', 'pid': 4321, 'username': 'demo', 'cmdline': 'x' * 512},
+                }
+            ],
+            'interface_statistics': [],
+            'active_ports': [],
+            'interfaces': [{'name': 'eth0', 'ip': '192.168.1.100', 'mac': '00:11:22:33:44:55'}],
+        }
+
+        response = self.client.post(
+            reverse('dashboard:agent_network_metadata'),
+            json.dumps(metadata_data),
+            content_type='application/json',
+            **self.agent_headers
+        )
+
+        self.assertEqual(response.status_code, 413)
+        data = response.json()
+        self.assertEqual(data['error'], 'Request body too large')
+        self.assertEqual(data['limit_bytes'], 128)
+
 
 class RiskAssessmentRepoIntegrationTests(TestCase):
     def setUp(self):
@@ -2679,6 +2886,9 @@ class RiskAssessmentRepoIntegrationTests(TestCase):
         self.assertContains(response, "risk-ics-summary-status")
         self.assertContains(response, "risk-system-layout")
         self.assertContains(response, "risk-system-fullscreen")
+        self.assertContains(response, "risk-bayesian-layout")
+        self.assertContains(response, "risk-bayesian-label-mode")
+        self.assertContains(response, "risk-bayesian-fullscreen")
         self.assertContains(response, "Upload Repo Model")
         self.assertContains(response, "risk-prediction-update-payload")
         self.assertContains(response, "Available Module Nodes")
@@ -2738,6 +2948,33 @@ class RiskAssessmentRepoIntegrationTests(TestCase):
         self.assertTrue(model_payload["found"])
         self.assertEqual(model_payload["source"], "db")
         self.assertIn("digital", model_payload["data"])
+
+    def test_risk_local_model_payload_auto_prefers_integrated_repo_model(self):
+        from . import views as dashboard_views
+
+        temp_output_dir = Path(tempfile.mkdtemp(prefix="risk_local_model_auto_"))
+        self.addCleanup(lambda: shutil.rmtree(temp_output_dir, ignore_errors=True))
+        (temp_output_dir / "sim_system.json").write_text(
+            json.dumps(
+                {
+                    "version": "1.0",
+                    "digital": {"temp-only-node": {"type": "PLC", "source": {}, "target": {}}},
+                    "physical": {},
+                    "flow": {},
+                    "function": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with self._settings_override(), patch("dashboard.views._pid_drawio_active_output_dir", return_value=temp_output_dir):
+            payload, model_path = dashboard_views._risk_local_model_payload_for_source("auto")
+
+        self.assertIsNotNone(payload)
+        self.assertIsNotNone(model_path)
+        self.assertTrue(str(model_path).endswith("upload/sim_system.json"))
+        self.assertIn("PLC-Main", payload["digital"])
+        self.assertNotIn("temp-only-node", payload["digital"])
 
     def test_risk_assessment_ics_bayesian_graph_and_detail_apis_return_repo_outputs(self):
         with self._settings_override():
@@ -2816,6 +3053,23 @@ class RiskAssessmentRepoIntegrationTests(TestCase):
 class RiskAssessmentPredictionPayloadTests(TestCase):
     def setUp(self):
         self.client = Client()
+
+    @patch("dashboard.views._risk_raw_call")
+    def test_risk_upload_model_payload_uses_long_timeout(self, mock_raw_call):
+        from . import views as dashboard_views
+
+        response = MagicMock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {"status": "ok"}
+        mock_raw_call.return_value = response
+
+        payload = dashboard_views._risk_upload_model_payload({"version": "1.0"})
+
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(
+            mock_raw_call.call_args.kwargs["timeout"],
+            dashboard_views.RISK_ASSESSMENT_LONG_TIMEOUT,
+        )
 
     @patch("dashboard.views._risk_post_cyberpen")
     def test_probability_api_accepts_findings_payload(self, mock_post_cyberpen):
@@ -3096,6 +3350,69 @@ class RiskAssessmentPredictionPayloadTests(TestCase):
         self.assertEqual(forwarded["findings"][0]["asset"], "plc-main")
         self.assertEqual(forwarded["findings"][0]["cve"], "CVE-TEST-DOS")
         self.assertEqual(forwarded["findings"][0]["bucket_hint"], "vul_tech3")
+
+    @patch("dashboard.views._risk_get_probability")
+    @patch("dashboard.views._risk_post_mutation")
+    @patch("dashboard.views._risk_raw_call")
+    def test_probability_api_falls_back_when_service_lacks_post_cyberpen(
+        self,
+        mock_raw_call,
+        mock_post_mutation,
+        mock_get_probability,
+    ):
+        response_404 = MagicMock()
+        response_404.status_code = 404
+        response_404.json.return_value = {"detail": "Not Found"}
+        response_404.raise_for_status.side_effect = requests.HTTPError("404 Not Found")
+        mock_raw_call.return_value = response_404
+        mock_post_mutation.return_value = {
+            "status": "ok",
+            "updated_nodes": ["plc-main"],
+            "message": "Vulnerabilities applied.",
+        }
+        mock_get_probability.return_value = {
+            "status": "ok",
+            "results": {"0": {"plc-main": {"normal": 0.7, "compromised": 0.3}}},
+        }
+
+        response = self.client.post(
+            reverse("dashboard:risk_assessment_probability"),
+            data=json.dumps(
+                {
+                    "T": 4,
+                    "nodes": ["plc-main"],
+                    "returnAll": True,
+                    "findings": [
+                        {
+                            "asset": "plc-main",
+                            "cve": "CVE-TEST-0001",
+                            "epss": 0.42,
+                        }
+                    ],
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["updated_nodes"], ["plc-main"])
+        self.assertEqual(payload["message"], "Vulnerabilities applied.")
+        self.assertEqual(
+            payload["request"]["compatibility_mode"],
+            "post_vulnerability+get_probability",
+        )
+        self.assertTrue(
+            any("does not expose /post_cyberpen" in warning for warning in payload["warnings"])
+        )
+
+        mock_post_mutation.assert_called_once()
+        self.assertEqual(mock_post_mutation.call_args.args[0], "/post_vulnerability")
+        forwarded_mutation = mock_post_mutation.call_args.args[1]
+        self.assertEqual(forwarded_mutation["T"], 4)
+        self.assertEqual(forwarded_mutation["nodes"]["plc-main"]["CVE-TEST-0001"]["epss"], 0.42)
+
+        mock_get_probability.assert_called_once_with(t_value=4, nodes=["plc-main"], return_all=True)
 
 
 class AgentVersionTests(TestCase):

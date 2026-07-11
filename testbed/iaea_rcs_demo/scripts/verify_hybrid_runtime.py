@@ -67,8 +67,8 @@ LAYER_TRAFFIC_PATHS = [
     ("L2", "engineer-ws", "10.3.50.10", 4840, "Engineering workstation to historian OPC/status"),
     ("L2", "engineer-ws", "10.1.1.14", 44818, "Engineering workstation to PLC main compat listener"),
     ("L2", "engineer-ws", "10.1.2.15", 44818, "Engineering workstation to PLC backup compat listener"),
-    ("L2", "hmi", "10.1.1.14", 502, "HMI to PLC main Modbus"),
-    ("L2", "hmi", "10.1.2.15", 502, "HMI to PLC backup Modbus"),
+    ("L2", "hmi", "10.1.1.14", 4840, "HMI to PLC main OPC"),
+    ("L2", "hmi", "10.1.2.15", 4840, "HMI to PLC backup OPC"),
 ]
 
 PLC_CHANNEL_PATHS = [
@@ -90,7 +90,7 @@ POLICY_CHECKS = [
     ("allow", "metasploit", "10.3.50.10", 4840, "L4 to historian north-south path"),
     ("allow", "hmi", "10.3.50.10", 443, "L2 HMI to historian status"),
     ("allow", "engineer-ws", "10.3.50.10", 4840, "L2 engineering to historian OPC/status"),
-    ("allow", "hmi", "10.1.1.14", 502, "L2 to PLC main Modbus"),
+    ("allow", "hmi", "10.1.1.14", 4840, "L2 to PLC main OPC"),
     ("allow", "engineer-ws", "10.1.2.15", 44818, "L2 to PLC backup compat listener"),
     ("allow", "historian", "10.4.50.20", 5432, "historian to postgres"),
     ("blocked", "metasploit", "10.2.50.10", 443, "L4 blocked from HMI"),

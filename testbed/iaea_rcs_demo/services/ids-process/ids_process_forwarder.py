@@ -221,7 +221,7 @@ def main() -> int:
         _env_bool("IDS_PROCESS_FORWARD_ANOMALY_ONLY", True),
     )
 
-    influx_url = os.environ.get("INFLUX_URL", "http://historian-db:8086")
+    influx_url = os.environ.get("INFLUX_URL", "")
     historian_status_url = os.environ.get("IDS_PROCESS_HISTORIAN_STATUS_URL", DEFAULT_HISTORIAN_STATUS_URL)
     influx_token = os.environ.get("INFLUX_TOKEN", "iaea-historian-token")
     influx_org = os.environ.get("INFLUX_ORG", "iaea")

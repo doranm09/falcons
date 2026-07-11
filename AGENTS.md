@@ -148,8 +148,8 @@ Successful path checks:
 - `engineer-ws -> historian:4840`
 - `engineer-ws -> plc-main:44818`
 - `engineer-ws -> plc-backup:44818`
-- `hmi -> plc-main:502`
-- `hmi -> plc-backup:502`
+- `hmi -> plc-main:4840`
+- `hmi -> plc-backup:4840`
 - `plc-main -> channel-a/b/c/d:502`
 - `channel-a -> pt-455:502`
 - `channel-b -> pt-456:502`
@@ -600,6 +600,95 @@ New passing behaviors covered:
 - static IAEA logical identities are recovered from flow evidence alone
 - metadata ingestion refreshes agent and node interface inventory for topology rendering
 - a metadata-only dual-homed PLC identity resolves as one logical Purdue node
+
+## Agent network metadata payload guard
+
+Date: 2026-04-29
+Working area: `cyber_pen_test/settings.py`, `cyber_pen_test/test_settings.py`, `dashboard/views.py`, `dashboard/tests.py`, `host_agent/agent.py`
+
+### Implemented
+
+1. Django request-size guard for `/agent/network_metadata/`
+   - new setting:
+     - `AGENT_NETWORK_METADATA_MAX_BODY_BYTES`
+   - `DATA_UPLOAD_MAX_MEMORY_SIZE` now defaults high enough for expected agent metadata posts
+   - the endpoint now returns JSON `413` for oversized bodies instead of surfacing an unhandled `RequestDataTooBig` traceback
+
+2. Host agent network-metadata chunking
+   - host agent posts large `network_connections` snapshots in chunks instead of one oversized JSON body
+   - new host agent env controls:
+     - `HOST_AGENT_NETWORK_METADATA_MAX_BODY_BYTES`
+     - `HOST_AGENT_NETWORK_METADATA_MAX_CONNECTIONS_PER_POST`
+     - `HOST_AGENT_NETWORK_METADATA_MAX_CMDLINE_CHARS`
+     - `HOST_AGENT_NETWORK_METADATA_MAX_ACTIVE_PORTS`
+   - process command lines are truncated before upload to keep per-connection records bounded
+
+### Validation completed
+
+Focused Django tests passed with the project virtualenv and test settings:
+
+```bash
+cd /home/michaeldoran/git/cyber_pen_test
+PYTHONPATH=/home/michaeldoran/git/cyber_pen_test \
+/home/michaeldoran/git/cyber_pen_test/venv/bin/python \
+cyber_pen_test/manage.py test \
+  dashboard.tests.NetworkTopologyTests \
+  dashboard.tests.AgentNetworkMetadataTests \
+  --settings=cyber_pen_test.test_settings
+```
+
+Additional validation:
+
+```bash
+/home/michaeldoran/git/cyber_pen_test/venv/bin/python -m py_compile host_agent/agent.py
+```
+
+## Agent detail demo enrichment
+
+Date: 2026-04-29
+Working area: `dashboard/views.py`, `dashboard/templates/dashboard/agent_details.html`, `dashboard/tests.py`, `host_agent/agent.py`
+
+### Implemented
+
+1. Agent detail page fallback and normalization
+   - the agent detail summary now renders modeled peer baselines from the validated hybrid topology when live connection telemetry is missing
+   - host-agent style listening ports such as `0.0.0.0:443` and `:::5900` are normalized to numeric port displays on the dashboard
+   - live `NetworkConnection` rows now match expected historian / PLC paths correctly whether the port is embedded in `remote_address` or stored separately in `remote_port`
+
+2. Network metadata ingest hardening
+   - `/agent/network_metadata/` now accepts connection rows even when the process block is absent
+   - missing `process_name` / `process_username` now default to empty strings instead of raising a database `IntegrityError`
+
+3. Host agent startup behavior
+   - the persistent host-agent loop now attempts one initial `network_metadata` post after heartbeat success so fresh demo agents do not start with an empty detail view
+
+### Validation completed
+
+Focused Django tests passed with the project virtualenv and test settings:
+
+```bash
+cd /home/michaeldoran/git/cyber_pen_test
+PYTHONPATH=/home/michaeldoran/git/cyber_pen_test \
+/home/michaeldoran/git/cyber_pen_test/venv/bin/python \
+cyber_pen_test/manage.py test \
+  dashboard.tests.AgentDetailsEnvironmentSummaryTests \
+  dashboard.tests.AgentNetworkMetadataTests \
+  --settings=cyber_pen_test.test_settings
+```
+
+Live demo refresh performed:
+
+- restarted `cyber_pen_test-web-1`
+- posted a live `engineer-ws` SBOM
+- posted a live `engineer-ws` network metadata snapshot while holding historian / PLC connections open
+
+Current demo result:
+
+- `/dashboard/agent/engineer-ws/` now shows:
+  - stored SBOM inventory
+  - fresh network metadata snapshots
+  - observed peers for `historian`, `plc-main`, and `plc-backup`
+  - `3/3` expected communications observed
 
 ## L1 out-of-band management path
 

@@ -164,12 +164,14 @@ from .sbom import (
 )
 from .minimega import build_minimega_script, build_digital_twin_manifest
 from django.views.decorators.http import require_GET
+from django.core.exceptions import RequestDataTooBig
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils.timezone import now
 from django.utils import timezone
 from django.utils.timesince import timesince
 from django.template.defaultfilters import filesizeformat
 from typing import Optional
+import copy
 import json
 import math
 import shutil
@@ -298,8 +300,8 @@ RISK_HYBRID_VALIDATED_PATHS = [
     {"source": "engineer-ws", "target": "historian", "service": "HTTPS / OPC UA", "ports": "443, 4840", "layer_path": "L2 -> L3"},
     {"source": "engineer-ws", "target": "plc-main", "service": "EtherNet/IP", "ports": "44818", "layer_path": "L2 -> L1"},
     {"source": "engineer-ws", "target": "plc-backup", "service": "EtherNet/IP", "ports": "44818", "layer_path": "L2 -> L1"},
-    {"source": "hmi", "target": "plc-main", "service": "Modbus", "ports": "502", "layer_path": "L2 -> L1"},
-    {"source": "hmi", "target": "plc-backup", "service": "Modbus", "ports": "502", "layer_path": "L2 -> L1"},
+    {"source": "hmi", "target": "plc-main", "service": "OPC UA", "ports": "4840", "layer_path": "L2 -> L1"},
+    {"source": "hmi", "target": "plc-backup", "service": "OPC UA", "ports": "4840", "layer_path": "L2 -> L1"},
     {"source": "plc-main", "target": "channel-a / b / c / d", "service": "Modbus", "ports": "502", "layer_path": "L1 -> L1"},
     {"source": "channel-a", "target": "pt-455", "service": "Modbus", "ports": "502", "layer_path": "L1 -> L0"},
     {"source": "channel-b", "target": "pt-456", "service": "Modbus", "ports": "502", "layer_path": "L1 -> L0"},
@@ -366,6 +368,8 @@ def _parse_endpoint_address(value: str = "") -> tuple[str, int | None]:
     text = str(value or "").strip()
     if not text:
         return "", None
+    if text.startswith(":::") and text[3:].isdigit():
+        return "::", int(text[3:])
     if text.startswith("[") and "]:" in text:
         host, _, port_text = text[1:].partition("]:")
         try:
@@ -435,13 +439,13 @@ def _infer_topology_role(name: str = "", hostname: str = "", ip_address: str = "
         return "firewall", "Firewall", "bi-shield-lock-fill"
     if any(token in text for token in ["metasploit", "attacker", "kali", "red-team"]):
         return "offensive", "Offensive Host", "bi-bug-fill"
-    if any(token in text for token in ["database", "postgres", "db", "historian-db", "influx"]):
+    if any(token in text for token in ["database", "postgres", "db", "influx"]):
         return "database", "Database", "bi-database-fill"
     if any(token in text for token in ["historian", "opc", "collector", "server"]):
         return "server", "Server", "bi-server"
     if any(token in text for token in ["engineer", "eng-ws", "workstation", "jump", "desktop", "laptop"]):
         return "workstation", "Workstation", "bi-laptop-fill"
-    if any(token in text for token in ["hmi", "ignition", "scada", "supervisory"]):
+    if any(token in text for token in ["hmi", "scada", "supervisory"]):
         return "supervisory", "Supervisory", "bi-display-fill"
     if any(token in text for token in ["plc", "controller", "rtu", "ied", "dcs"]):
         return "controller", "Controller", "bi-cpu-fill"
@@ -469,10 +473,8 @@ def _infer_purdue_layer(name: str = "", hostname: str = "", ip_address: str = ""
         return "L3"
     if ip_text.startswith("10.2.50."):
         return "L2"
-    if any(ip_text.startswith(prefix) for prefix in ["10.1.1.", "10.1.2.", "10.1.13.", "10.2.23.", "10.0.13.", "10.0.23."]):
+    if any(ip_text.startswith(prefix) for prefix in ["10.1.1.", "10.1.2.", "172.31.250."]):
         return "L1"
-    if any(ip_text.startswith(prefix) for prefix in ["10.3.13.", "10.4.23."]):
-        return "L0"
     if any(token in text for token in ["ERP", "MES", "CORP", "ENTERPRISE", "BUSINESS", "IT", "OFFICE", "METASPLOIT", "DATABASE", "POSTGRES"]):
         return "L4"
     if any(token in text for token in ["HISTORIAN", "OPC"]):
@@ -494,12 +496,7 @@ def _topology_segment_label(ip_address: str = "") -> str:
         "10.2.50.": "Supervisory LAN",
         "10.1.1.": "Redundant Control Network",
         "10.1.2.": "Redundant Control Network",
-        "10.1.13.": "Main Control Cell",
-        "10.2.23.": "Backup Control Cell",
-        "10.3.13.": "Main Process Cell",
-        "10.4.23.": "Backup Process Cell",
-        "10.0.13.": "Main Management",
-        "10.0.23.": "Backup Management",
+        "172.31.250.": "OOB Management",
     }
     for prefix, label in segment_map.items():
         if ip_text.startswith(prefix):
@@ -664,12 +661,7 @@ def _is_iaea_testbed_active(node_candidates, agents) -> bool:
         "10.2.50.",
         "10.1.1.",
         "10.1.2.",
-        "10.1.13.",
-        "10.2.23.",
-        "10.3.13.",
-        "10.4.23.",
-        "10.0.13.",
-        "10.0.23.",
+        "172.31.250.",
     )
     for obj in list(node_candidates) + list(agents):
         ip_text = str(getattr(obj, "ip_address", "") or "").strip()
@@ -788,6 +780,10 @@ def _normalize_agent_port_rows(*port_sources) -> list[dict]:
                 continue
             raw_port = entry.get("port")
             if raw_port in (None, ""):
+                raw_port = entry.get("local_port")
+            if raw_port in (None, ""):
+                raw_port = entry.get("remote_port")
+            if raw_port in (None, ""):
                 raw_port = entry.get("id")
             protocol = str(entry.get("protocol") or entry.get("Protocol") or "").strip().upper()
             status = str(entry.get("state") or entry.get("status") or "").strip().upper()
@@ -796,6 +792,12 @@ def _normalize_agent_port_rows(*port_sources) -> list[dict]:
                 port_number = int(raw_port)
             except (TypeError, ValueError):
                 port_number = None
+            if port_number is None:
+                for field in ("local_address", "id", "remote_address"):
+                    _endpoint_host, endpoint_port = _parse_endpoint_address(entry.get(field))
+                    if endpoint_port is not None:
+                        port_number = endpoint_port
+                        break
 
             port_display = str(port_number) if port_number is not None else str(raw_port or "").strip()
             if not port_display:
@@ -923,6 +925,10 @@ def _build_agent_environment_summary_context(
 
         remote_host, remote_port = _parse_endpoint_address(getattr(conn, "remote_address", ""))
         _local_host, local_port = _parse_endpoint_address(getattr(conn, "local_address", ""))
+        if remote_port is None:
+            remote_port = getattr(conn, "remote_port", None)
+        if local_port is None:
+            local_port = getattr(conn, "local_port", None)
         if not remote_host:
             continue
         remote_host_text = str(remote_host).strip()
@@ -1015,6 +1021,37 @@ def _build_agent_environment_summary_context(
             group["expected"] = True
             break
 
+    modeled_peer_groups = {}
+    for path in expected_paths:
+        if any(path["peer_tokens"].intersection(group["identity_tokens"]) for group in peer_groups.values()):
+            continue
+        peer_override = IAEA_TOPOLOGY_BY_HOSTNAME.get(path["peer_label"].lower())
+        if not peer_override:
+            continue
+        peer_key = f"modeled:{peer_override['hostname']}"
+        group = modeled_peer_groups.setdefault(
+            peer_key,
+            {
+                "label": str(peer_override.get("label") or peer_override.get("hostname") or path["peer_label"]).strip(),
+                "ip_display": ", ".join(
+                    [str(ip).strip() for ip in peer_override.get("ip_addresses", []) if str(ip).strip()]
+                ) or "Non-IP / analog path",
+                "role_label": str(peer_override.get("role_label") or "Asset").strip(),
+                "layer_slug": str(peer_override.get("layer") or "").strip(),
+                "segment_label": str(peer_override.get("segment_label") or "").strip(),
+                "connection_count": 0,
+                "service_entries": [],
+                "last_seen": None,
+                "expected": True,
+                "modeled": True,
+            },
+        )
+        service_label = str(path.get("service") or "-").strip()
+        ports_label = str(path.get("ports") or "-").strip()
+        modeled_service = service_label if not ports_label or ports_label == "-" else f"{service_label} ({ports_label})"
+        if modeled_service not in group["service_entries"]:
+            group["service_entries"].append(modeled_service)
+
     observed_peers = []
     for group in peer_groups.values():
         top_processes = ", ".join(
@@ -1049,12 +1086,33 @@ def _build_agent_environment_summary_context(
                 "process_summary": top_processes,
                 "last_seen": group["last_seen"],
                 "expected": group["expected"],
+                "modeled": False,
+            }
+        )
+
+    for group in modeled_peer_groups.values():
+        peer_layer_meta = _topology_layer_meta(group["layer_slug"])
+        observed_peers.append(
+            {
+                "label": group["label"],
+                "ip_display": group["ip_display"],
+                "role_label": group["role_label"],
+                "layer_label": peer_layer_meta["label"],
+                "layer_accent": peer_layer_meta["accent"],
+                "segment_label": group["segment_label"],
+                "connection_count": group["connection_count"],
+                "service_summary": ", ".join(group["service_entries"]) or "-",
+                "status_summary": "Validated topology baseline",
+                "process_summary": "Modeled peer baseline",
+                "last_seen": group["last_seen"],
+                "expected": group["expected"],
+                "modeled": True,
             }
         )
 
     observed_peers.sort(
         key=lambda item: (
-            0 if item["expected"] else 1,
+            0 if item["expected"] and not item.get("modeled") else 1 if not item["expected"] else 2,
             -item["connection_count"],
             item["label"].lower(),
         )
@@ -1123,7 +1181,8 @@ def _build_agent_environment_summary_context(
     ) or "No listening ports reported"
 
     expected_observed_count = sum(1 for path in expected_paths if path["observed"])
-    mapped_peer_count = sum(1 for peer in observed_peers if peer["expected"])
+    mapped_peer_count = sum(1 for peer in observed_peers if peer["expected"] and not peer.get("modeled"))
+    modeled_peer_count = sum(1 for peer in observed_peers if peer.get("modeled"))
     unmodeled_peer_count = sum(1 for peer in observed_peers if not peer["expected"])
     critical_high_total = severity_counts["Critical"] + severity_counts["High"]
 
@@ -1178,7 +1237,11 @@ def _build_agent_environment_summary_context(
         {
             "label": "Observed Peers",
             "value": str(len(observed_peers)),
-            "note": f"{mapped_peer_count} mapped, {unmodeled_peer_count} outside model",
+            "note": (
+                f"{mapped_peer_count} live mapped, {modeled_peer_count} baseline-only"
+                if modeled_peer_count
+                else f"{mapped_peer_count} mapped, {unmodeled_peer_count} outside model"
+            ),
         },
         {
             "label": "Listening Ports",
@@ -1216,6 +1279,7 @@ def _build_agent_environment_summary_context(
             "detail": (
                 f"{len(observed_peers)} remote peers were observed across {len(recent_connections)} recent connection records. "
                 f"{established_count} were established sessions and {listening_count} were listeners."
+                f"{f' {modeled_peer_count} expected peers are shown from the validated hybrid baseline because no recent live telemetry matched them.' if modeled_peer_count else ''}"
             ),
         },
         {
@@ -1240,6 +1304,12 @@ def _build_agent_environment_summary_context(
         metadata_detail = f"Last collected {timesince(latest_metadata.timestamp)} ago"
         metadata_badge = "success"
         metadata_status = "Fresh"
+    elif modeled_peer_count:
+        metadata_detail = (
+            f"No network metadata snapshots stored yet; showing {modeled_peer_count} validated peer baselines."
+        )
+        metadata_badge = "info"
+        metadata_status = "Baseline"
 
     process_count = len(getattr(agent, "processes", None) or [])
     monitoring_coverage = [
@@ -1544,6 +1614,19 @@ def _risk_node_ids_from_payload(payload) -> list[str]:
     return [node["id"] for node in _risk_nodes_from_payload(payload)]
 
 
+def _risk_repo_model_payload_for_upload() -> tuple[dict | None, Path | None]:
+    repo_model = risk_repo_model_payload()
+    data = repo_model.get("data") if isinstance(repo_model, dict) else None
+    if not isinstance(data, dict):
+        return None, None
+    path_text = str(repo_model.get("path") or "").strip()
+    model_path = Path(path_text) if path_text else None
+    try:
+        return legacy_to_sectioned_sim_system(data), model_path
+    except Exception as exc:
+        raise RuntimeError(f"Integrated repo model is invalid: {exc}") from exc
+
+
 def _risk_local_model_payload() -> tuple[dict | None, Path | None]:
     return _risk_local_model_payload_for_source("auto")
 
@@ -1620,6 +1703,12 @@ def _risk_local_model_payload_for_source(source: str = "auto") -> tuple[dict | N
     target_path_value = getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", "")
     target_path = Path(target_path_value) if target_path_value else None
     source = str(source or "auto").strip().lower() or "auto"
+    if source in {"auto", "repo"}:
+        repo_payload, repo_model_path = _risk_repo_model_payload_for_upload()
+        if repo_payload is not None:
+            return repo_payload, repo_model_path
+        if source == "repo":
+            return None, None
     if source in {"auto", "target"}:
         sim_path = _risk_canonical_local_model_path(output_dir, target_path)
     else:
@@ -1808,7 +1897,13 @@ def _risk_console_groups() -> list[dict]:
 
 
 def _risk_upload_model_payload(payload):
-    response = _risk_raw_call(requests.post, "/upload_model", json=payload, retry=False)
+    response = _risk_raw_call(
+        requests.post,
+        "/upload_model",
+        json=payload,
+        retry=False,
+        timeout=RISK_ASSESSMENT_LONG_TIMEOUT,
+    )
     _risk_raise_for_status(response, "/upload_model")
     try:
         return response.json()
@@ -2010,6 +2105,245 @@ def _risk_post_mutation(path: str, payload: dict) -> dict:
         return {}
 
 
+def _risk_deep_merge_mapping(base: dict, patch: dict) -> dict:
+    merged = copy.deepcopy(base)
+    for key, value in patch.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _risk_deep_merge_mapping(merged[key], value)
+        else:
+            merged[key] = copy.deepcopy(value)
+    return merged
+
+
+def _risk_normalize_model_update_doc(payload: dict, *, label: str) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError(f"{label} must be an object.")
+    if is_legacy_sim_system(payload):
+        return legacy_to_sectioned_sim_system(payload)
+    if any(key in payload for key in (*SIM_SYSTEM_SECTION_KEYS, "version", "metadata")):
+        return copy.deepcopy(payload)
+    raise ValueError(
+        f"{label} must contain either legacy sim_system keys or sectioned "
+        f"{', '.join(SIM_SYSTEM_SECTION_KEYS)} keys."
+    )
+
+
+def _risk_current_service_model_payload() -> dict | None:
+    response = _risk_raw_call(requests.get, "/sim_system", retry=False)
+    if getattr(response, "status_code", None) == 404 or _risk_missing_model_response(response):
+        return None
+    _risk_raise_for_status(response, "/sim_system")
+    try:
+        payload = response.json()
+    except Exception as exc:
+        raise RuntimeError("Risk service /sim_system returned invalid JSON.") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("Risk service /sim_system must return a JSON object.")
+    return payload
+
+
+def _risk_extract_probability_value(record: dict) -> float | None:
+    for key in ("epss", "probability", "likelihood"):
+        raw_value = record.get(key)
+        try:
+            numeric = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if 0.0 <= numeric <= 1.0:
+            return numeric
+    for key in ("score", "risk_score"):
+        raw_value = record.get(key)
+        try:
+            numeric = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if 0.0 <= numeric <= 1.0:
+            return numeric
+    raw_cvss = record.get("cvss")
+    try:
+        cvss = float(raw_cvss)
+    except (TypeError, ValueError):
+        return None
+    if 0.0 <= cvss <= 10.0:
+        return cvss / 10.0
+    return None
+
+
+def _risk_service_vulnerability_nodes(
+    vulnerabilities,
+    findings: list[dict] | None = None,
+) -> tuple[dict[str, dict[str, dict[str, float]]], bool]:
+    service_nodes: dict[str, dict[str, dict[str, float]]] = {}
+    bucket_hint_seen = False
+
+    def _node_name_from_record(record: dict) -> str:
+        return str(
+            record.get("asset")
+            or record.get("node")
+            or record.get("device")
+            or record.get("node_id")
+            or record.get("asset_id")
+            or record.get("device_id")
+            or record.get("host")
+            or ""
+        ).strip()
+
+    def _cve_id_from_record(record: dict) -> str:
+        return str(
+            record.get("cve")
+            or record.get("cve_id")
+            or record.get("id")
+            or record.get("name")
+            or ""
+        ).strip()
+
+    def _store(node_name: str, cve_id: str, raw_value) -> None:
+        nonlocal bucket_hint_seen
+        if not node_name:
+            raise ValueError("Each vulnerability finding must include a target asset or node.")
+        if not cve_id:
+            raise ValueError(f"Each vulnerability finding for {node_name!r} must include a CVE or id.")
+
+        if isinstance(raw_value, dict):
+            record = dict(raw_value)
+        elif isinstance(raw_value, (int, float)):
+            record = {"probability": float(raw_value)}
+        else:
+            raise ValueError(
+                f"Invalid vulnerability payload for {node_name!r}/{cve_id!r}: expected an object or number."
+            )
+
+        if any(record.get(key) for key in ("bucket_hint", "bucket", "risk_bucket", "vulnerability_bucket")):
+            bucket_hint_seen = True
+
+        probability = _risk_extract_probability_value(record)
+        if probability is None:
+            raise ValueError(
+                f"Unable to derive a probability for {node_name!r}/{cve_id!r}; "
+                "provide epss, probability, likelihood, score, risk_score, or cvss."
+            )
+
+        payload = {"epss": probability}
+        try:
+            if record.get("cvss") is not None:
+                payload["cvss"] = float(record.get("cvss"))
+        except (TypeError, ValueError):
+            pass
+
+        service_nodes.setdefault(node_name, {})[cve_id] = payload
+
+    if isinstance(vulnerabilities, dict):
+        for raw_node_name, raw_node_payload in vulnerabilities.items():
+            node_name = str(raw_node_name or "").strip()
+            if not node_name:
+                raise ValueError("Vulnerability payload contains an invalid node id.")
+            node_payload = raw_node_payload
+            if isinstance(node_payload, dict) and isinstance(node_payload.get("vulnerabilities"), (dict, list)):
+                node_payload = node_payload["vulnerabilities"]
+            if isinstance(node_payload, dict):
+                for raw_cve_id, raw_value in node_payload.items():
+                    cve_id = str(raw_cve_id or "").strip()
+                    _store(node_name, cve_id, raw_value)
+            elif isinstance(node_payload, list):
+                for item in node_payload:
+                    if not isinstance(item, dict):
+                        raise ValueError(f"Invalid vulnerability list entry for {node_name!r}.")
+                    cve_id = _cve_id_from_record(item)
+                    item_record = dict(item)
+                    item_record.setdefault("asset", node_name)
+                    _store(node_name, cve_id, item_record)
+            else:
+                raise ValueError(f"Invalid vulnerability payload for {node_name!r}.")
+    elif isinstance(vulnerabilities, list):
+        findings = [*(findings or []), *vulnerabilities]
+    elif vulnerabilities not in (None, {}):
+        raise ValueError("vulnerabilities must be an object, list, or null.")
+
+    for item in findings or []:
+        if not isinstance(item, dict):
+            raise ValueError("Each finding must be an object.")
+        _store(_node_name_from_record(item), _cve_id_from_record(item), item)
+
+    return service_nodes, bucket_hint_seen
+
+
+def _risk_emulate_cyberpen(payload: dict) -> dict:
+    t_value = payload.get("T")
+    if t_value is not None:
+        try:
+            t_value = int(t_value)
+        except (TypeError, ValueError):
+            raise ValueError("T must be an integer.")
+    else:
+        t_value = 3
+    nodes = [str(node).strip() for node in (payload.get("nodes") or []) if str(node).strip()]
+    return_all = _risk_bool(payload.get("returnAll"))
+    warnings: list[str] = [
+        "Risk service does not expose /post_cyberpen; Django applied compatible service calls instead."
+    ]
+
+    full_model = payload.get("model") or payload.get("topology")
+    model_patches = [
+        patch_doc
+        for patch_doc in (payload.get("modelPatch"), payload.get("topologyPatch"))
+        if patch_doc is not None
+    ]
+    if full_model is not None or model_patches:
+        if full_model is not None:
+            merged_model = _risk_normalize_model_update_doc(full_model, label="model")
+        else:
+            current_model = _risk_current_service_model_payload()
+            if current_model is None:
+                current_model, _ = _risk_local_model_payload()
+            if current_model is None:
+                raise ValueError("No current or local risk model is available to apply patches.")
+            merged_model = _risk_normalize_model_update_doc(current_model, label="current model")
+        for patch_index, patch_doc in enumerate(model_patches, start=1):
+            normalized_patch = _risk_normalize_model_update_doc(patch_doc, label=f"model patch {patch_index}")
+            merged_model = _risk_deep_merge_mapping(merged_model, normalized_patch)
+        _risk_upload_model_payload(merged_model)
+        warnings.append("Model updates were applied by uploading a merged sim_system document.")
+
+    service_nodes, bucket_hint_seen = _risk_service_vulnerability_nodes(
+        payload.get("vulnerabilities"),
+        payload.get("findings"),
+    )
+    if bucket_hint_seen:
+        warnings.append("Bucket hints are advisory only with the current risk service and were not applied separately.")
+
+    updated_nodes: list[str] = []
+    mutation_message = ""
+    if service_nodes:
+        mutation_result = _risk_post_mutation(
+            "/post_vulnerability",
+            {
+                "T": t_value,
+                "nodes": service_nodes,
+            },
+        )
+        updated_nodes = [
+            str(node).strip()
+            for node in (mutation_result.get("updated_nodes") or [])
+            if str(node).strip()
+        ]
+        mutation_message = str(mutation_result.get("message") or "").strip()
+    elif payload.get("findings") is not None or payload.get("vulnerabilities") is not None:
+        raise ValueError("No supported vulnerability updates could be derived from the supplied payload.")
+
+    probability_result = _risk_get_probability(t_value=t_value, nodes=nodes or None, return_all=return_all)
+    probability_result["updated_nodes"] = updated_nodes
+    probability_result["warnings"] = warnings
+    probability_result["request"] = {
+        "T": t_value,
+        "nodes": nodes,
+        "returnAll": return_all,
+        "compatibility_mode": "post_vulnerability+get_probability",
+    }
+    if mutation_message:
+        probability_result["message"] = mutation_message
+    return probability_result
+
+
 def _risk_post_cyberpen(payload: dict) -> dict:
     response = _risk_raw_call(
         requests.post,
@@ -2026,7 +2360,12 @@ def _risk_post_cyberpen(payload: dict) -> dict:
             retry=False,
             timeout=RISK_ASSESSMENT_LONG_TIMEOUT,
         )
-    _risk_raise_for_status(response, "/post_cyberpen")
+    try:
+        _risk_raise_for_status(response, "/post_cyberpen")
+    except RuntimeError as exc:
+        if "not found" in str(exc).lower():
+            return _risk_emulate_cyberpen(payload)
+        raise
     try:
         return _normalize_risk_results_payload(response.json())
     except Exception:
@@ -3086,7 +3425,7 @@ def _node_role(node: Node, asset_ips: list[str]) -> tuple[str, str, str]:
     if override:
         return (
             str(override.get("role_slug") or override.get("role") or "asset"),
-            str(override.get("role") or "Asset"),
+            str(override.get("role_label") or override.get("role") or "Asset"),
             str(override.get("icon") or "bi-hdd-network-fill"),
         )
     return _infer_topology_role(node.name, node.hostname, asset_ips[0] if asset_ips else node.ip_address, node.description)
@@ -3094,8 +3433,8 @@ def _node_role(node: Node, asset_ips: list[str]) -> tuple[str, str, str]:
 
 def _node_purdue_level(node: Node, asset_ips: list[str]) -> str:
     override = _node_topology_override(node, asset_ips)
-    if override and override.get("purdue_level"):
-        return str(override["purdue_level"])
+    if override and (override.get("purdue_level") or override.get("layer")):
+        return str(override.get("purdue_level") or override.get("layer"))
     return _infer_purdue_layer(node.name, node.hostname, asset_ips[0] if asset_ips else node.ip_address, node.description)
 
 
@@ -3170,6 +3509,28 @@ def _node_network_findings(node: Node) -> list[dict]:
     return findings
 
 
+def _node_detail_summary(node: Node, agent_status: AgentStatus | None) -> dict:
+    os_summary = str(node.os_info or "").strip()
+    if not os_summary and agent_status:
+        os_summary = " ".join(
+            part
+            for part in [str(agent_status.os_type or "").strip(), str(agent_status.os_version or "").strip()]
+            if part
+        ).strip()
+
+    return {
+        "status": str(getattr(agent_status, "status", "") or node.status or "unknown").strip(),
+        "last_heartbeat": node.last_heartbeat or getattr(agent_status, "last_heartbeat", None),
+        "cpu_count": node.cpu_count or getattr(agent_status, "cpu_count", None),
+        "memory_total": node.memory_total or getattr(agent_status, "memory_total", None),
+        "platform": str(node.platform_info or getattr(agent_status, "platform", "") or "").strip(),
+        "description": str(node.description or "").strip(),
+        "hostname": str(node.hostname or getattr(agent_status, "hostname", "") or "").strip(),
+        "agent_id": str(node.agent_id or getattr(agent_status, "agent_id", "") or "").strip(),
+        "os_info": os_summary,
+    }
+
+
 @require_GET
 def node_detail_page(request, node_id):
     """HTML page for node characteristics and composition."""
@@ -3192,12 +3553,30 @@ def node_detail_page(request, node_id):
 
     rollup = _node_detail_rollup(node)
     network_findings = _node_network_findings(node)
+    summary = _node_detail_summary(node, agent_status)
+    interface_cards = [
+        {
+            "name": iface.name,
+            "ip": iface.ip,
+            "mac": iface.mac,
+            "segment_label": _topology_segment_label(iface.ip),
+        }
+        for iface in node.interfaces.all()
+    ]
+    active_port_rows = _normalize_agent_port_rows(
+        node.active_ports,
+        getattr(network_metadata, "active_ports", None),
+        getattr(agent_status, "active_ports", None),
+    )
 
     return render(request, 'dashboard/node_detail.html', {
         'node': node,
         'interfaces': node.interfaces.all(),
+        'interface_cards': interface_cards,
         'agent_status': agent_status,
         'network_metadata': network_metadata,
+        'summary': summary,
+        'active_port_rows': active_port_rows,
         'rollup': rollup,
         'network_findings': network_findings,
     })
@@ -6105,8 +6484,32 @@ def agent_network_metadata(request):
     """Receive detailed network metadata from agents."""
     if not _check_agent_token(request):
         return JsonResponse({"error": "Unauthorized"}, status=401)
+    max_body_bytes = int(getattr(settings, "AGENT_NETWORK_METADATA_MAX_BODY_BYTES", 8 * 1024 * 1024))
+    try:
+        content_length = int(request.META.get("CONTENT_LENGTH") or 0)
+    except (TypeError, ValueError):
+        content_length = 0
+    if content_length and content_length > max_body_bytes:
+        return JsonResponse(
+            {
+                "error": "Request body too large",
+                "limit_bytes": max_body_bytes,
+                "content_length": content_length,
+                "hint": "Reduce network metadata batch size or raise AGENT_NETWORK_METADATA_MAX_BODY_BYTES.",
+            },
+            status=413,
+        )
     try:
         data = json.loads(request.body)
+    except RequestDataTooBig:
+        return JsonResponse(
+            {
+                "error": "Request body too large",
+                "limit_bytes": max_body_bytes,
+                "hint": "Reduce network metadata batch size or raise AGENT_NETWORK_METADATA_MAX_BODY_BYTES.",
+            },
+            status=413,
+        )
     except json.JSONDecodeError:
         return JsonResponse({"error": "Invalid JSON"}, status=400)
 
@@ -6186,8 +6589,8 @@ def agent_network_metadata(request):
             remote_port=remote_port,
             status=conn_data.get("status", "UNKNOWN"),
             process_pid=process.get("pid"),
-            process_name=process.get("name"),
-            process_username=process.get("username"),
+            process_name=process.get("name") or "",
+            process_username=process.get("username") or "",
             process_cmdline=process.get("cmdline") or "",
         )
 

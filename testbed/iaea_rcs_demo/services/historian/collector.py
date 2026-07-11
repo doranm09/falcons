@@ -21,8 +21,8 @@ HTTP_PORTS = [
     for item in os.getenv("SERVICE_PORTS", "443,4840").split(",")
     if item.strip()
 ]
-MAIN_OPC_URL = os.getenv("MAIN_OPC_URL", "opc.tcp://10.1.13.10:4840/main")
-BACKUP_OPC_URL = os.getenv("BACKUP_OPC_URL", "opc.tcp://10.2.23.10:4840/backup")
+MAIN_OPC_URL = os.getenv("MAIN_OPC_URL", "opc.tcp://10.1.1.14:4840/main")
+BACKUP_OPC_URL = os.getenv("BACKUP_OPC_URL", "opc.tcp://10.1.2.15:4840/backup")
 INFLUX_URL = os.getenv("INFLUX_URL", "").strip()
 INFLUX_TOKEN = os.getenv("INFLUX_TOKEN", "iaea-historian-token")
 INFLUX_ORG = os.getenv("INFLUX_ORG", "iaea")

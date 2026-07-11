@@ -54,7 +54,7 @@ def parse_args() -> argparse.Namespace:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     def add_influx_options(target: argparse.ArgumentParser) -> None:
-        target.add_argument("--influx-url", default=os.environ.get("INFLUX_URL", "http://historian-db:8086"))
+        target.add_argument("--influx-url", default=os.environ.get("INFLUX_URL", ""))
         target.add_argument("--influx-token", default=os.environ.get("INFLUX_TOKEN", "iaea-historian-token"))
         target.add_argument("--influx-org", default=os.environ.get("INFLUX_ORG", "iaea"))
         target.add_argument("--influx-bucket", default=os.environ.get("INFLUX_BUCKET", "iaea_rcs"))

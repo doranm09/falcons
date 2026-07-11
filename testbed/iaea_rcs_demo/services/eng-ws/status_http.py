@@ -28,8 +28,8 @@ def payload():
         "status": "ok",
         "usage": [
             "docker exec -it engineer-ws bash",
-            "opc-read opc.tcp://10.1.13.10:4840/main --namespace urn:iaea-rcs-demo:main",
-            "opc-read opc.tcp://10.2.23.10:4840/backup --namespace urn:iaea-rcs-demo:backup",
+            "opc-read opc.tcp://10.1.1.14:4840/main --namespace urn:iaea-rcs-demo:main",
+            "opc-read opc.tcp://10.1.2.15:4840/backup --namespace urn:iaea-rcs-demo:backup",
             f"Open http://127.0.0.1:{NO_VNC_PORT}/vnc.html and enter the VNC password",
         ],
         "tools": [
@@ -102,8 +102,8 @@ def render_html():
         <p>Remote desktop: <code>http://127.0.0.1:%d/vnc.html</code> with password <code>%s</code>.</p>
         <p>The desktop opens a Layer 2 shell for manual OPC, route, and packet-capture checks.</p>
         <ul>
-          <li><code>opc-read opc.tcp://10.1.13.10:4840/main --namespace urn:iaea-rcs-demo:main</code></li>
-          <li><code>opc-read opc.tcp://10.2.23.10:4840/backup --namespace urn:iaea-rcs-demo:backup</code></li>
+          <li><code>opc-read opc.tcp://10.1.1.14:4840/main --namespace urn:iaea-rcs-demo:main</code></li>
+          <li><code>opc-read opc.tcp://10.1.2.15:4840/backup --namespace urn:iaea-rcs-demo:backup</code></li>
           <li><code>tcpdump -i eth0 -nn tcp port 4840</code></li>
         </ul>
       </section>

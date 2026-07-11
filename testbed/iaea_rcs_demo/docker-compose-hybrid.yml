@@ -1,7 +1,14 @@
-x-endpoint: &endpoint
-  build:
-    context: ../..
-    dockerfile: testbed/iaea_rcs_demo/services/sim-endpoint/Dockerfile
+# Compose treats each service with a `build:` stanza as its own build target
+# even when multiple services point at the same Dockerfile. Shared service
+# families therefore use one build-owner service plus a shared local image tag.
+x-sim-endpoint-build: &sim_endpoint_build
+  context: ../..
+  dockerfile: testbed/iaea_rcs_demo/services/sim-endpoint/Dockerfile
+
+x-sim-endpoint-image: &sim_endpoint_image
+  image: cyber_pen_test_iaea_sim_endpoint:local
+
+x-endpoint-runtime: &endpoint_runtime
   restart: unless-stopped
   cap_drop: ["ALL"]
   cap_add: ["NET_ADMIN", "NET_BIND_SERVICE"]
@@ -11,18 +18,25 @@ x-endpoint: &endpoint
   volumes:
     - ./simulated_data:/app/simulated_data:ro
 
+x-endpoint: &endpoint
+  <<: [*sim_endpoint_image, *endpoint_runtime]
+
+x-firewall-build: &firewall_build
+  context: ./firewall
+
 x-firewall: &firewall
-  build:
-    context: ./firewall
+  image: cyber_pen_test_iaea_firewall:local
   restart: unless-stopped
   cap_add: ["NET_ADMIN", "NET_RAW"]
   sysctls:
     net.ipv4.ip_forward: '1'
 
+x-openplc-build: &openplc_build
+  context: ../..
+  dockerfile: testbed/iaea_rcs_demo/services/openplc-v3/Dockerfile
+
 x-openplc: &openplc
-  build:
-    context: ../..
-    dockerfile: testbed/iaea_rcs_demo/services/openplc-v3/Dockerfile
+  image: cyber_pen_test_iaea_openplc_v3:local
   restart: unless-stopped
   cap_drop: ["ALL"]
   cap_add: ["NET_ADMIN", "NET_BIND_SERVICE", "SYS_NICE", "SYS_RESOURCE"]
@@ -36,10 +50,16 @@ x-agent-env: &agent_env
 x-agent-extra-hosts: &agent_extra_hosts
   - "host.docker.internal:host-gateway"
 
+x-ot-agent-build: &ot_agent_build
+  context: ../..
+  dockerfile: testbed/ot/agent/Dockerfile
+
+x-ot-agent: &ot_agent
+  image: cyber_pen_test_ot_agent:local
+  restart: unless-stopped
+
 x-agent-sensor: &agent_sensor
-  build:
-    context: ../..
-    dockerfile: testbed/iaea_rcs_demo/services/sim-endpoint/Dockerfile
+  <<: *sim_endpoint_image
   restart: unless-stopped
   cap_drop: ["ALL"]
   cap_add: ["NET_ADMIN", "NET_RAW"]
@@ -153,7 +173,7 @@ services:
 
   # ---------------------- Layer 3 ----------------------
   historian:
-    <<: *endpoint
+    <<: *endpoint_runtime
     build:
       context: ../..
       dockerfile: testbed/iaea_rcs_demo/services/historian/Dockerfile
@@ -184,6 +204,7 @@ services:
   # ---------------------- Firewalls ----------------------
   firewall-2:
     <<: *firewall
+    build: *firewall_build
     container_name: firewall-2
     hostname: firewall-2
     environment:
@@ -197,11 +218,9 @@ services:
         ipv4_address: 10.4.50.254
 
   firewall-2-agent:
-    build:
-      context: ../..
-      dockerfile: testbed/ot/agent/Dockerfile
+    <<: *ot_agent
+    build: *ot_agent_build
     container_name: firewall-2-agent
-    restart: unless-stopped
     depends_on:
       firewall-2:
         condition: service_started
@@ -227,11 +246,8 @@ services:
         ipv4_address: 10.3.50.253
 
   firewall-1-agent:
-    build:
-      context: ../..
-      dockerfile: testbed/ot/agent/Dockerfile
+    <<: *ot_agent
     container_name: firewall-1-agent
-    restart: unless-stopped
     depends_on:
       firewall-1:
         condition: service_started
@@ -259,11 +275,8 @@ services:
         ipv4_address: 10.1.2.253
 
   firewall-0-agent:
-    build:
-      context: ../..
-      dockerfile: testbed/ot/agent/Dockerfile
+    <<: *ot_agent
     container_name: firewall-0-agent
-    restart: unless-stopped
     depends_on:
       firewall-0:
         condition: service_started
@@ -344,6 +357,7 @@ services:
   # Channel endpoints
   pt-455:
     <<: *endpoint
+    build: *sim_endpoint_build
     container_name: pt-455
     hostname: pt-455.iaea.ifan.com
     sysctls:
@@ -581,6 +595,7 @@ services:
   # PLC-MAIN
   plc-main:
     <<: *openplc
+    build: *openplc_build
     container_name: plc-main
     hostname: plc-main.iaea.ifan.com
     sysctls:
@@ -893,6 +908,9 @@ services:
   kali-attacker:
     build:
       context: ./services/kali
+    restart: unless-stopped
+    container_name: kali-attacker
+    hostname: kali-attacker
     tty: true
     stdin_open: true
     command: ["/bin/bash", "-lc", "python3 /opt/kali/kali_attack_api.py"]

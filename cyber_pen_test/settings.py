@@ -48,12 +48,6 @@ ALLOWED_HOSTS = [
     '10.2.50.1',
     '10.3.50.1',
     '10.4.50.1',
-    '10.1.13.254',
-    '10.2.23.254',
-    '10.3.13.254',
-    '10.4.23.254',
-    '10.0.13.254',
-    '10.0.23.254',
     '10.137.4.115',  # Specific host that needs access
     # Subnet patterns for broader access:
     '10.137.4.*',    # Allows all IPs in 10.137.4.x range
@@ -232,6 +226,17 @@ SIEM_MAX_INGEST_BATCH = int(os.environ.get("SIEM_MAX_INGEST_BATCH", "500"))
 # Agent API settings
 AGENT_API_TOKEN = read_secret("AGENT_API_TOKEN", "")
 AGENT_API_TOKEN_REQUIRED = os.environ.get("AGENT_API_TOKEN_REQUIRED", "1") == "1"
+
+DEFAULT_DATA_UPLOAD_MAX_MEMORY_SIZE = 2_621_440
+AGENT_NETWORK_METADATA_MAX_BODY_BYTES = int(
+    os.environ.get("AGENT_NETWORK_METADATA_MAX_BODY_BYTES", str(8 * 1024 * 1024))
+)
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(
+    os.environ.get(
+        "DATA_UPLOAD_MAX_MEMORY_SIZE",
+        str(max(DEFAULT_DATA_UPLOAD_MAX_MEMORY_SIZE, AGENT_NETWORK_METADATA_MAX_BODY_BYTES)),
+    )
+)
 
 # OpenSearch (SIEM log store)
 OPENSEARCH_ENABLED = os.environ.get("OPENSEARCH_ENABLED", "0") == "1"

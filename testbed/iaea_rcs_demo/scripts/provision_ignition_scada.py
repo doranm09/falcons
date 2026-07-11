@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+"""Legacy pre-hybrid Ignition helper retained for reference.
+
+The current validated IAEA demo path does not include the `ignition` service.
+Use `docker-compose-hybrid.yml` and the Django dashboard instead.
+"""
+
 import argparse
 import hashlib
 import json

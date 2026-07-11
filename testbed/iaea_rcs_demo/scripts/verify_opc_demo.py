@@ -9,8 +9,8 @@ import time
 
 ROOT_CONTAINERS = ("plc-main", "plc-backup", "hmi", "engineer-ws")
 OPC_TARGETS = (
-    ("plc-main", "opc.tcp://10.1.13.10:4840/main", "urn:iaea-rcs-demo:main"),
-    ("plc-backup", "opc.tcp://10.2.23.10:4840/backup", "urn:iaea-rcs-demo:backup"),
+    ("plc-main", "opc.tcp://10.1.1.14:4840/main", "urn:iaea-rcs-demo:main"),
+    ("plc-backup", "opc.tcp://10.1.2.15:4840/backup", "urn:iaea-rcs-demo:backup"),
 )
 
 

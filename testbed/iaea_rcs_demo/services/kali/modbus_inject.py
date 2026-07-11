@@ -3,8 +3,10 @@
 Modbus write script to inject values into the PLC's average_pressure register.
 This is used to test the IDS process service anomaly detection.
 
-The PLC main (10.1.13.10) exposes its internal registers via Modbus/TCP on port 502.
-The average_pressure register is at holding register address 13 (0x000D).
+In the validated hybrid topology, `plc-main` is at `10.1.1.14` and exposes its
+local Modbus summary registers on port `502`.
+
+The average_pressure value lives at holding register address `14`.
 
 Usage:
     python3 modbus_inject.py [value]
@@ -28,7 +30,7 @@ from pymodbus.exceptions import ModbusException
 # PLC Main configuration (hybrid topology)
 PLC_MAIN_IP = os.getenv("MODBUS_PLC_IP", "10.1.1.14")
 PLC_MAIN_PORT = int(os.getenv("MODBUS_PLC_PORT", "502"))
-AVERAGE_PRESSURE_REGISTER = 14  # Holding register address for average_pressure (hybrid)
+AVERAGE_PRESSURE_REGISTER = 14  # Hybrid topology address for average_pressure
 def _write_register(client, address: int, value: int, unit_id: int = 1):
     return client.write_register(address, value, device_id=unit_id)
 

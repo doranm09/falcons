@@ -177,17 +177,31 @@
                                     <td>
                                         {{ peer.service_summary }}
                                         <div class="small text-muted">
+                                            {% if peer.modeled %}
+                                            Validated topology baseline
+                                            {% else %}
                                             {{ peer.connection_count }} connection{{ peer.connection_count|pluralize }}
                                             {% if peer.process_summary != "-" %} • {{ peer.process_summary }}{% endif %}
+                                            {% endif %}
                                         </div>
                                     </td>
                                     <td>
                                         {% if peer.last_seen %}
                                             {{ peer.last_seen|timesince }} ago
+                                        {% elif peer.modeled %}
+                                            Modeled baseline
                                         {% else %}
                                             Unknown
                                         {% endif %}
-                                        <div class="small text-muted">{% if peer.expected %}Expected path{% else %}Outside modeled paths{% endif %}</div>
+                                        <div class="small text-muted">
+                                            {% if peer.modeled %}
+                                            No live connection telemetry yet
+                                            {% elif peer.expected %}
+                                            Expected path
+                                            {% else %}
+                                            Outside modeled paths
+                                            {% endif %}
+                                        </div>
                                     </td>
                                 </tr>
                                 {% endfor %}

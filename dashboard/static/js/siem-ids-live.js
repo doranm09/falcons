@@ -710,6 +710,58 @@
     return parts.join('\n\n') || fallbackMessage;
   }
 
+  function pentestFetchOptions(csrfToken) {
+    const headers = {};
+    if (csrfToken) {
+      headers['X-CSRFToken'] = csrfToken;
+    }
+
+    const options = {
+      method: 'POST',
+      headers,
+    };
+
+    if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+      options.signal = AbortSignal.timeout(70000);
+    }
+
+    return options;
+  }
+
+  async function parsePentestResponse(response, attackType) {
+    const rawText = await response.text();
+    let data = null;
+
+    if (rawText) {
+      try {
+        data = JSON.parse(rawText);
+      } catch (_err) {
+        data = null;
+      }
+    }
+
+    if (!response.ok) {
+      const fallback = `Error running ${attackType} (HTTP ${response.status}: ${response.statusText})`;
+      throw new Error(pentestErrorMessage(data, fallback));
+    }
+
+    return data || {};
+  }
+
+  function pentestTransportErrorMessage(error, attackType) {
+    const baseMessage = error && error.message ? error.message : `Error running ${attackType}`;
+    const normalized = String(baseMessage || '').trim();
+    if (normalized && normalized !== 'Failed to fetch') {
+      return normalized;
+    }
+
+    return [
+      `Error running ${attackType}.`,
+      'The pentest demo backend may be unreachable.',
+      'Hint: start the attacker service with `docker compose -f testbed/iaea_rcs_demo/docker-compose-hybrid.yml up -d kali-attacker`.',
+    ].join('\n\n');
+  }
+
   function localizeInitialTimestamps() {
     document.querySelectorAll('[data-ids-ts]').forEach((el) => {
       const value = el.dataset.idsTs;
@@ -909,25 +961,17 @@
     
     const csrfToken = window.CSRF_TOKEN || document.querySelector('[name=csrftoken]')?.value || '';
     
-    fetch(url, {
-      method: 'POST',
-      headers: {
-        'X-CSRFToken': csrfToken,
-        'Content-Type': 'application/json'
-      },
-      signal: AbortSignal.timeout(70000)
-    })
-    .then(r => {
-      if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
-      return r.json();
-    })
+    fetch(url, pentestFetchOptions(csrfToken))
+    .then(r => parsePentestResponse(r, attackType))
     .then(data => {
       if (data.error) {
         alert(pentestErrorMessage(data, `Error running ${attackType}`));
+        return;
       }
+      alert(`${attackType} completed.`);
     })
     .catch(error => {
-      alert(`Error: ${error.message}`);
+      alert(pentestTransportErrorMessage(error, attackType));
     })
     .finally(() => {
       // Re-enable button

@@ -2,6 +2,12 @@
 
 This lab turns your diagram into a runnable Docker Compose environment that approximates a Purdue-style ICS network.
 
+Current operator note:
+
+- Use the current `Start` and `Current Validation` sections below for the validated hybrid demo path.
+- Use [`../../docs/iaea_demo_video_runbook.md`](../../docs/iaea_demo_video_runbook.md) for the recording checklist.
+- Historical notes later in this file are retained for reference and may mention retired assets or pre-hybrid addresses.
+
 ## What is included
 
 - Layer 4: `metasploit`, `postgres`
@@ -193,17 +199,17 @@ style FW1A fill:#e8f4ff,stroke:#5a9bd5
 style FW2A fill:#e8f4ff,stroke:#5a9bd5
 ```
 
-## Layer-Oriented Network Inventory
+## Current Runtime Inventory
 
 | Purdue layer | Purpose | Containers | Networks | Current reachability |
 |---|---|---|---|---|
-| Layer 4 | Enterprise IT | `metasploit`, `postgres`, `firewall-2` | `l4_net` `10.4.50.0/24` | `metasploit` reaches `postgres` on `5432` and the Layer 3 historian on `443` and `4840` through `firewall-2`; no direct routes into the control bridges |
+| Layer 4 | Enterprise IT | `metasploit`, `postgres`, `firewall-2` | `l4_net` `10.4.50.0/24` | `metasploit` reaches `postgres` on `5432` and the Layer 3 historian on `443` and `4840` through `firewall-2`; it does not have direct access into the control subnets |
 | Layer 3 | Operations / DMZ | `historian`, `firewall-1`, `firewall-2` | `l3_net` `10.3.50.0/24` | `historian` is the DMZ pivot: Layer 2 reaches it on `443` and `4840`, and it reaches the PLC OPC bridges on `4840` through `firewall-1` and `firewall-0` |
-| Layer 2 | Supervisory / operator access | `hmi`, `engineer-ws`, `firewall-0`, `firewall-1` | `l2_net` `10.2.50.0/24` | Same-segment access inside Layer 2; routed historian access on `443` and `4840`; routed PLC access on `502` and `44818`; no direct routes to the OOB or field-only analog path |
-| Layer 1 | Control | `plc-main`, `plc-backup`, `channel-a`, `channel-b`, `channel-c`, `channel-d`, `span-l1a`, `span-l1b`, `suricata-sensor`, `zeek-sensor`, `firewall-0` | `net_10_1_1` `10.1.1.0/24`, `net_10_1_2` `10.1.2.0/24`, `oob_mgmt` `172.31.250.0/24` | PLCs and channels are exposed to Layer 2 only through `firewall-0`; passive sensors and SIEM sensors observe the redundant control bridges; the OOB network carries heartbeats and SIEM forwarding back to the dashboard |
-| Layer 0 | Process I/O | `pt-455`, `pt-456`, `pt-457`, `pt-458`, valve controllers, heat controller, spray outputs, pressure-relief outputs | Analog path plus dual-homed Modbus endpoints on `net_10_1_1` and `net_10_1_2` | `pt-455` and `pt-456` are IP-addressable Modbus transmitters; `pt-457` and `pt-458` remain analog-only process signals consumed by channels C and D rather than independent IP nodes |
+| Layer 2 | Supervisory / operator access | `hmi`, `engineer-ws`, `firewall-0`, `firewall-1` | `l2_net` `10.2.50.0/24` | Layer 2 can reach the historian and the PLC compatibility paths, but not the enterprise database directly |
+| Layer 1 | Control | `plc-main`, `plc-backup`, `channel-a`, `channel-b`, `channel-c`, `channel-d`, `span-l1a`, `span-l1b`, `suricata-sensor`, `zeek-sensor`, `firewall-0` | `net_10_1_1` `10.1.1.0/24`, `net_10_1_2` `10.1.2.0/24`, `oob_mgmt` `172.31.250.0/24` | PLCs and channels are exposed to Layer 2 only through `firewall-0`; passive sensors observe the redundant control bridges; the OOB network carries heartbeats and SIEM forwarding back to the dashboard |
+| Layer 0 | Process I/O | `pt-455`, `pt-456`, analog sensor paths for `pt-457` and `pt-458`, actuator/output state modeled through `channel-c` and `channel-d` | Digital PTs on `net_10_1_1` and `net_10_1_2`; analog-only paths for `pt-457` and `pt-458` | `pt-455` and `pt-456` are IP-addressable Modbus transmitters; `pt-457` and `pt-458` remain analog-only process signals and should not be treated as standalone network nodes |
 
-## Device Address Inventory
+## Current Address Inventory
 
 | Layer | Device | Role | IP addresses |
 |---|---|---|---|
@@ -219,8 +225,8 @@ style FW2A fill:#e8f4ff,stroke:#5a9bd5
 | Layer 1 | `plc-backup` | Backup PLC | `net_10_1_1 10.1.1.15`, `net_10_1_2 10.1.2.15`, `oob_mgmt 172.31.250.15` |
 | Layer 1 | `channel-a` | Channel A bridge | `net_10_1_1 10.1.1.10`, `net_10_1_2 10.1.2.10`, `oob_mgmt 172.31.250.10` |
 | Layer 1 | `channel-b` | Channel B bridge | `net_10_1_1 10.1.1.11`, `net_10_1_2 10.1.2.11`, `oob_mgmt 172.31.250.11` |
-| Layer 1 | `channel-c` | Channel C hybrid bridge | `net_10_1_1 10.1.1.12`, `net_10_1_2 10.1.2.12`, `oob_mgmt 172.31.250.12` |
-| Layer 1 | `channel-d` | Channel D hybrid bridge | `net_10_1_1 10.1.1.13`, `net_10_1_2 10.1.2.13`, `oob_mgmt 172.31.250.13` |
+| Layer 1 | `channel-c` | Channel C analog/control bridge | `net_10_1_1 10.1.1.12`, `net_10_1_2 10.1.2.12`, `oob_mgmt 172.31.250.12` |
+| Layer 1 | `channel-d` | Channel D analog/control bridge | `net_10_1_1 10.1.1.13`, `net_10_1_2 10.1.2.13`, `oob_mgmt 172.31.250.13` |
 | Layer 1 | `span-l1a` | Passive sensor on control bridge A | `net_10_1_1 10.1.1.250`, `oob_mgmt 172.31.250.250` |
 | Layer 1 | `span-l1b` | Passive sensor on control bridge B | `net_10_1_2 10.1.2.250`, `oob_mgmt 172.31.250.251` |
 | Layer 1 | `suricata-sensor` | Network IDS sensor | `net_10_1_1 10.1.1.240`, `net_10_1_2 10.1.2.240`, `oob_mgmt 172.31.250.240` |
@@ -230,114 +236,46 @@ style FW2A fill:#e8f4ff,stroke:#5a9bd5
 | Layer 0 | `pt-456` | Pressure transmitter | `net_10_1_1 10.1.1.8`, `net_10_1_2 10.1.2.8` |
 | Layer 0 | `pt-457` | Analog sensor | `no IP address; analog path via channel-c` |
 | Layer 0 | `pt-458` | Analog sensor | `no IP address; analog path via channel-d` |
-| Layer 0 | `vc-hv455a` | Control valve | `p13_net 10.3.13.1`, `p23_net 10.4.23.1` |
-| Layer 0 | `vc-pv455b` | Control valve | `p13_net 10.3.13.2`, `p23_net 10.4.23.2` |
-| Layer 0 | `vc-pv455c` | Control valve | `p13_net 10.3.13.3`, `p23_net 10.4.23.3` |
-| Layer 0 | `heat-ctrl` | Heater controller | `p13_net 10.3.13.5`, `p23_net 10.4.23.5` |
 
-## Raw Docker Network Table
+## Current Docker Network Table
 
 | Network | CIDR | Members |
 |---|---|---|
-| `l2_net` | `10.2.50.0/24` | `hmi .10`, `engineer-ws .20`, `l2-jump .30`, `firewall-0 .253`, `firewall-1 .254` |
+| `l4_net` | `10.4.50.0/24` | `metasploit .10`, `postgres .20`, `firewall-2 .254` |
 | `l3_net` | `10.3.50.0/24` | `historian .10`, `firewall-1 .253`, `firewall-2 .254` |
-| `l4_net` | `10.4.50.0/24` | `metasploit .10`, `database .20`, `historian-db .30`, `postgres .41`, `firewall-2 .254` |
-| `net_10_1_1` | `10.1.1.0/24` | `pt-456 .8`, `pt-455 .9`, `channel-a .10`, `channel-b .11`, `channel-c .12`, `channel-d .13`, `plc-main .14`, `plc-backup .15`, `span-l1a .250`, `firewall-0 .253` |
-| `net_10_1_2` | `10.1.2.0/24` | `pt-456 .8`, `pt-455 .9`, `channel-a .10`, `channel-b .11`, `channel-c .12`, `channel-d .13`, `plc-main .14`, `plc-backup .15`, `span-l1b .250`, `firewall-0 .253` |
-| `oob_mgmt` | `172.31.250.0/24` | `channel-a .10`, `channel-b .11`, `channel-c .12`, `channel-d .13`, `plc-main .14`, `plc-backup .15`, `span-l1a .250`, `span-l1b .251` |
-| `p13_net` | `10.3.13.0/24` | `vc-hv455a .1`, `vc-pv455b .2`, `vc-pv455c .3`, `heat-ctrl .5`, `pt-455 .11`, `pt-456 .12`, `pt-457 .13`, `firewall-main-cell .253` |
-| `p23_net` | `10.4.23.0/24` | `vc-hv455a .1`, `vc-pv455b .2`, `vc-pv455c .3`, `heat-ctrl .5`, `pt-456 .12`, `pt-457 .13`, `pt-458 .14`, `firewall-backup-cell .253` |
-| `mgmt13_net` | `10.0.13.0/24` | `plc-main .10` |
-| `mgmt23_net` | `10.0.23.0/24` | `plc-backup .10` |
+| `l2_net` | `10.2.50.0/24` | `hmi .10`, `engineer-ws .20`, `firewall-0 .253`, `firewall-1 .254` |
+| `net_10_1_1` | `10.1.1.0/24` | `pt-456 .8`, `pt-455 .9`, `channel-a .10`, `channel-b .11`, `channel-c .12`, `channel-d .13`, `plc-main .14`, `plc-backup .15`, `suricata-sensor .240`, `zeek-sensor .241`, `span-l1a .250`, `firewall-0 .253` |
+| `net_10_1_2` | `10.1.2.0/24` | `pt-456 .8`, `pt-455 .9`, `channel-a .10`, `channel-b .11`, `channel-c .12`, `channel-d .13`, `plc-main .14`, `plc-backup .15`, `suricata-sensor .240`, `zeek-sensor .241`, `span-l1b .250`, `firewall-0 .253` |
+| `oob_mgmt` | `172.31.250.0/24` | `channel-a .10`, `channel-b .11`, `channel-c .12`, `channel-d .13`, `plc-main .14`, `plc-backup .15`, `suricata-sensor .240`, `zeek-sensor .241`, `siem-forwarder .242`, `span-l1a .250`, `span-l1b .251` |
 
-## Port Mapping
+The current hybrid compose does not place `database`, `historian-db`, `ignition`, or `l2-jump` on these networks.
 
-### Layer 4 (Enterprise)
+## Current Host Port Map
 
-- HTTP/HTTPS --> `80`, `443`
-- Database --> container `5432`, published on host as `15432`
-- PostgreSQL --> container `5432`, published on host as `25432`
-- `historian-db` UI --> container `8086`, published on host as `8086` (InfluxDB 2.x)
-- Metasploit RPC --> container `4444`, published on host as `4444`
+| Host endpoint | Service |
+|---|---|
+| `127.0.0.1:4444` | `metasploit` RPC |
+| `127.0.0.1:25432` | `postgres` |
+| `127.0.0.1:4840` | `historian` status / path checks |
+| `http://127.0.0.1:5001/` | `kali-attacker` Flask pentest API |
+| `http://127.0.0.1:8081/` | `hmi` |
+| `https://127.0.0.1:8445/` | `hmi` TLS |
+| `http://127.0.0.1:8082/` | `engineer-ws` status page |
+| `https://127.0.0.1:8446/` | `engineer-ws` TLS |
+| `http://127.0.0.1:6080/` | `engineer-ws` noVNC |
+| `http://127.0.0.1:18080/` | `plc-main` OpenPLC UI |
+| `http://127.0.0.1:18081/` | `plc-backup` OpenPLC UI |
 
-### Layer 3 (DMZ/Historian)
+## Current Service Notes
 
-- Historian status / health --> `443`
-- Historian status / path checks --> `4840`
-
-### Layer 2 (HMI/Engineering)
-
-- RDP --> `3389`
-- VNC --> `5900`
-- OPC UA Client --> `4840`
-- SMB --> `445`
-
-### Layer 1 (PLCs)
-
-- Modbus/TCP --> `502`
-- Ethernet/IP --> `44818`
-- Siemens --> `102`
-
-### Layer 0 (Sensors/Actuators)
-
-- Modbus/TCP --> `502`
-
-## Service behavior note
-
-Most containers in this stack are still built from `services/sim-endpoint` and expose the same JSON-over-HTTP simulator on the ports listed in `SERVICE_PORTS`. That still includes `database` and `l2-jump`; the Layer 4 `metasploit` service occupies the former workstation slot.
-
-An actual PostgreSQL 15 server now runs under the `postgres` service, stores the `iaea_rcs` database on a persistent volume, and accepts connections on port `5432` from the host (`127.0.0.1:25432`) and the Layer 4 Metasploit host; credentials are `iaea`/`iaea-demo-password`.
-
-The Layer 4 `metasploit` service runs `msfrpcd` on port `4444` (exposed to the host as `127.0.0.1:4444` and reachable from the Layer 4 Metasploit host). It is intentionally left open so the lab operators can demonstrate exploitation chains or run payload collection tools against other lab nodes. Connect with `msfconsole` (or `msfrpc`) using `msfadmin/msfadmin` to drive the RPC interface.
-
-`plc-main` and `plc-backup` are different:
-
-- They now build from a local OpenPLC v3 wrapper image pinned to upstream commit `b5d41356dab4aeadca0dd7ca64ba542f870b595d`.
-- This stack uses OpenPLC v3 intentionally: the upstream-maintained v4 runtime is editor-driven on `8443` and is not a drop-in replacement for the existing Layer 1 `502` PLC paths in this lab.
-- Port `502` is served by OpenPLC instead of the generic HTTP simulator.
-- OpenPLC's built-in EtherNet/IP listener is disabled for this lab, and port `44818` remains a small HTTP compatibility listener so the existing Layer 2 firewall policy and path checks still have a responder while the PLC runtime is migrated.
-- Each PLC persists its state in a named Docker volume and exposes the OpenPLC web UI to the host on `18080` and `18081`.
-- On startup, each PLC now seeds a lab-specific Modbus master profile, polls the pressure transmitters in its cell, and drives the Layer 0 actuators over Modbus/TCP.
-- Each PLC also runs a small OPC UA bridge on `4840`. The demo uses anonymous, no-security OPC UA sessions and exposes fixed string node IDs so the Layer 2 HMI and engineering workstation can read stable tags.
-- `plc-main` serves `opc.tcp://10.1.13.10:4840/main` with namespace URI `urn:iaea-rcs-demo:main`.
-- `plc-backup` serves `opc.tcp://10.2.23.10:4840/backup` with namespace URI `urn:iaea-rcs-demo:backup`.
-- The historian pair is now split cleanly across Layer 3 and Layer 4: `historian` lives on `l3_net` at `10.3.50.10`, polls the PLC OPC bridges every ~6 s, exposes a JSON status payload on `443` and `4840`, and writes the samples into `historian-db` on `l4_net`.
-- `firewall-1` and `firewall-0` now allow the Layer 3 historian at `10.3.50.10` to reach both PLC OPC UA endpoints on `4840`, while `firewall-2` allows it to push data into `historian-db` on `8086`.
-
-### Prebuilt historian dashboard
-
-The historian ships with a ready-to-import InfluxDB dashboard (named **IAEA RCS Overview**) that renders the main/backup average pressures plus the override ownership series the stack publishes. Run the helper script from the repo root to push it into Influx:
-
-```
-INFLUX_URL=http://127.0.0.1:8086 \
-INFLUX_TOKEN=iaea-historian-token \
-INFLUX_ORG=iaea \
-sh services/historian/import-dashboard.sh
-```
-
-If you prefer to run the import from inside the Docker network, execute the script from the historian container (for example, `docker compose exec historian sh services/historian/import-dashboard.sh`) and point `INFLUX_URL` at `http://historian-db:8086`. The script posts `Main Pressure`, `Backup Pressure`, and `Override Owners` panels so you can immediately visualize Layer 0 tag values once the historian is collecting.
-
-The Layer 2 operator services are now different as well:
-
-- `hmi` builds from `services/hmi` and serves a live dashboard on `80` and `443`.
-- The HMI acts as an OPC UA client to both PLC bridges and exposes its current merged state on `http://127.0.0.1:8081/api/state`.
-- `engineer-ws` builds from `services/eng-ws` on top of `ubuntu:24.04`.
-- The engineering workstation includes `opc-read`, `curl`, `ip`, `nc`, `ping`, and `tcpdump`, exposes a noVNC desktop for terminal-based checks, and serves a small status page on `80` and `443`.
-- A shell on the engineering workstation is available with `docker exec -it engineer-ws bash`.
-- The Python host-oriented container images now include the host agent bundle from `host_agent/` and start it automatically when the container comes up. If `AGENT_SERVER_URL` is not set explicitly, the entrypoint prefers `http://host.docker.internal:8000` and falls back to the container gateway on port `8000`; the agent uses the shared lab token `iaea-demo-agent-token` unless you override `AGENT_API_TOKEN`.
-- Non-Python services that cannot embed the agent directly use a companion `testbed/ot/agent` sidecar in the same Docker network so they still report to the dashboard.
-
-The Layer 0 field devices are now different as well:
-
-- `pt-455`, `pt-456`, `pt-457`, and `pt-458` expose real Modbus/TCP on `502`.
-- Each PT publishes two input registers starting at address `0`: a changing pressure value and a status word.
-- `pt-456` and `pt-457` remain dual-homed, so both PLCs can poll the same field device over the appropriate cell network.
-- `vc-hv455a`, `vc-pv455b`, `vc-pv455c`, and `heat-ctrl` now expose writable holding registers on `502`.
-- Each actuator uses the same register map: register `0` is the active owner ID, register `1` is the applied command, register `2` is the last writer ID, and register `3` is a status bitmask.
-- Actuator writes target holding registers `0`-`1`: the caller writes its controller ID into register `0` and its requested command into register `1`.
-- Controller ID `1` is `plc-main` and controller ID `2` is `plc-backup`. Ownership uses a 2-second lease, and the primary PLC can preempt the backup when both are alive.
-
-Build note: the OpenPLC image downloads the pinned upstream source tarball from GitHub during `docker compose build`, so the build host needs outbound internet access.
+- `postgres` is the enterprise database for the hybrid demo. It is a real PostgreSQL 15 service at `10.4.50.20`, not the older simulated `database` endpoint.
+- `historian` lives on `10.3.50.10`, polls the PLC OPC bridges, and exposes JSON status on `127.0.0.1:4840`. Influx persistence is optional and disabled by default unless `HISTORIAN_INFLUX_URL` is set.
+- `plc-main` serves `opc.tcp://10.1.1.14:4840/main` and `plc-backup` serves `opc.tcp://10.1.2.15:4840/backup`.
+- `hmi` and `engineer-ws` both point at the current PLC OPC endpoints and provide the operator-facing Layer 2 views for the demo.
+- `suricata-sensor`, `zeek-sensor`, and `siem-forwarder` are part of the current hybrid compose and drive the SIEM health and event views in Django.
+- `kali-attacker` is part of the standard hybrid compose bring-up and exposes the pentest helper API on `127.0.0.1:5001`.
+- `pt-457` and `pt-458` remain analog-only process signals. Their behavior is modeled through `channel-c` and `channel-d`, not through standalone IP nodes.
+- `services/historian-db` and `services/ignition` still exist on disk for historical/reference work but are not part of the current hybrid compose and should not be used for the current demo path.
 
 ## Important limitation
 
@@ -347,168 +285,52 @@ Docker can emulate network segmentation and service behavior, but it does **not*
 
 ```bash
 docker compose up -d --build
+docker compose -f testbed/iaea_rcs_demo/docker-compose-hybrid.yml up -d --build --remove-orphans
 ```
 
 Repeatable OPC bring-up:
 
 ```bash
-./scripts/up_opc_demo.sh
+./testbed/iaea_rcs_demo/scripts/up_opc_demo.sh
 ```
 
-Host access note:
+Useful host access:
 
-The `database` service is still a simulated HTTP endpoint, not a real PostgreSQL instance, so `psql -h localhost -p 15432` will not succeed. Use `curl http://localhost:15432/` to validate the listener instead.
+- PostgreSQL: `psql -h 127.0.0.1 -p 25432 -U iaea -d iaea_rcs`
+- Metasploit RPC: `127.0.0.1:4444`
+- Historian status: `curl -s http://127.0.0.1:4840/`
+- HMI state: `curl -s http://127.0.0.1:8081/api/state`
+- Engineering workstation status: `curl -s http://127.0.0.1:8082/api/status`
 
-A real PostgreSQL 15 server is available at `127.0.0.1:25432`; connect with `psql -h 127.0.0.1 -p 25432 -U iaea -d iaea_rcs` (password `iaea-demo-password`). It stores the `iaea_rcs` database on a persistent volume and can be reached from the Layer 4 Metasploit host or other Layer 4 tools that speak PostgreSQL.
+## Current Validation
 
-The Metasploit RPC server listens on `127.0.0.1:4444`; use `msfconsole` or any RPC client with the `msfadmin/msfadmin` credentials to orchestrate payloads or demos from the host or the Layer 4 Metasploit host.
+Run the current smoke gates before demo recording:
 
-PLC access note:
+```bash
+python3 testbed/iaea_rcs_demo/scripts/verify_hybrid_runtime.py --timeout-sec 60 --traffic-iterations 2
+python3 testbed/iaea_rcs_demo/scripts/verify_siem_sensors.py --timeout-sec 60
+curl -s http://127.0.0.1:4840/
+```
 
-- `http://127.0.0.1:18080/` reaches the `plc-main` OpenPLC web UI.
-- `http://127.0.0.1:18081/` reaches the `plc-backup` OpenPLC web UI.
-- `http://127.0.0.1:8086/` reaches the Layer 4 `historian-db` UI (InfluxDB 2.x). Use `admin` / `iaea-demo-password` for the UI login and `iaea-historian-token` for API calls.
-- Port `502` on the PLC containers is no longer HTTP, so validate it with a Modbus client or a TCP connect test rather than `urllib.request`.
-- `plc-main` publishes a local summary on holding registers `10`-`22`: `PT-455`, `PT-456`, `PT-457`, average pressure, health code, then owner/command pairs for `vc-hv455a`, `vc-pv455b`, `vc-pv455c`, and `heat-ctrl`.
-- `plc-backup` publishes the same shape on holding registers `10`-`22`, using `PT-456`, `PT-457`, and `PT-458` for the sensor half of the summary.
+Expected results:
 
-Current Modbus register map:
+- `verify_hybrid_runtime.py` prints `Hybrid runtime verification passed`
+- `verify_siem_sensors.py` prints `SIEM sensor verification passed`
+- the historian status JSON shows `"status": "ok"` and both PLC profiles connected
+- the dashboard topology is observation-driven, so `pt-457` and `pt-458` will not show as standalone network nodes
 
-| Device | Unit ID | Registers | Meaning |
-|---|---|---|---|
-| `pt-455` | `1` | input registers `0`-`1` | pressure value, status |
-| `pt-456` | `2` | input registers `0`-`1` | pressure value, status |
-| `pt-457` | `3` | input registers `0`-`1` | pressure value, status |
-| `pt-458` | `4` | input registers `0`-`1` | pressure value, status |
-| `vc-hv455a` | `11` | holding registers `0`-`3` read, `0`-`1` write | owner ID, applied command, last writer ID, status word |
-| `vc-pv455b` | `12` | holding registers `0`-`3` read, `0`-`1` write | owner ID, applied command, last writer ID, status word |
-| `vc-pv455c` | `13` | holding registers `0`-`3` read, `0`-`1` write | owner ID, applied command, last writer ID, status word |
-| `heat-ctrl` | `14` | holding registers `0`-`3` read, `0`-`1` write | owner ID, applied command, last writer ID, status word |
-| `plc-main` | `1` | holding registers `10`-`22` | PT summary followed by actuator owner/command pairs |
-| `plc-backup` | `1` | holding registers `10`-`22` | PT summary followed by actuator owner/command pairs |
-
-OpenPLC monitoring and displayed register table:
-
-The OpenPLC `Monitoring` page shows the named `%IW` and `%QW` tags below. `owner` values use `1 = plc-main` and `2 = plc-backup`. PT `status` is `1` when the simulated sensor is healthy. Actuator `*_status` is a bitmask: `1 = device alive`, `2 = owner active`, `4 = last write accepted`, `8 = last write rejected`.
-
-Main PLC sensor inputs:
-
-| Tag | Address | Description |
-|---|---|---|
-| `pt455_pv` | `%IW100` | live process value from `pt-455` |
-| `pt455_status` | `%IW101` | PT health/status word for `pt-455` |
-| `pt456_pv` | `%IW102` | live process value from `pt-456` |
-| `pt456_status` | `%IW103` | PT health/status word for `pt-456` |
-| `pt457_pv` | `%IW104` | live process value from `pt-457` |
-| `pt457_status` | `%IW105` | PT health/status word for `pt-457` |
-
-Backup PLC sensor inputs:
-
-| Tag | Address | Description |
-|---|---|---|
-| `pt456_pv` | `%IW100` | live process value from `pt-456` |
-| `pt456_status` | `%IW101` | PT health/status word for `pt-456` |
-| `pt457_pv` | `%IW102` | live process value from `pt-457` |
-| `pt457_status` | `%IW103` | PT health/status word for `pt-457` |
-| `pt458_pv` | `%IW104` | live process value from `pt-458` |
-| `pt458_status` | `%IW105` | PT health/status word for `pt-458` |
-
-Actuator readbacks:
-
-| Tag | Address | Actuator | Description |
-|---|---|---|---|
-| `hv_owner` | `%IW106` | `vc-hv455a` | current owner ID reported by the actuator |
-| `hv_applied` | `%IW107` | `vc-hv455a` | command value the actuator is currently applying |
-| `hv_last_writer` | `%IW108` | `vc-hv455a` | owner ID of the most recent write attempt |
-| `hv_status` | `%IW109` | `vc-hv455a` | actuator status word and write-accept/write-reject flags |
-| `pvb_owner` | `%IW110` | `vc-pv455b` | current owner ID reported by the actuator |
-| `pvb_applied` | `%IW111` | `vc-pv455b` | command value the actuator is currently applying |
-| `pvb_last_writer` | `%IW112` | `vc-pv455b` | owner ID of the most recent write attempt |
-| `pvb_status` | `%IW113` | `vc-pv455b` | actuator status word and write-accept/write-reject flags |
-| `pvc_owner` | `%IW114` | `vc-pv455c` | current owner ID reported by the actuator |
-| `pvc_applied` | `%IW115` | `vc-pv455c` | command value the actuator is currently applying |
-| `pvc_last_writer` | `%IW116` | `vc-pv455c` | owner ID of the most recent write attempt |
-| `pvc_status` | `%IW117` | `vc-pv455c` | actuator status word and write-accept/write-reject flags |
-| `heat_owner` | `%IW118` | `heat-ctrl` | current owner ID reported by the actuator |
-| `heat_applied` | `%IW119` | `heat-ctrl` | command value the actuator is currently applying |
-| `heat_last_writer` | `%IW120` | `heat-ctrl` | owner ID of the most recent write attempt |
-| `heat_status` | `%IW121` | `heat-ctrl` | actuator status word and write-accept/write-reject flags |
-
-Actuator command outputs:
-
-| Tag | Address | Description |
-|---|---|---|
-| `hv_owner_claim` | `%QW100` | owner ID this PLC presents when writing to `vc-hv455a` |
-| `hv_command_request` | `%QW101` | command value this PLC requests for `vc-hv455a` |
-| `pvb_owner_claim` | `%QW102` | owner ID this PLC presents when writing to `vc-pv455b` |
-| `pvb_command_request` | `%QW103` | command value this PLC requests for `vc-pv455b` |
-| `pvc_owner_claim` | `%QW104` | owner ID this PLC presents when writing to `vc-pv455c` |
-| `pvc_command_request` | `%QW105` | command value this PLC requests for `vc-pv455c` |
-| `heat_owner_claim` | `%QW106` | owner ID this PLC presents when writing to `heat-ctrl` |
-| `heat_command_request` | `%QW107` | command value this PLC requests for `heat-ctrl` |
-
-Main PLC exported summary registers:
-
-| Tag | Address | Description |
-|---|---|---|
-| `exported_pt455` | `%QW10` | `PT-455` pressure value republished on the PLC-local Modbus summary |
-| `exported_pt456` | `%QW11` | `PT-456` pressure value republished on the PLC-local Modbus summary |
-| `exported_pt457` | `%QW12` | `PT-457` pressure value republished on the PLC-local Modbus summary |
-| `average_pressure` | `%QW13` | average of `PT-455`, `PT-456`, and `PT-457` used to select actuator commands |
-| `health_code` | `%QW14` | 1 when all three PTs are healthy, else 0 |
-| `exported_hv_owner` | `%QW15` | owner field for `vc-hv455a` republished on the PLC-local Modbus map |
-| `exported_hv_command` | `%QW16` | applied command for `vc-hv455a` republished on the PLC-local Modbus map |
-| `exported_pvb_owner` | `%QW17` | owner field for `vc-pv455b` republished on the PLC-local Modbus map |
-| `exported_pvb_command` | `%QW18` | applied command for `vc-pv455b` republished on the PLC-local Modbus map |
-| `exported_pvc_owner` | `%QW19` | owner field for `vc-pv455c` republished on the PLC-local Modbus map |
-| `exported_pvc_command` | `%QW20` | applied command for `vc-pv455c` republished on the PLC-local Modbus map |
-| `exported_heat_owner` | `%QW21` | owner field for `heat-ctrl` republished on the PLC-local Modbus map |
-| `exported_heat_command` | `%QW22` | applied command for `heat-ctrl` republished on the PLC-local Modbus map |
-
-Current OPC UA map:
-
-| Server | Endpoint | Namespace URI | Notes |
-|---|---|---|---|
-| `plc-main` | `opc.tcp://10.1.13.10:4840/main` | `urn:iaea-rcs-demo:main` | publishes PT-455/456/457 telemetry, actuator readbacks, summary values, and bridge health |
-| `plc-backup` | `opc.tcp://10.2.23.10:4840/backup` | `urn:iaea-rcs-demo:backup` | publishes PT-456/457/458 telemetry, actuator readbacks, summary values, and bridge health |
-
-Useful OPC UA node IDs:
-
-- `pt455_pv`, `pt456_pv`, `pt457_pv`, `pt458_pv`
-- `average_pressure`, `health_code`
-- `hv_owner`, `hv_applied`, `hv_last_writer`, `hv_status`
-- `pvb_owner`, `pvb_applied`, `pvb_last_writer`, `pvb_status`
-- `pvc_owner`, `pvc_applied`, `pvc_last_writer`, `pvc_status`
-- `heat_owner`, `heat_applied`, `heat_last_writer`, `heat_status`
-- `bridge_online`, `bridge_poll_errors`, `bridge_last_success_epoch`
-
-Backup PLC exported summary registers:
-
-| Tag | Address | Description |
-|---|---|---|
-| `exported_pt456` | `%QW10` | `PT-456` pressure value republished on the PLC-local Modbus summary |
-| `exported_pt457` | `%QW11` | `PT-457` pressure value republished on the PLC-local Modbus summary |
-| `exported_pt458` | `%QW12` | `PT-458` pressure value republished on the PLC-local Modbus summary |
-| `average_pressure` | `%QW13` | average of `PT-456`, `PT-457`, and `PT-458` used to select actuator commands |
-| `health_code` | `%QW14` | 1 when all three PTs are healthy, else 0 |
-| `exported_hv_owner` | `%QW15` | owner field for `vc-hv455a` republished on the PLC-local Modbus map |
-| `exported_hv_command` | `%QW16` | applied command for `vc-hv455a` republished on the PLC-local Modbus map |
-| `exported_pvb_owner` | `%QW17` | owner field for `vc-pv455b` republished on the PLC-local Modbus map |
-| `exported_pvb_command` | `%QW18` | applied command for `vc-pv455b` republished on the PLC-local Modbus map |
-| `exported_pvc_owner` | `%QW19` | owner field for `vc-pv455c` republished on the PLC-local Modbus map |
-| `exported_pvc_command` | `%QW20` | applied command for `vc-pv455c` republished on the PLC-local Modbus map |
-| `exported_heat_owner` | `%QW21` | owner field for `heat-ctrl` republished on the PLC-local Modbus map |
-| `exported_heat_command` | `%QW22` | applied command for `heat-ctrl` republished on the PLC-local Modbus map |
+Build note: the OpenPLC image downloads the pinned upstream source tarball from GitHub during `docker compose build`, so the build host needs outbound internet access.
 
 ## Inspect
 
 ```bash
-docker compose ps
+docker compose -f testbed/iaea_rcs_demo/docker-compose-hybrid.yml ps
 docker exec -it firewall-0 iptables -S
 docker exec -it firewall-1 iptables -S
 docker exec -it firewall-2 iptables -S
-docker exec -it firewall-main-cell iptables -S
-docker exec -it firewall-backup-cell iptables -S
+docker exec -it historian ip route
+docker exec -it plc-main ip route
+docker exec -it plc-backup ip route
 ```
 
 ## List Docker network
@@ -541,10 +363,14 @@ docker exec -it <container_name_or_id> cat /etc/resolv.conf
 If this is a Compose stack, also check the declared networks in the Compose file:
 
 ```bash
-docker compose config
+docker compose -f testbed/iaea_rcs_demo/docker-compose-hybrid.yml config
 ```
 
-## Validation
+## Historical Validation Notes
+
+The remainder of this section captures earlier validation runs and lower-level
+lab notes from pre-hybrid iterations. It is retained for reference, not as the
+current demo operator path.
 
 Validation run: `2026-04-04`
 

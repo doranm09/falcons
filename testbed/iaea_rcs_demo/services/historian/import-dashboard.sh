@@ -1,9 +1,14 @@
 #!/bin/sh
 set -eu
 
-INFLUX_URL=${INFLUX_URL:-http://historian-db:8086}
+INFLUX_URL=${INFLUX_URL:-}
 INFLUX_TOKEN=${INFLUX_TOKEN:-iaea-historian-token}
 INFLUX_ORG=${INFLUX_ORG:-iaea}
+
+if [ -z "$INFLUX_URL" ]; then
+  echo "INFLUX_URL is required. The validated hybrid demo leaves historian persistence disabled by default." >&2
+  exit 1
+fi
 
 JSON=$(cat <<'EOF'
 {

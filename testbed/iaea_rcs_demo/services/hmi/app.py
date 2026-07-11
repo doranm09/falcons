@@ -99,13 +99,13 @@ PLC_CONFIGS = [
     {
         "name": "plc-main",
         "profile": "main",
-        "endpoint": os.getenv("PLC_MAIN_OPC_ENDPOINT", "opc.tcp://10.1.13.10:4840/main"),
+        "endpoint": os.getenv("PLC_MAIN_OPC_ENDPOINT", "opc.tcp://10.1.1.14:4840/main"),
         "namespace": os.getenv("PLC_MAIN_OPC_NAMESPACE", "urn:iaea-rcs-demo:main"),
     },
     {
         "name": "plc-backup",
         "profile": "backup",
-        "endpoint": os.getenv("PLC_BACKUP_OPC_ENDPOINT", "opc.tcp://10.2.23.10:4840/backup"),
+        "endpoint": os.getenv("PLC_BACKUP_OPC_ENDPOINT", "opc.tcp://10.1.2.15:4840/backup"),
         "namespace": os.getenv("PLC_BACKUP_OPC_NAMESPACE", "urn:iaea-rcs-demo:backup"),
     },
 ]

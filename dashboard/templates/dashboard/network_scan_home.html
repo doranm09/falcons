@@ -1,0 +1,107 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container py-5">
+  <div class="card shadow-sm border-0 mb-4">
+    <div class="card-body">
+      <small class="text-muted">IAEA RCS Demo</small>
+      <h1 class="display-5 fw-bold mb-2">Streamlined Network Scans</h1>
+      <p class="text-muted mb-0">
+        Launch a quick CIDR sweep, monitor active jobs, and review the recent discovery results without leaving the landing page.
+      </p>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-md-6">
+      <div class="card shadow-sm h-100 border-primary">
+        <div class="card-header">
+          <h6 class="mb-0">Launch scan</h6>
+        </div>
+        <div class="card-body">
+          <form id="scan-form">
+            <div class="mb-3">
+              <label for="scan-cidr" class="form-label">Target CIDR</label>
+              <input type="text" class="form-control" id="scan-cidr" placeholder="e.g., 10.2.50.0/24" required>
+            </div>
+            <div class="mb-3">
+              <label for="scan-method" class="form-label">Scan method</label>
+              <select class="form-select" id="scan-method">
+                <option value="ping">Ping Sweep</option>
+                <option value="nmap">Nmap</option>
+              </select>
+            </div>
+            <button class="btn btn-primary w-100" id="launch-scan" type="button">
+              <i class="bi bi-play-fill"></i> Launch scan
+            </button>
+            <div class="mt-2 small text-muted">
+              Scan jobs queue for the simulated IAEA network. Ping sweep is fast; Nmap reserves the inventory view.
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card shadow-sm h-100 border-success">
+        <div class="card-header">
+          <h6 class="mb-0">Active scan status</h6>
+        </div>
+        <div class="card-body">
+          <p class="mb-2">
+            <span class="badge bg-success">Running</span> {{ running_scans }} job{{ running_scans|pluralize }}
+            · <span class="badge bg-warning text-dark">Pending</span> {{ pending_scans }} job{{ pending_scans|pluralize }}
+          </p>
+          <ul class="list-group list-group-flush">
+            {% for scan in scan_history %}
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                  <strong>{{ scan.cidr }}</strong>
+                  <p class="mb-0 small text-muted">{{ scan.get_status_display }} · {{ scan.scan_type|upper }}</p>
+                </div>
+                <span class="badge {% if scan.status == 'RUNNING' %}bg-success{% elif scan.status == 'FAILED' %}bg-danger{% else %}bg-secondary{% endif %}">
+                  {{ scan.status }}
+                </span>
+              </li>
+            {% empty %}
+              <li class="list-group-item text-center text-muted">No scans yet.</li>
+            {% endfor %}
+          </ul>
+          <div class="text-end mt-2">
+            <a href="{% url 'dashboard:network_scans' %}" class="link-primary small">View full scan history ↗</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.getElementById("launch-scan").addEventListener("click", async () => {
+    const cidr = document.getElementById("scan-cidr").value.trim();
+    const method = document.getElementById("scan-method").value;
+    if (!cidr) {
+      alert("Targets need a CIDR.");
+      return;
+    }
+    const res = await fetch("{% url 'dashboard:start-scan' %}", {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": "{{ request.COOKIES.csrftoken }}",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ cidr, scan_method: method }),
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      alert("Scan request failed: " + txt);
+      return;
+    }
+    const resp = await res.json();
+    alert("Scan queued: " + resp.method + " (" + resp.scan_id + ")");
+    window.location.reload();
+  });
+</script>
+
+{% endblock %}

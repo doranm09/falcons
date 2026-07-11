@@ -248,27 +248,15 @@ def _gpwr_send_command(command: str, host: str, port: int, timeout: float = 5.0)
     return raw.decode("utf-8", errors="replace").strip()
 
 def home(request):
-    nodes = Node.objects.all().values('ip_address', 'name')
+    scan_history = ScanRun.objects.order_by("-timestamp")[:8]
+    running_scans = ScanRun.objects.filter(status="RUNNING").count()
+    pending_scans = ScanRun.objects.filter(status="PENDING").count()
 
-    # Get process information from all agents
-    agents = AgentStatus.objects.filter(processes__isnull=False).order_by('-last_heartbeat')[:10]
-    current_processes = []
-
-    for agent in agents:
-        if agent.processes:
-            for process in agent.processes[:5]:  # Limit to 5 processes per agent
-                current_processes.append({
-                    'hostname': agent.hostname,
-                    'agent_id': agent.agent_id,
-                    'pid': process.get('pid'),
-                    'name': process.get('name'),
-                    'agent_status': agent.status
-                })
-
-    return render(request, 'dashboard/home.html', {
-        'nodes': nodes,
-        'current_processes': current_processes[:20],  # Show top 20 processes
-        'timestamp': now().timestamp()
+    return render(request, "dashboard/network_scan_home.html", {
+        "scan_history": scan_history,
+        "running_scans": running_scans,
+        "pending_scans": pending_scans,
+        "timestamp": now().timestamp(),
     })
 
 

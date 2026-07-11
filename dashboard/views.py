@@ -41,6 +41,7 @@ from .tasks import (
     launch_openvas_scan_task,
     nmap_discovery_task,
     parse_and_save_vulnerabilities,
+    scan_sbom_vulnerabilities_task,
     run_ot_campaign_task,
 )
 from .openvas_client import openvas_session, get_task_status, get_report_id, download_report
@@ -50,9 +51,13 @@ from .risk_assessment import build_cyber_data_for_risk_nodes, summarize_risk_res
 from .utils import dijkstra, list_interfaces
 from .sbom import (
     detect_sbom_format,
+    extract_cyber_template_table_rows,
     extract_os_summary_from_sbom,
     extract_packages_from_sbom,
+    extract_vulnerability_table_rows_from_models,
+    extract_vulnerability_table_rows,
     extract_vulnerabilities_from_sbom,
+    extract_sbom_table_rows,
     compute_payload_hash,
 )
 from .minimega import build_minimega_script, build_digital_twin_manifest
@@ -67,6 +72,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 import json
 import os
+import shutil
 from collections import defaultdict
 from django.conf import settings
 from django.db import transaction
@@ -246,6 +252,14 @@ def _gpwr_send_command(command: str, host: str, port: int, timeout: float = 5.0)
     if b"\x00" in raw:
         raw = raw.split(b"\x00", 1)[0]
     return raw.decode("utf-8", errors="replace").strip()
+
+
+def _refresh_agent_statuses():
+    """Refresh persisted agent status flags without changing heartbeat timestamps."""
+    agents = AgentStatus.objects.all().order_by("-last_heartbeat")
+    for agent in agents:
+        agent.update_status()
+    return AgentStatus.objects.all().order_by("-last_heartbeat")
 
 def home(request):
     scan_history = ScanRun.objects.order_by("-timestamp")[:8]
@@ -1012,6 +1026,7 @@ def agent_cyber_report(request):
     try:
         node = Node.objects.get(agent_id=agent_id)
         node.update_cyber_data(cyber_data)
+        scan_sbom_vulnerabilities_task.delay(agent_id=agent_id)
         return JsonResponse({"status": "cyber_data_updated"})
     except Node.DoesNotExist:
         return JsonResponse({"error": "Node not found"}, status=404)
@@ -1079,6 +1094,8 @@ def sbom_ingest(request):
         os_summary=os_summary,
         sha256=payload_hash,
     )
+
+    scan_sbom_vulnerabilities_task.delay(agent_id=agent_id, report_id=report.id)
 
     if node and vulnerabilities:
         for vuln in vulnerabilities:
@@ -1856,30 +1873,87 @@ def siem_windows_ingest(request):
 
 @require_GET
 def agent_sbom_export(request, agent_id):
-    fmt = (request.GET.get("format") or "json").lower()
+    fmt = (request.GET.get("format") or "table").lower()
     report = SbomReport.objects.filter(agent_id=agent_id).order_by("-created_at").first()
+    node = None
+    fallback_packages = []
     if not report:
-        return JsonResponse({"error": "SBOM not found"}, status=404)
+        try:
+            node = Node.objects.get(agent_id=agent_id)
+        except Node.DoesNotExist:
+            node = None
+        if not node or not node.installed_libraries:
+            return JsonResponse({"error": "SBOM not found"}, status=404)
+        fallback_packages = list(node.installed_libraries or [])
+
+    if fmt in {"html", "table"}:
+        scanner_tools = [tool for tool in ("trivy", "grype") if shutil.which(tool)]
+        if report:
+            rows = extract_sbom_table_rows(report.document)
+            vulnerability_rows = extract_vulnerability_table_rows(report.document)
+            source_label = "SBOM report"
+            os_summary = report.os_summary
+            collected_at = report.created_at
+            format_name = report.format
+        else:
+            rows = extract_cyber_template_table_rows(node.installed_libraries if node else [])
+            vulnerability_rows = extract_vulnerability_table_rows_from_models(
+                node.vulnerability_set.all() if node else []
+            )
+            source_label = "cyber template data"
+            os_summary = node.os_info if node else ""
+            collected_at = node.last_heartbeat if node else None
+            format_name = "cyber"
+        return render(request, "dashboard/agent_sbom_table.html", {
+            "report": report,
+            "agent_id": agent_id,
+            "source_label": source_label,
+            "os_summary": os_summary,
+            "collected_at": collected_at,
+            "format_name": format_name,
+            "scanner_tools": scanner_tools,
+            "scanner_status": " + ".join(scanner_tools).title() if scanner_tools else "Unavailable",
+            "rows": rows,
+            "total_rows": len(rows),
+            "vulnerability_rows": vulnerability_rows,
+            "vulnerability_total_rows": len(vulnerability_rows),
+        })
 
     if fmt == "csv":
-        packages = extract_packages_from_sbom(report.document)
-        filename = f"sbom_{agent_id}_{report.created_at:%Y%m%d_%H%M%S}.csv"
+        packages = extract_packages_from_sbom(report.document) if report else fallback_packages
+        timestamp = report.created_at if report else (node.last_heartbeat if node and node.last_heartbeat else now())
+        filename = f"sbom_{agent_id}_{timestamp:%Y%m%d_%H%M%S}.csv"
         lines = ["package"]
         lines.extend(packages)
         response = HttpResponse("\n".join(lines), content_type="text/csv")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
 
-    data = {
-        "agent_id": report.agent_id,
-        "created_at": report.created_at.isoformat(),
-        "format": report.format,
-        "bom_format": report.bom_format,
-        "spec_version": report.spec_version,
-        "package_count": report.package_count,
-        "os_summary": report.os_summary,
-        "document": report.document,
-    }
+    if report:
+        data = {
+            "agent_id": report.agent_id,
+            "created_at": report.created_at.isoformat(),
+            "format": report.format,
+            "bom_format": report.bom_format,
+            "spec_version": report.spec_version,
+            "package_count": report.package_count,
+            "os_summary": report.os_summary,
+            "document": report.document,
+        }
+    else:
+        data = {
+            "agent_id": agent_id,
+            "created_at": node.last_heartbeat.isoformat() if node and node.last_heartbeat else "",
+            "format": "cyber",
+            "bom_format": "",
+            "spec_version": "",
+            "package_count": len(fallback_packages),
+            "os_summary": node.os_info if node else "",
+            "document": {
+                "packages": fallback_packages,
+                "source": "cyber template data",
+            },
+        }
     return JsonResponse(data, json_dumps_params={"indent": 2})
 
 
@@ -2044,11 +2118,10 @@ def agent_command_result(request):
 # -----------------------------
 def agent_monitoring(request):
     """Main agent monitoring dashboard."""
-    agents = AgentStatus.objects.all().order_by('-last_heartbeat')
-
-    # Update status for all agents based on heartbeat timing
-    for agent in agents:
-        agent.update_status()
+    agents = _refresh_agent_statuses()
+    total_agents = agents.count()
+    online_agents = agents.filter(status='online').count()
+    offline_agents = agents.filter(status='offline').count()
 
     # Get recent command results
     recent_results = CommandResult.objects.all().order_by('-timestamp')[:20]
@@ -2060,20 +2133,16 @@ def agent_monitoring(request):
         'agents': agents,
         'recent_results': recent_results,
         'pending_commands': pending_commands,
-        'total_agents': agents.count(),
-        'online_agents': agents.filter(status='online').count(),
-        'offline_agents': agents.filter(status='offline').count(),
+        'total_agents': total_agents,
+        'online_agents': online_agents,
+        'offline_agents': offline_agents,
     })
 
 
 @require_GET
 def agent_status_api(request):
     """API endpoint for real-time agent status updates."""
-    agents = AgentStatus.objects.all().order_by('-last_heartbeat')
-
-    # Update status for all agents
-    for agent in agents:
-        agent.update_status()
+    agents = _refresh_agent_statuses()
 
     agent_data = []
     for agent in agents:
@@ -2156,6 +2225,71 @@ def send_agent_command(request):
         "command_id": command.id,
         "agent_id": agent_id,
         "action": action
+    })
+
+
+@require_http_methods(["POST"])
+def delete_agent(request, agent_id=None):
+    """Delete a specific agent and its agent-scoped history from the dashboard."""
+    if not agent_id:
+        try:
+            payload = json.loads(request.body or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        agent_id = (payload.get("agent_id") or "").strip()
+
+    if not agent_id:
+        return JsonResponse({"error": "agent_id is required"}, status=400)
+
+    try:
+        agent = AgentStatus.objects.get(agent_id=agent_id)
+    except AgentStatus.DoesNotExist:
+        return JsonResponse({"error": "Agent not found"}, status=404)
+
+    with transaction.atomic():
+        command_result_count, _ = CommandResult.objects.filter(agent_id=agent_id).delete()
+        agent_command_count, _ = AgentCommand.objects.filter(agent_id=agent_id).delete()
+        sbom_report_count, _ = SbomReport.objects.filter(agent_id=agent_id).delete()
+        deleted_agent_record_count, _ = AgentStatus.objects.filter(agent_id=agent_id).delete()
+
+    return JsonResponse({
+        "status": "agent_deleted",
+        "agent_id": agent_id,
+        "deleted_agent_records": deleted_agent_record_count,
+        "deleted_command_results": command_result_count,
+        "deleted_commands": agent_command_count,
+        "deleted_sbom_reports": sbom_report_count,
+    })
+
+@require_http_methods(["POST"])
+def delete_offline_agents(request):
+    """Delete all offline agents and their agent-scoped history from the dashboard."""
+    agents = _refresh_agent_statuses()
+    offline_agents = [agent for agent in agents if agent.status == "offline"]
+
+    if not offline_agents:
+        return JsonResponse({
+            "status": "no_offline_agents",
+            "deleted_agents": 0,
+            "deleted_agent_ids": [],
+        })
+
+    offline_agent_ids = [agent.agent_id for agent in offline_agents]
+
+    with transaction.atomic():
+        command_result_count, _ = CommandResult.objects.filter(agent_id__in=offline_agent_ids).delete()
+        agent_command_count, _ = AgentCommand.objects.filter(agent_id__in=offline_agent_ids).delete()
+        sbom_report_count, _ = SbomReport.objects.filter(agent_id__in=offline_agent_ids).delete()
+        deleted_agent_record_count, _ = AgentStatus.objects.filter(agent_id__in=offline_agent_ids).delete()
+
+    return JsonResponse({
+        "status": "offline_agents_deleted",
+        "deleted_agents": len(offline_agent_ids),
+        "deleted_agent_records": deleted_agent_record_count,
+        "deleted_agent_ids": offline_agent_ids,
+        "deleted_command_results": command_result_count,
+        "deleted_commands": agent_command_count,
+        "deleted_sbom_reports": sbom_report_count,
     })
 
 
@@ -2266,6 +2400,7 @@ def agent_analysis(request, agent_id):
     # ====================
     total_commands = AgentCommand.objects.filter(agent_id=agent_id).count()
     total_command_results = CommandResult.objects.filter(agent_id=agent_id).count()
+    sbom_reports = SbomReport.objects.filter(agent_id=agent_id).order_by('-created_at')[:5]
 
     # Command success/error analysis
     command_action_counts = defaultdict(int)
@@ -2402,6 +2537,7 @@ def agent_analysis(request, agent_id):
             'action_counts': dict(command_action_counts),
             'recent_commands': recent_commands[:10],  # Last 10 commands
         },
+        'sbom_reports': sbom_reports,
         'network_analysis': {
             'metadata_records': network_metadata,
             'connection_stats': connection_stats,
@@ -2632,7 +2768,7 @@ def ot_campaign_status(request, task_id):
 @require_GET
 def agent_download_page(request):
     """Page for downloading the host agent software."""
-    from host_agent.agent import AGENT_VERSION, AGENT_NAME
+    from host_agent import AGENT_VERSION, AGENT_NAME
     from django.urls import reverse
 
     # Get the latest agent information
@@ -2644,7 +2780,7 @@ def agent_download_page(request):
         'agent_version': AGENT_VERSION,
         'agent_name': AGENT_NAME,
         'latest_agents': latest_agents,
-        'download_url': reverse("download_host_agent")
+        'download_url': reverse("dashboard:download_host_agent")
     })
 
 
@@ -2653,12 +2789,11 @@ def download_host_agent(request):
     """Download the host agent as a ZIP file using FileResponse for efficient streaming."""
     import zipfile
     import tempfile
-    import shutil
 
     print(f"[DEBUG] Download request from {request.META.get('REMOTE_ADDR', 'unknown')}")
 
-    # Define a temporary directory for ZIP files (or use media root if configured)
-    zips_dir = Path(settings.MEDIA_ROOT) / "exports" if hasattr(settings, 'MEDIA_ROOT') and settings.MEDIA_ROOT else Path("/tmp/cyber_agent_zips")
+    # Use a writable temp location inside the container.
+    zips_dir = Path(tempfile.gettempdir()) / "cyber_agent_zips"
     zips_dir.mkdir(parents=True, exist_ok=True)
 
     filename = "host_agent.zip"

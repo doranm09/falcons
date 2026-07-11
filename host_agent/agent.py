@@ -642,10 +642,10 @@ def return_output(cmd_id, output):
 def post_sbom_to_server(sbom_data, server_url=None, agent_id="unknown", vulnerabilities=None):
     """
     server_url:
-      - If None, posts to f"{SERVER_URL}/sbom"
+      - If None, posts to f"{SERVER_URL}/sbom/"
       - Otherwise, post to the given absolute URL.
     """
-    target = server_url or f"{SERVER_URL.rstrip('/')}/sbom"
+    target = server_url or f"{SERVER_URL.rstrip('/')}/sbom/"
     headers = {
         "X-Agent-ID": agent_id,
         "X-Timestamp": datetime.utcnow().isoformat() + "Z"
@@ -801,7 +801,7 @@ if __name__ == "__main__":
     sbom_parser = subparsers.add_parser("sbom", help="Collect installed package list (SBOM)")
     sbom_parser.add_argument("--output", "-o", help="Write SBOM to a file")
     sbom_parser.add_argument("--format", "-f", choices=["raw", "cyclonedx"], default="raw", help="SBOM output format")
-    sbom_parser.add_argument("--sbom-url", help="Override SBOM POST URL (default: <server>/sbom)")
+    sbom_parser.add_argument("--sbom-url", help="Override SBOM POST URL (default: <server>/sbom/)")
     sbom_parser.add_argument("--vuln-file", help="Optional JSON file with vulnerabilities (e.g., Grype/Trivy output)")
     sniff_parser = subparsers.add_parser("sniff", help="Sniff packets on interface")
     sniff_parser.add_argument("--interface", "-i", required=True, help="Interface to sniff on")

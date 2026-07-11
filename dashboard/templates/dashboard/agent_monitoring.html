@@ -2,41 +2,46 @@
 {% load static %}
 
 {% block content %}
-<div class="container-fluid p-4">
-    <div class="row mb-4">
-        <div class="col-12">
+<div class="container-fluid px-3 px-md-4 py-3 py-md-4">
+    <div class="row g-3 align-items-center mb-4">
+        <div class="col-12 col-md">
             <h2><i class="bi bi-robot"></i> Agent Monitoring Dashboard</h2>
             <p class="text-muted">Monitor and manage software agents across your network</p>
+        </div>
+        <div class="col-12 col-md-auto d-flex justify-content-md-end">
+            <a href="{% url 'dashboard:agent_download_page' %}" class="btn btn-outline-primary">
+                <i class="bi bi-cloud-download"></i> Agent Installer
+            </a>
         </div>
     </div>
 
     <!-- Agent Status Overview Cards -->
-    <div class="row mb-4">
-        <div class="col-md-3">
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-lg-3">
             <div class="card border-primary">
                 <div class="card-body text-center">
-                    <h4 class="card-title text-primary mb-1">{{ total_agents }}</h4>
+                    <h4 class="card-title text-primary mb-1" id="totalAgentsCount">{{ total_agents }}</h4>
                     <p class="card-text text-muted mb-0">Total Agents</p>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-6 col-lg-3">
             <div class="card border-success">
                 <div class="card-body text-center">
-                    <h4 class="card-title text-success mb-1">{{ online_agents }}</h4>
+                    <h4 class="card-title text-success mb-1" id="onlineAgentsCount">{{ online_agents }}</h4>
                     <p class="card-text text-muted mb-0">Online Agents</p>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-6 col-lg-3">
             <div class="card border-danger">
                 <div class="card-body text-center">
-                    <h4 class="card-title text-danger mb-1">{{ offline_agents }}</h4>
+                    <h4 class="card-title text-danger mb-1" id="offlineAgentsCount">{{ offline_agents }}</h4>
                     <p class="card-text text-muted mb-0">Offline Agents</p>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-6 col-lg-3">
             <div class="card border-warning">
                 <div class="card-body text-center">
                     <h4 class="card-title text-warning mb-1">{{ pending_commands.count }}</h4>
@@ -46,91 +51,23 @@
         </div>
     </div>
 
-    <!-- Quick Actions -->
+    <!-- Agents Table -->
     <div class="row mb-4">
         <div class="col-12">
             <div class="card">
-                <div class="card-header">
-                    <h6 class="mb-0"><i class="bi bi-download"></i> Agent Distribution</h6>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <a href="{% url 'dashboard:agent_download_page' %}" class="btn btn-primary btn-lg w-100">
-                                <i class="bi bi-cloud-download"></i> Download Host Agent
-                            </a>
-                        </div>
-                        <div class="col-md-6">
-                            <button class="btn btn-outline-info btn-lg w-100" onclick="refreshVersionInfo()">
-                                <i class="bi bi-arrow-repeat"></i> Check Agent Versions
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Command Interface -->
-    <div class="row mb-4">
-        <div class="col-md-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5><i class="bi bi-terminal"></i> Send Command to Agent</h5>
-                </div>
-                <div class="card-body">
-                    <form id="commandForm">
-                        {% csrf_token %}
-                        <div class="row">
-                            <div class="col-md-3">
-                                <label for="agentSelect" class="form-label">Select Agent</label>
-                                <select class="form-select" id="agentSelect" required>
-                                    <option value="">Choose an agent...</option>
-                                    {% for agent in agents %}
-                                        <option value="{{ agent.agent_id }}">{{ agent.hostname }} ({{ agent.agent_id }})</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <label for="commandAction" class="form-label">Action</label>
-                                <select class="form-select" id="commandAction" required>
-                                    <option value="">Choose action...</option>
-                                    <option value="ping">Ping</option>
-                                    <option value="scan">Network Scan</option>
-                                    <option value="sbom">Collect SBOM</option>
-                                    <option value="cyber">Cyber Template Data</option>
-                                    <option value="info">System Info</option>
-                                </select>
-                            </div>
-                            <div class="col-md-4">
-                                <label for="commandParams" class="form-label">Parameters (JSON)</label>
-                                <input type="text" class="form-control" id="commandParams" placeholder='{"target": "8.8.8.8"}'>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label">&nbsp;</label>
-                                <button type="submit" class="btn btn-primary d-block w-100">
-                                    <i class="bi bi-send"></i> Send Command
-                                </button>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Agents Table -->
-    <div class="row mb-4">
-        <div class="col-md-12">
-            <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5><i class="bi bi-server"></i> Agent Status</h5>
-                    <button class="btn btn-sm btn-outline-primary" onclick="refreshAgentStatus()">
-                        <i class="bi bi-arrow-repeat"></i> Refresh
-                    </button>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteOfflineAgents()">
+                            <i class="bi bi-trash3"></i> Delete Offline
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="refreshAgentStatus()">
+                            <i class="bi bi-arrow-repeat"></i> Refresh
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body">
-                    <div class="table-responsive">
+                    <div class="table-responsive d-none d-md-block">
                         <table class="table table-hover" id="agentsTable">
                             <thead>
                                 <tr>
@@ -138,10 +75,6 @@
                                     <th>Agent ID</th>
                                     <th>Hostname</th>
                                     <th>IP Address</th>
-                                    <th>Version</th>
-                                    <th>OS</th>
-                                    <th>CPU/Memory</th>
-                                    <th>Last Heartbeat</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -154,47 +87,28 @@
                                         </span>
                                     </td>
                                     <td>
-                                        <code class="small">{{ agent.agent_id }}</code>
+                                        <code class="small agent-table-cell">{{ agent.agent_id }}</code>
                                     </td>
                                     <td>{{ agent.hostname }}</td>
                                     <td>{{ agent.ip_address }}</td>
                                     <td>
-                                        <span class="badge bg-{% if agent.agent_version %}info{% else %}secondary{% endif %}">
-                                            {{ agent.agent_version|default:"Unknown" }}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        {% if agent.os_type %}
-                                            {{ agent.os_type }} {{ agent.os_version }}
-                                        {% else %}
-                                            <span class="text-muted">Unknown</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if agent.cpu_count %}
-                                            {{ agent.cpu_count }} CPU / {{ agent.memory_total|filesizeformat }}
-                                        {% else %}
-                                            <span class="text-muted">Unknown</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if agent.last_heartbeat %}
-                                            <span title="{{ agent.last_heartbeat|date:'Y-m-d H:i:s' }}">
-                                                {{ agent.last_heartbeat|timesince }} ago
-                                            </span>
-                                        {% else %}
-                                            <span class="text-muted">Never</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        <a href="{% url 'dashboard:agent_details' agent.agent_id %}" class="btn btn-sm btn-outline-primary">
-                                            <i class="bi bi-eye"></i> Details
-                                        </a>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            <a href="{% url 'dashboard:agent_details' agent.agent_id %}" class="btn btn-sm btn-outline-primary">
+                                                <i class="bi bi-eye"></i> Details
+                                            </a>
+                                            <button
+                                                type="button"
+                                                class="btn btn-sm btn-outline-danger"
+                                                onclick="deleteAgent('{{ agent.agent_id|escapejs }}', '{{ agent.hostname|default:'Agent'|escapejs }}')"
+                                            >
+                                                <i class="bi bi-trash3"></i> Delete
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="9" class="text-center text-muted">
+                                    <td colspan="5" class="text-center text-muted">
                                         No agents found. Agents will appear here when they report to the dashboard.
                                     </td>
                                 </tr>
@@ -202,14 +116,55 @@
                             </tbody>
                         </table>
                     </div>
+                    <div class="agent-mobile-list d-md-none" id="agentCards">
+                        {% for agent in agents %}
+                        <div class="card agent-mobile-card">
+                            <div class="card-body">
+                                <div class="agent-mobile-card__header">
+                                    <div class="agent-mobile-card__title">
+                                        <h6>{{ agent.hostname }}</h6>
+                                        <code>{{ agent.agent_id }}</code>
+                                    </div>
+                                    <span class="badge bg-{% if agent.status == 'online' %}success{% elif agent.status == 'offline' %}danger{% else %}warning{% endif %}">
+                                        {{ agent.status|title }}
+                                    </span>
+                                </div>
+                                <div class="agent-mobile-card__meta">
+                                    <div>
+                                        <span class="agent-mobile-card__meta-label">IP Address</span>
+                                        <div class="agent-mobile-card__meta-value">{{ agent.ip_address }}</div>
+                                    </div>
+                                </div>
+                                <div class="d-grid gap-2">
+                                    <a href="{% url 'dashboard:agent_details' agent.agent_id %}" class="btn btn-sm btn-outline-primary w-100">
+                                        <i class="bi bi-eye"></i> Details
+                                    </a>
+                                    <button
+                                        type="button"
+                                        class="btn btn-sm btn-outline-danger w-100"
+                                        onclick="deleteAgent('{{ agent.agent_id|escapejs }}', '{{ agent.hostname|default:'Agent'|escapejs }}')"
+                                    >
+                                        <i class="bi bi-trash3"></i> Delete Agent
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <div class="card agent-mobile-card">
+                            <div class="card-body text-center text-muted">
+                                No agents found. Agents will appear here when they report to the dashboard.
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Recent Activity -->
-    <div class="row">
-        <div class="col-md-6">
+    <div class="row g-3">
+        <div class="col-12 col-xl-6">
             <div class="card">
                 <div class="card-header">
                     <h5><i class="bi bi-clock-history"></i> Recent Command Results</h5>
@@ -235,7 +190,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-6">
+        <div class="col-12 col-xl-6">
             <div class="card">
                 <div class="card-header">
                     <h5><i class="bi bi-list-task"></i> Pending Commands</h5>
@@ -283,10 +238,33 @@
 
     function updateAgentsTable(agents) {
         const tbody = document.querySelector('#agentsTable tbody');
+        const cards = document.getElementById('agentCards');
+        const totalCount = document.getElementById('totalAgentsCount');
+        const onlineCount = document.getElementById('onlineAgentsCount');
+        const offlineCount = document.getElementById('offlineAgentsCount');
+        const deleteOfflineButton = document.getElementById('deleteOfflineAgentsButton');
         tbody.innerHTML = '';
+        cards.innerHTML = '';
+
+        const onlineAgents = agents.filter(agent => agent.status === 'online').length;
+        const offlineAgents = agents.filter(agent => agent.status === 'offline').length;
+
+        if (totalCount) totalCount.textContent = agents.length;
+        if (onlineCount) onlineCount.textContent = onlineAgents;
+        if (offlineCount) offlineCount.textContent = offlineAgents;
+        if (deleteOfflineButton) {
+            deleteOfflineButton.disabled = offlineAgents === 0;
+        }
 
         if (agents.length === 0) {
             tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No agents found</td></tr>';
+            cards.innerHTML = `
+                <div class="card agent-mobile-card">
+                    <div class="card-body text-center text-muted">
+                        No agents found. Agents will appear here when they report to the dashboard.
+                    </div>
+                </div>
+            `;
             return;
         }
 
@@ -294,37 +272,148 @@
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>
-                    <span class="badge bg-${agent.status === 'online' ? 'success' : agent.status === 'offline' ? 'danger' : 'warning'}">
-                        ${agent.status.charAt(0).toUpperCase() + agent.status.slice(1)}
-                    </span>
+                    ${renderStatusBadge(agent.status)}
                 </td>
-                <td><code class="small">${agent.agent_id}</code></td>
-                <td>${agent.hostname}</td>
-                <td>${agent.ip_address}</td>
+                <td><code class="small agent-table-cell">${escapeHtml(agent.agent_id)}</code></td>
+                <td>${escapeHtml(agent.hostname)}</td>
+                <td>${escapeHtml(agent.ip_address)}</td>
                 <td>
-                    <span class="badge bg-${agent.agent_version !== 'Unknown' ? 'info' : 'secondary'}">
-                        ${agent.agent_version}
-                    </span>
-                </td>
-                <td>${agent.os_type ? `${agent.os_type} ${agent.os_version}` : '<span class="text-muted">Unknown</span>'}</td>
-                <td>${agent.cpu_count ? `${agent.cpu_count} CPU / ${formatBytes(agent.memory_total)}` : '<span class="text-muted">Unknown</span>'}</td>
-                <td>${agent.last_heartbeat}</td>
-                <td>
-                    <a href="/dashboard/agent/${agent.agent_id}/" class="btn btn-sm btn-outline-primary">
-                        <i class="bi bi-eye"></i> Details
-                    </a>
+                    <div class="d-flex flex-wrap gap-2">
+                        <a href="/dashboard/agent/${encodeURIComponent(agent.agent_id)}/" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-eye"></i> Details
+                        </a>
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-outline-danger"
+                            onclick="deleteAgent('${escapeJsString(agent.agent_id)}', '${escapeJsString(agent.hostname || 'Agent')}')"
+                        >
+                            <i class="bi bi-trash3"></i> Delete
+                        </button>
+                    </div>
                 </td>
             `;
             tbody.appendChild(row);
+
+            const card = document.createElement('div');
+            card.className = 'card agent-mobile-card';
+            card.innerHTML = `
+                <div class="card-body">
+                    <div class="agent-mobile-card__header">
+                        <div class="agent-mobile-card__title">
+                            <h6>${escapeHtml(agent.hostname)}</h6>
+                            <code>${escapeHtml(agent.agent_id)}</code>
+                        </div>
+                        ${renderStatusBadge(agent.status)}
+                    </div>
+                    <div class="agent-mobile-card__meta">
+                        <div>
+                            <span class="agent-mobile-card__meta-label">IP Address</span>
+                            <div class="agent-mobile-card__meta-value">${escapeHtml(agent.ip_address)}</div>
+                        </div>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <a href="/dashboard/agent/${encodeURIComponent(agent.agent_id)}/" class="btn btn-sm btn-outline-primary w-100">
+                            <i class="bi bi-eye"></i> Details
+                        </a>
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-outline-danger w-100"
+                            onclick="deleteAgent('${escapeJsString(agent.agent_id)}', '${escapeJsString(agent.hostname || 'Agent')}')"
+                        >
+                            <i class="bi bi-trash3"></i> Delete Agent
+                        </button>
+                    </div>
+                </div>
+            `;
+            cards.appendChild(card);
         });
     }
 
+    function getCsrfToken() {
+        return document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+    }
+
+    async function deleteAgent(agentId, agentName) {
+        const label = agentName && agentName !== 'None' ? `${agentName} (${agentId})` : agentId;
+        if (!confirm(`Delete agent ${label} and its dashboard history?`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/dashboard/agent/delete/${encodeURIComponent(agentId)}/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCsrfToken()
+                }
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to delete agent');
+            }
+            refreshAgentStatus();
+        } catch (error) {
+            alert(`Error deleting agent: ${error.message}`);
+        }
+    }
+
+    async function deleteOfflineAgents() {
+        const offlineCount = Number(document.getElementById('offlineAgentsCount')?.textContent || '0');
+        if (!offlineCount) {
+            alert('There are no offline agents to delete.');
+            return;
+        }
+
+        if (!confirm(`Delete all ${offlineCount} offline agents and their dashboard history?`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch('{% url "dashboard:delete_offline_agents" %}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCsrfToken()
+                }
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to delete offline agents');
+            }
+            refreshAgentStatus();
+        } catch (error) {
+            alert(`Error deleting offline agents: ${error.message}`);
+        }
+    }
+
+    function renderStatusBadge(status) {
+        const safeStatus = escapeHtml(status || 'unknown');
+        const badgeClass = status === 'online' ? 'success' : status === 'offline' ? 'danger' : 'warning';
+        const label = safeStatus.charAt(0).toUpperCase() + safeStatus.slice(1);
+        return `<span class="badge bg-${badgeClass}">${label}</span>`;
+    }
+
     function formatBytes(bytes) {
-        if (bytes === 0) return '0 B';
+        const numericBytes = Number(bytes);
+        if (!Number.isFinite(numericBytes) || numericBytes <= 0) return '0 B';
         const k = 1024;
         const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        const i = Math.min(Math.floor(Math.log(numericBytes) / Math.log(k)), sizes.length - 1);
+        return parseFloat((numericBytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, function(char) {
+            return {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            }[char];
+        });
+    }
+
+    function escapeJsString(value) {
+        return String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     }
 
     // Handle command form submission

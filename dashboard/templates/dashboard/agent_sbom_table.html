@@ -1,0 +1,164 @@
+{% extends "dashboard/base.html" %}
+
+{% block content %}
+<div class="container-fluid p-4">
+  <div class="row mb-3">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+      <div>
+        <h2 class="mb-1"><i class="bi bi-table"></i> SBOM Table</h2>
+        <p class="text-muted mb-0">
+          Agent <code>{% if report %}{{ report.agent_id }}{% else %}{{ agent_id }}{% endif %}</code>
+          {% if collected_at %}
+            collected {{ collected_at|date:"Y-m-d H:i" }}
+          {% endif %}
+          via {{ source_label|default:"SBOM report" }}
+        </p>
+      </div>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-primary" href="{% url 'dashboard:agent_details' agent_id %}">
+          <i class="bi bi-robot"></i> Agent View
+        </a>
+        {% if report %}
+          <a class="btn btn-outline-secondary" href="{% url 'dashboard:agent_sbom_export' report.agent_id %}?format=json">
+            <i class="bi bi-download"></i> JSON
+          </a>
+          <a class="btn btn-outline-secondary" href="{% url 'dashboard:agent_sbom_export' report.agent_id %}?format=csv">
+            <i class="bi bi-filetype-csv"></i> CSV
+          </a>
+          <a class="btn btn-outline-dark" href="{% url 'dashboard:agent_sbom_bundle' report.agent_id %}">
+            <i class="bi bi-archive"></i> Bundle
+          </a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="row mb-4">
+    <div class="col-md-4">
+      <div class="card">
+        <div class="card-body">
+          <div class="text-muted small">Format</div>
+          <div class="fw-semibold">
+            {% if format_name %}{{ format_name }}{% elif report %}{{ report.format|default:"raw" }}{% else %}raw{% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card">
+        <div class="card-body">
+          <div class="text-muted small">Packages</div>
+          <div class="fw-semibold">{{ total_rows }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card">
+        <div class="card-body">
+          <div class="text-muted small">OS Summary</div>
+          <div class="fw-semibold">
+            {% if os_summary %}{{ os_summary }}{% elif report %}{{ report.os_summary|default:"-" }}{% else %}-{% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card">
+        <div class="card-body">
+          <div class="text-muted small">Scanner Status</div>
+          <div class="fw-semibold">{{ scanner_status|default:"Unavailable" }}</div>
+          {% if scanner_tools %}
+            <div class="small text-muted">{{ scanner_tools|join:", " }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0"><i class="bi bi-list-columns"></i> Components</h5>
+      <span class="text-muted small">{{ total_rows }} rows</span>
+    </div>
+    <div class="card-body">
+      {% if rows %}
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Version</th>
+                <th>Type</th>
+                <th>Scope</th>
+                <th>Licenses</th>
+                <th>PURL</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in rows %}
+              <tr>
+                <td><strong>{{ row.name }}</strong></td>
+                <td><code>{{ row.version|default:"-" }}</code></td>
+                <td>{{ row.type|default:"-" }}</td>
+                <td>{{ row.scope|default:"-" }}</td>
+                <td>{{ row.licenses|default:"-" }}</td>
+                <td><code class="small">{{ row.purl|default:"-" }}</code></td>
+                <td class="small">{{ row.description|default:"-" }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="text-muted">No SBOM components were found in this report.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card mt-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0"><i class="bi bi-shield-exclamation"></i> Vulnerabilities</h5>
+      <span class="text-muted small">{{ vulnerability_total_rows }} rows</span>
+    </div>
+    <div class="card-body">
+      {% if vulnerability_rows %}
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle">
+            <thead>
+              <tr>
+                <th>CVE</th>
+                <th>Package</th>
+                <th>Installed</th>
+                <th>Fixed</th>
+                <th>Severity</th>
+                <th>Score</th>
+                <th>Source</th>
+                <th>Description</th>
+                <th>References</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in vulnerability_rows %}
+              <tr>
+                <td><strong>{{ row.cve_id }}</strong></td>
+                <td>{{ row.package|default:"-" }}</td>
+                <td><code>{{ row.installed_version|default:"-" }}</code></td>
+                <td><code>{{ row.fixed_version|default:"-" }}</code></td>
+                <td>{{ row.severity|default:"-" }}</td>
+                <td><code>{{ row.score|default:"-" }}</code></td>
+                <td class="small">{{ row.source|default:"-" }}</td>
+                <td class="small">{{ row.description|default:"-" }}</td>
+                <td class="small">{{ row.references|default:"-" }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="text-muted">No vulnerability findings were found in this report.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

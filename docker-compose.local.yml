@@ -1,0 +1,9 @@
+services:
+  web:
+    environment:
+      DJANGO_LIVE_RELOAD: "1"
+    volumes:
+      - .:/code
+  celery:
+    volumes:
+      - .:/code

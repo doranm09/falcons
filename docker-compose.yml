@@ -28,6 +28,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_HOST: db
+      AGENT_API_TOKEN: ${AGENT_API_TOKEN:-iaea-demo-agent-token}
+      AGENT_API_TOKEN_REQUIRED: ${AGENT_API_TOKEN_REQUIRED:-1}
       DJANGO_SETTINGS_MODULE: cyber_pen_test.settings
       PYTHONPATH: /code
       GVM_HOST: ${GVM_HOST:-openvas}
@@ -77,6 +79,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_HOST: db
+      AGENT_API_TOKEN: ${AGENT_API_TOKEN:-iaea-demo-agent-token}
+      AGENT_API_TOKEN_REQUIRED: ${AGENT_API_TOKEN_REQUIRED:-1}
       DJANGO_SETTINGS_MODULE: cyber_pen_test.settings
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
       PYTHONPATH: /code

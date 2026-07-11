@@ -139,6 +139,88 @@
         </div>
     </div>
 
+    <!-- SBOM Analysis -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-journal-code"></i> SBOM Reports</h5>
+                    <div class="d-flex gap-2">
+                        {% if sbom_reports or node and node.installed_libraries %}
+                        <a class="btn btn-sm btn-outline-success" href="{% url 'dashboard:agent_sbom_export' agent.agent_id %}">
+                            <i class="bi bi-table"></i> Table View
+                        </a>
+                        {% if sbom_reports %}
+                        <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:agent_sbom_export' agent.agent_id %}?format=json">
+                            <i class="bi bi-download"></i> JSON
+                        </a>
+                        <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:agent_sbom_export' agent.agent_id %}?format=csv">
+                            <i class="bi bi-filetype-csv"></i> CSV
+                        </a>
+                        <a class="btn btn-sm btn-outline-dark" href="{% url 'dashboard:agent_sbom_bundle' agent.agent_id %}">
+                            <i class="bi bi-archive"></i> Bundle
+                        </a>
+                        {% endif %}
+                        {% endif %}
+                        <span class="text-muted small align-self-center">
+                            {% if sbom_reports %}{{ sbom_reports|length }} recent{% elif node and node.installed_libraries %}cyber data{% else %}0 recent{% endif %}
+                        </span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if sbom_reports %}
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Collected</th>
+                                        <th>Format</th>
+                                        <th>Packages</th>
+                                        <th>OS Summary</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for report in sbom_reports %}
+                                    <tr>
+                                        <td>{{ report.created_at|date:"Y-m-d H:i" }}</td>
+                                        <td>{{ report.format|default:"raw" }}</td>
+                                        <td>{{ report.package_count }}</td>
+                                        <td>{{ report.os_summary|default:"-" }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% elif node and node.installed_libraries %}
+                        <p class="text-muted mb-3">No SBOM report was stored, but cyber template data included {{ node.installed_libraries|length }} installed libraries.</p>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Collected</th>
+                                        <th>Source</th>
+                                        <th>Packages</th>
+                                        <th>OS Summary</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>{{ agent.last_heartbeat|date:"Y-m-d H:i" }}</td>
+                                        <td>cyber template data</td>
+                                        <td>{{ node.installed_libraries|length }}</td>
+                                        <td>{{ node.os_info|default:"-" }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">No SBOMs reported yet. Use the command interface to trigger collection.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row">
         <!-- Network Analysis Column -->
         <div class="col-md-6">

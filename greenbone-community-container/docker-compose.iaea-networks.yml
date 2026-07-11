@@ -1,0 +1,53 @@
+services:
+  ospd-openvas:
+    networks:
+      l4_net: {}
+      l3_net: {}
+      l2_net: {}
+      l1_main: {}
+      l1_backup: {}
+      p13_net: {}
+      p23_net: {}
+      mgmt13_net: {}
+      mgmt23_net: {}
+
+  openvasd:
+    networks:
+      l4_net: {}
+      l3_net: {}
+      l2_net: {}
+      l1_main: {}
+      l1_backup: {}
+      p13_net: {}
+      p23_net: {}
+      mgmt13_net: {}
+      mgmt23_net: {}
+
+networks:
+  l4_net:
+    external: true
+    name: iaea_rcs_demo_l4_net
+  l3_net:
+    external: true
+    name: iaea_rcs_demo_l3_net
+  l2_net:
+    external: true
+    name: iaea_rcs_demo_l2_net
+  l1_main:
+    external: true
+    name: iaea_rcs_demo_l1_main
+  l1_backup:
+    external: true
+    name: iaea_rcs_demo_l1_backup
+  p13_net:
+    external: true
+    name: iaea_rcs_demo_p13_net
+  p23_net:
+    external: true
+    name: iaea_rcs_demo_p23_net
+  mgmt13_net:
+    external: true
+    name: iaea_rcs_demo_mgmt13_net
+  mgmt23_net:
+    external: true
+    name: iaea_rcs_demo_mgmt23_net

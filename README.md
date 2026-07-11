@@ -337,6 +337,15 @@ docker compose \
 ```
 This makes OpenVAS reach L0/1, L2, L3, L3.5, L4, and L5 (`172.30.0.0/16`).
 
+For the IAEA RCS demo, use the matching override instead:
+```bash
+docker compose \
+  -f greenbone-community-container/compose.yaml \
+  -f greenbone-community-container/docker-compose.iaea-networks.yml \
+  up -d
+```
+This gives the scanner containers direct access to the `iaea_rcs_demo` subnets so you can scan every layer in the lab.
+
 ### Configure the Dashboard
 Set these in `.env` (defaults are shown):
 ```
@@ -349,6 +358,17 @@ GVM_PORT=9390
 
 The web and celery containers mount `/opt/gvm-run` so GMP over Unix socket works out of the box once GVM is running.
 If you use TLS instead, unset `GVM_SOCKET_PATH` and set `GVM_HOST` + `GVM_PORT`.
+
+### Sync the web container with local code
+When the stack is running in the testbed or production profile and you need local Django code changes to show up immediately, add `docker-compose.local.yml` to your compose command. It appends a bind mount (`.:/code`) for both `web` and `celery` without disturbing the existing `/opt/gvm-run` volume:
+```
+docker compose -f docker-compose.yml -f docker-compose.testbed.yml -f docker-compose.local.yml up -d --build
+```
+Or if you are orchestrating the production configuration directly:
+```
+docker compose -f docker-compose.prod.yml -f docker-compose.testbed.yml -f docker-compose.local.yml up -d --build
+```
+The extra override layer ensures the container sees the repository files so Django reloads while you iterate locally.
 
 ---
 

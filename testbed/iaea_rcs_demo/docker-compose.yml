@@ -1,6 +1,7 @@
 x-endpoint: &endpoint
   build:
-    context: ./services/sim-endpoint
+    context: ../..
+    dockerfile: testbed/iaea_rcs_demo/services/sim-endpoint/Dockerfile
   restart: unless-stopped
   cap_drop: ["ALL"]
   cap_add: ["NET_ADMIN", "NET_BIND_SERVICE"]
@@ -18,7 +19,8 @@ x-firewall: &firewall
 
 x-openplc: &openplc
   build:
-    context: ./services/openplc-v3
+    context: ../..
+    dockerfile: testbed/iaea_rcs_demo/services/openplc-v3/Dockerfile
   restart: unless-stopped
   cap_add: ["NET_ADMIN", "NET_BIND_SERVICE", "SYS_NICE", "SYS_RESOURCE"]
   tmpfs:
@@ -34,31 +36,20 @@ x-actuator-modbus-env: &actuator_modbus_env
 
 services:
   # ---------------------- Layer 4 ----------------------
-  workstation:
-    <<: *endpoint
-    container_name: workstation
-    environment:
-      DEVICE_NAME: Workstation
-      DEVICE_ROLE: Layer4 workstation
-      SERVICE_PORTS: "80,443"
-      DEVICE_DESC: Business network workstation
-      STATIC_ROUTES: "10.2.50.0/24 via 10.4.50.254;10.3.50.0/24 via 10.4.50.254;10.1.13.0/24 via 10.2.50.253;10.2.23.0/24 via 10.2.50.253"
-    networks:
-      l4_net:
-        ipv4_address: 10.4.50.10
-    ports:
-      - "8080:80"
-      - "8443:443"
-
   database:
     <<: *endpoint
     container_name: database
+    hostname: database
     environment:
       DEVICE_NAME: Database
       DEVICE_ROLE: Layer4 database
       SERVICE_PORTS: "5432"
       DEVICE_DESC: Business network database server
       STATIC_ROUTES: "10.2.50.0/24 via 10.4.50.254;10.3.50.0/24 via 10.4.50.254;10.1.13.0/24 via 10.2.50.253;10.2.23.0/24 via 10.2.50.253"
+      AGENT_SERVER_URL: "http://host.docker.internal:8000"
+      AGENT_API_TOKEN: "${AGENT_API_TOKEN:-iaea-demo-agent-token}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       l4_net:
         ipv4_address: 10.4.50.20
@@ -66,15 +57,28 @@ services:
       - "15432:5432"
 
   metasploit:
-    image: metasploitframework/metasploit-framework:latest
+    build:
+      context: ../..
+      dockerfile: testbed/iaea_rcs_demo/services/metasploit/Dockerfile
     container_name: metasploit
+    hostname: metasploit
     restart: unless-stopped
     tty: true
     stdin_open: true
     cap_add: ["NET_ADMIN"]
+    environment:
+      DEVICE_NAME: Metasploit
+      DEVICE_ROLE: Layer4 metasploit host
+      SERVICE_PORTS: "4444"
+      DEVICE_DESC: Metasploit exploitation host for Layer 4 testing
+      STATIC_ROUTES: "10.2.50.0/24 via 10.4.50.254;10.3.50.0/24 via 10.4.50.254;10.1.13.0/24 via 10.2.50.253;10.2.23.0/24 via 10.2.50.253"
+      AGENT_SERVER_URL: "http://host.docker.internal:8000"
+      AGENT_API_TOKEN: "${AGENT_API_TOKEN:-iaea-demo-agent-token}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       l4_net:
-        ipv4_address: 10.4.50.50
+        ipv4_address: 10.4.50.10
     ports:
       - "4444:4444"
     command:
@@ -91,13 +95,20 @@ services:
       - "4444"
 
   postgres:
-    image: postgres:15
+    build:
+      context: ../..
+      dockerfile: testbed/iaea_rcs_demo/services/postgres/Dockerfile
     container_name: postgres
+    hostname: postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: iaea
       POSTGRES_PASSWORD: iaea-demo-password
       POSTGRES_DB: iaea_rcs
+      AGENT_SERVER_URL: "http://host.docker.internal:8000"
+      AGENT_API_TOKEN: "${AGENT_API_TOKEN:-iaea-demo-agent-token}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       l4_net:
         ipv4_address: 10.4.50.41
@@ -112,8 +123,11 @@ services:
       retries: 5
 
   historian-db:
-    image: influxdb:2.7
+    build:
+      context: ../..
+      dockerfile: testbed/iaea_rcs_demo/services/historian-db/Dockerfile
     container_name: historian-db
+    hostname: historian-db
     restart: unless-stopped
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
@@ -122,6 +136,10 @@ services:
       DOCKER_INFLUXDB_INIT_ORG: iaea
       DOCKER_INFLUXDB_INIT_BUCKET: iaea_rcs
       DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: iaea-historian-token
+      AGENT_SERVER_URL: "http://host.docker.internal:8000"
+      AGENT_API_TOKEN: "${AGENT_API_TOKEN:-iaea-demo-agent-token}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8086:8086"
     networks:
@@ -133,9 +151,11 @@ services:
   historian:
     <<: *endpoint
     build:
-      context: ./services/historian
+      context: ../..
+      dockerfile: testbed/iaea_rcs_demo/services/historian/Dockerfile
     restart: unless-stopped
     container_name: historian
+    hostname: historian
     environment:
       DEVICE_NAME: Layer4 Historian
       DEVICE_ROLE: Layer4 historical archive
@@ -157,6 +177,7 @@ services:
   firewall-2:
     <<: *firewall
     container_name: firewall-2
+    hostname: firewall-2
     environment:
       FIREWALL_NAME: firewall-2
       ALLOW_TCP: "10.4.50.10|10.3.50.10|443,4840;10.4.50.10|10.4.50.20|5432;10.4.50.10|10.4.50.41|5432;10.4.50.31|10.3.50.10|443,4840;10.4.50.31|10.4.50.20|5432;10.4.50.31|10.4.50.41|5432"
@@ -170,6 +191,7 @@ services:
   firewall-1:
     <<: *firewall
     container_name: firewall-1
+    hostname: firewall-1
     environment:
       FIREWALL_NAME: firewall-1
       ALLOW_TCP: "10.2.50.10|10.3.50.10|443,4840;10.2.50.20|10.3.50.10|443,4840"
@@ -183,6 +205,7 @@ services:
   firewall-0:
     <<: *firewall
     container_name: firewall-0
+    hostname: firewall-0
     environment:
       FIREWALL_NAME: firewall-0
       ALLOW_TCP: "10.2.50.10|10.1.13.10|502,44818,4840;10.2.50.10|10.2.23.10|502,44818,4840;10.2.50.20|10.1.13.10|502,44818,4840;10.2.50.20|10.2.23.10|502,44818,4840;10.2.50.31|10.1.13.10|4840;10.2.50.31|10.2.23.10|4840;10.2.50.40|10.1.13.10|4840;10.2.50.40|10.2.23.10|4840"
@@ -197,6 +220,7 @@ services:
   firewall-main-cell:
     <<: *firewall
     container_name: firewall-main-cell
+    hostname: firewall-main-cell
     environment:
       FIREWALL_NAME: firewall-main-cell
       ALLOW_BIDIR_TCP: "10.1.13.10|10.3.13.11|502;10.1.13.10|10.3.13.12|502;10.1.13.10|10.3.13.13|502;10.1.13.10|10.3.13.1|502;10.1.13.10|10.3.13.2|502;10.1.13.10|10.3.13.3|502;10.1.13.10|10.3.13.5|502"
@@ -209,6 +233,7 @@ services:
   firewall-backup-cell:
     <<: *firewall
     container_name: firewall-backup-cell
+    hostname: firewall-backup-cell
     environment:
       FIREWALL_NAME: firewall-backup-cell
       ALLOW_BIDIR_TCP: "10.2.23.10|10.4.23.12|502;10.2.23.10|10.4.23.13|502;10.2.23.10|10.4.23.14|502;10.2.23.10|10.4.23.1|502;10.2.23.10|10.4.23.2|502;10.2.23.10|10.4.23.3|502;10.2.23.10|10.4.23.5|502"
@@ -221,7 +246,8 @@ services:
   # ---------------------- Layer 2 ----------------------
   hmi:
     build:
-      context: ./services/hmi
+      context: ../..
+      dockerfile: testbed/iaea_rcs_demo/services/hmi/Dockerfile
     restart: unless-stopped
     cap_drop: ["ALL"]
     cap_add: ["NET_ADMIN", "NET_BIND_SERVICE"]
@@ -229,6 +255,7 @@ services:
     tmpfs:
       - /tmp
     container_name: hmi
+    hostname: hmi
     environment:
       DEVICE_NAME: HMI
       DEVICE_ROLE: Layer2 HMI
@@ -250,12 +277,14 @@ services:
 
   ignition:
     build:
-      context: ./services/ignition
+      context: ../..
+      dockerfile: testbed/iaea_rcs_demo/services/ignition/Dockerfile
       args:
         IGNITION_VERSION: 8.1.39
     restart: unless-stopped
     cap_add: ["NET_ADMIN"]
     container_name: ignition
+    hostname: ignition
     environment:
       ACCEPT_IGNITION_EULA: "Y"
       GATEWAY_ADMIN_USERNAME: "${IGNITION_GATEWAY_ADMIN_USERNAME:-admin}"
@@ -265,6 +294,10 @@ services:
       # Same Layer 2 routing model as the HMI and engineering workstation:
       # historian/database via firewall-1 and PLC access via firewall-0.
       STATIC_ROUTES: "10.3.50.0/24 via 10.2.50.254;10.4.50.0/24 via 10.2.50.254;10.1.13.0/24 via 10.2.50.253;10.2.23.0/24 via 10.2.50.253"
+      AGENT_SERVER_URL: "http://host.docker.internal:8000"
+      AGENT_API_TOKEN: "${AGENT_API_TOKEN:-iaea-demo-agent-token}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: >
       -n iaea-rcs-ignition
       -m 1024
@@ -281,12 +314,14 @@ services:
 
   engineer-ws:
     build:
-      context: ./services/eng-ws
+      context: ../..
+      dockerfile: testbed/iaea_rcs_demo/services/eng-ws/Dockerfile
     restart: unless-stopped
     cap_add: ["NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"]
     tty: true
     stdin_open: true
     container_name: engineer-ws
+    hostname: engineer-ws
     environment:
       DEVICE_NAME: Engineer-Workstation
       DEVICE_ROLE: Layer2 engineering workstation
@@ -312,6 +347,7 @@ services:
   l2-jump:
     <<: *endpoint
     container_name: l2-jump
+    hostname: l2-jump
     environment:
       DEVICE_NAME: Layer2-Jumpbox
       DEVICE_ROLE: Layer2 utility node
@@ -329,6 +365,7 @@ services:
   plc-main:
     <<: *openplc
     container_name: plc-main
+    hostname: plc-main
     environment:
       DEVICE_NAME: PLC-Main
       DEVICE_ROLE: Layer1 controller
@@ -362,6 +399,7 @@ services:
   plc-backup:
     <<: *openplc
     container_name: plc-backup
+    hostname: plc-backup
     environment:
       DEVICE_NAME: PLC-Backup
       DEVICE_ROLE: Layer1 controller
@@ -396,6 +434,7 @@ services:
   pt-455:
     <<: *endpoint
     container_name: pt-455
+    hostname: pt-455
     environment:
       DEVICE_NAME: PT-455
       DEVICE_ROLE: Pressure Transmitter
@@ -417,6 +456,7 @@ services:
   pt-456:
     <<: *endpoint
     container_name: pt-456
+    hostname: pt-456
     environment:
       DEVICE_NAME: PT-456
       DEVICE_ROLE: Pressure Transmitter
@@ -442,6 +482,7 @@ services:
   pt-457:
     <<: *endpoint
     container_name: pt-457
+    hostname: pt-457
     environment:
       DEVICE_NAME: PT-457
       DEVICE_ROLE: Pressure Transmitter
@@ -465,6 +506,7 @@ services:
   pt-458:
     <<: *endpoint
     container_name: pt-458
+    hostname: pt-458
     environment:
       DEVICE_NAME: PT-458
       DEVICE_ROLE: Pressure Transmitter
@@ -486,6 +528,7 @@ services:
   vc-hv455a:
     <<: *endpoint
     container_name: vc-hv455a
+    hostname: vc-hv455a
     environment:
       <<: *actuator_modbus_env
       DEVICE_NAME: VC-HV455A
@@ -503,6 +546,7 @@ services:
   vc-pv455b:
     <<: *endpoint
     container_name: vc-pv455b
+    hostname: vc-pv455b
     environment:
       <<: *actuator_modbus_env
       DEVICE_NAME: VC-PV455B
@@ -520,6 +564,7 @@ services:
   vc-pv455c:
     <<: *endpoint
     container_name: vc-pv455c
+    hostname: vc-pv455c
     environment:
       <<: *actuator_modbus_env
       DEVICE_NAME: VC-PV455C
@@ -537,6 +582,7 @@ services:
   heat-ctrl:
     <<: *endpoint
     container_name: heat-ctrl
+    hostname: heat-ctrl
     environment:
       <<: *actuator_modbus_env
       DEVICE_NAME: Heat-Ctrl

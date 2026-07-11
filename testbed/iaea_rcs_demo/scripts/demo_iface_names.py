@@ -35,8 +35,8 @@ NETWORK_BY_CODE = {network.code: network for network in NETWORKS}
 NETWORK_BY_SUBNET = {network.subnet: network for network in NETWORKS}
 
 SERVICE_CODES = {
-    "workstation": "ws",
     "database": "db",
+    "metasploit": "msf",
     "historian": "hist",
     "firewall-2": "fw2",
     "firewall-1": "fw1",

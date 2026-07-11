@@ -145,7 +145,7 @@
                                     <td><code class="small">{{ agent.agent_id }}</code></td>
                                     <td>{{ agent.hostname }}</td>
                                     <td>
-                                        <span class="badge bg-{{ agent.agent_version|default:'Unknown' == agent_version|yesno:'success,warning' }}">
+                                        <span class="badge bg-{% if agent.agent_version|default:'Unknown' == agent_version %}success{% else %}warning{% endif %}">
                                             {{ agent.agent_version|default:"Unknown" }}
                                         </span>
                                     </td>

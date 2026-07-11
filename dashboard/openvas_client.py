@@ -52,14 +52,38 @@ def _find_target_id(gmp, name):
             return target.attrib.get("id")
     return None
 
-def create_target(gmp, cidr, port_list_id=None):
+def _normalize_host_list(value):
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def create_target(gmp, cidr, port_list_id=None, excluded_hosts=None, target_name=None):
     port_list_id = port_list_id or PORT_LISTS["iana_tcp"]
-    target_name = f"Target {cidr}"
-    response = gmp.create_target(
-        name=target_name,
-        hosts=[cidr],
-        port_list_id=port_list_id,
-    )
+    hosts = _normalize_host_list(cidr)
+    if not hosts:
+        raise ValueError("At least one target host or CIDR is required")
+    excluded = _normalize_host_list(excluded_hosts)
+    target_name = target_name or f"Target {', '.join(hosts)}"
+
+    create_target_kwargs = {
+        "name": target_name,
+        "hosts": hosts,
+        "port_list_id": port_list_id,
+    }
+    if excluded:
+        create_target_kwargs["exclude_hosts"] = excluded
+
+    try:
+        response = gmp.create_target(**create_target_kwargs)
+    except TypeError as exc:
+        if not excluded:
+            raise
+        raise TypeError(
+            "The installed python-gvm version does not support target exclusions via create_target"
+        ) from exc
     if hasattr(response, "xpath"):
         return response.xpath("create_target_response/@id")[0]
     target_id = extract_id_from_response(response)

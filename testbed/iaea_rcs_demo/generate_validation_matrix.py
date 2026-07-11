@@ -418,8 +418,8 @@ def build_matrix_rows(
 def build_route_isolation_rows() -> list[dict[str, str]]:
     return [
         {
-            "check": "workstation route table",
-            "command": "expect_no_l1_l0_or_mgmt_routes workstation",
+            "check": "metasploit route table",
+            "command": "expect_no_l1_l0_or_mgmt_routes metasploit",
             "expected": "no matching routes present",
             "policy": "Layer 4 has no routes into Layer 1, Layer 0, or management nets",
         },
@@ -496,7 +496,7 @@ def write_matrix_csv(rows: list[dict[str, str]]) -> None:
         "path",
     ]
     with MATRIX_CSV_PATH.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=columns)
+        writer = csv.DictWriter(handle, fieldnames=columns, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 

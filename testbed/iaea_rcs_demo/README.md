@@ -4,7 +4,7 @@ This lab turns your diagram into a runnable Docker Compose environment that appr
 
 ## What is included
 
-- Layer 4: `workstation`, `database`, `historian-db` (InfluxDB archive), `postgres`, `metasploit`
+- Layer 4: `metasploit`, `database`, `historian-db` (InfluxDB archive), `postgres`
 - Layer 3: `historian`
 - Firewalls: `firewall-2`, `firewall-1`, `firewall-0`, `firewall-main-cell`, `firewall-backup-cell`
 - Layer 2: `hmi`, `ignition`, `engineer-ws`, `l2-jump`
@@ -21,10 +21,9 @@ flowchart TB
 
   subgraph L4["Level 4 / Enterprise IT"]
     direction LR
-    WS["workstation<br/>10.4.50.10"]:::device
+    MSF["metasploit<br/>10.4.50.10"]:::device
     DB["database<br/>10.4.50.20"]:::device
     PG["postgres<br/>10.4.50.41"]:::device
-    MSF["metasploit<br/>10.4.50.50"]:::device
   end
   style L4 fill:#e2e8f0,color:#0f172a
 
@@ -88,10 +87,10 @@ flowchart TB
   L4 --> FW2 --> L3 --> FW1 --> L2 --> FW0 --> L1 --> L0
 
   %% ---- ENTERPRISE TO DMZ ----
-  WS -->|"443 / 4840"| FW2
+  MSF -->|"443 / 4840"| FW2
   FW2 --> HIST
 
-  WS -->|"5432"| DB
+  MSF -->|"5432"| DB
 
   %% ---- DMZ TO L2 ----
   HMI -->|"443 / 4840"| FW1
@@ -126,18 +125,18 @@ flowchart TB
 
 Policy notes:
 
-- Allowed: `workstation -> historian` on `443` and `4840`
-- Allowed: `workstation -> database` on `5432`
-- Allowed: `workstation -> metasploit` on `4444`
-- Allowed: `workstation -> postgres` on `5432`
+- Allowed: `metasploit -> historian` on `443` and `4840`
+- Allowed: `metasploit -> database` on `5432`
+- Allowed: `metasploit -> postgres` on `5432`
+- Allowed: `database -> metasploit` on `4444`
 - Allowed: `hmi -> historian` and `engineer-ws -> historian` on `443` and `4840`
 - Allowed: `historian -> postgres` on `5432`
 - Allowed: `hmi -> plc-backup` and `engineer-ws -> plc-main` on `502` / `44818` through `firewall-0`
 - Allowed: `plc-main` and `plc-backup` talk to Layer 0 devices on `502` only through `firewall-main-cell` and `firewall-backup-cell`
-- Blocked: `workstation -> hmi` on `443`
+- Blocked: `metasploit -> hmi` on `443`
 - Blocked: `hmi -> database` on `5432`
 - Blocked: `hmi -> postgres` on `5432`
-- Blocked: `workstation -> plc-main` on `502`
+- Blocked: `metasploit -> plc-main` on `502`
 - Blocked: `hmi -> pt-455` on `502`
 - Blocked: `hmi -> metasploit` on `4444`
 - Isolated: `mgmt13_net` and `mgmt23_net` remain unreachable from Layers 2-4; host-side PLC UI access still comes through the published Docker ports
@@ -146,7 +145,7 @@ Policy notes:
 
 | Purdue layer | Purpose | Containers | Networks | Current reachability |
 |---|---|---|---|---|
-| Layer 4 | Enterprise IT | `workstation`, `database`, `historian-db`, `postgres`, `metasploit` | `l4_net` `10.4.50.0/24` | Same-segment access to `database`, `postgres`, and `metasploit`; routed access to the InfluxDB historian through `firewall-2`; no explicit routes to Layer 1, Layer 0, or PLC management subnets |
+| Layer 4 | Enterprise IT | `metasploit`, `database`, `historian-db`, `postgres` | `l4_net` `10.4.50.0/24` | Same-segment access to `database` and `postgres`; routed access from `metasploit` to the InfluxDB historian through `firewall-2`; no explicit routes to Layer 1, Layer 0, or PLC management subnets |
 | Layer 3 | Operations / DMZ | `firewall-1`, `firewall-2` | `l3_net` `10.3.50.0/24` | `firewall-1` mediates Layer 2 traffic and `firewall-2` mediates Layer 4 traffic |
 | Layer 2 | Supervisory / operator access | `hmi`, `ignition`, `engineer-ws`, `l2-jump`, `firewall-0`, `firewall-1` | `l2_net` `10.2.50.0/24` | Same-segment access inside Layer 2; routed historian access on `443` and `4840`; routed PLC access on `502` and `44818`; no explicit routes to Layer 0 or PLC management subnets |
 | Layer 1 | Control | `plc-main`, `plc-backup`, `firewall-0`, `firewall-main-cell`, `firewall-backup-cell` | `l1_main` `10.1.13.0/24`, `l1_backup` `10.2.23.0/24`, `mgmt13_net` `10.0.13.0/24`, `mgmt23_net` `10.0.23.0/24` | PLCs are exposed to Layer 2 only through `firewall-0`; process traffic reaches Layer 0 only through the cell firewalls; management nets stay isolated from Layers 2-4 while the PLC web UIs are published to the host |
@@ -156,10 +155,9 @@ Policy notes:
 
 | Layer | Device | Role | IP addresses |
 |---|---|---|---|
-| Layer 4 | `workstation` | Enterprise workstation | `l4_net 10.4.50.10` |
 | Layer 4 | `database` | Enterprise database | `l4_net 10.4.50.20` |
 | Layer 4 | `historian-db` | InfluxDB-based historian | `l4_net 10.4.50.30` |
-| Layer 4 | `metasploit` | Metasploit RPC service | `l4_net 10.4.50.50` |
+| Layer 4 | `metasploit` | Metasploit RPC service | `l4_net 10.4.50.10` |
 | Layer 4 | `postgres` | PostgreSQL server | `l4_net 10.4.50.41` |
 | Layer 3 | `historian` | DMZ historian | `l3_net 10.3.50.10` |
 | Boundary | `firewall-2` | Layer 4 ↔ Layer 3 firewall | `l4_net 10.4.50.254`, `l3_net 10.3.50.254` |
@@ -188,7 +186,7 @@ Policy notes:
 |---|---|---|
 | `l2_net` | `10.2.50.0/24` | `hmi .10`, `engineer-ws .20`, `l2-jump .30`, `ignition .40`, `firewall-0 .253`, `firewall-1 .254` |
 | `l3_net` | `10.3.50.0/24` | `historian .10`, `firewall-1 .253`, `firewall-2 .254` |
-| `l4_net` | `10.4.50.0/24` | `workstation .10`, `database .20`, `postgres .41`, `metasploit .50`, `firewall-2 .254` |
+| `l4_net` | `10.4.50.0/24` | `metasploit .10`, `database .20`, `historian-db .30`, `postgres .41`, `firewall-2 .254` |
 | `l1_main` | `10.1.13.0/24` | `plc-main .10`, `firewall-main-cell .252`, `firewall-0 .253` |
 | `l1_backup` | `10.2.23.0/24` | `plc-backup .10`, `firewall-backup-cell .252`, `firewall-0 .253` |
 | `p13_net` | `10.3.13.0/24` | `vc-hv455a .1`, `vc-pv455b .2`, `vc-pv455c .3`, `heat-ctrl .5`, `pt-455 .11`, `pt-456 .12`, `pt-457 .13`, `firewall-main-cell .253` |
@@ -232,11 +230,11 @@ Policy notes:
 
 ## Service behavior note
 
-Most containers in this stack are still built from `services/sim-endpoint` and expose the same JSON-over-HTTP simulator on the ports listed in `SERVICE_PORTS`. That still includes `workstation`, `database`, `historian`, and `l2-jump`.
+Most containers in this stack are still built from `services/sim-endpoint` and expose the same JSON-over-HTTP simulator on the ports listed in `SERVICE_PORTS`. That still includes `database`, `historian`, and `l2-jump`; the Layer 4 `metasploit` service occupies the former workstation slot.
 
-An actual PostgreSQL 15 server now runs under the `postgres` service, stores the `iaea_rcs` database on a persistent volume, and accepts connections on port `5432` from the host (`127.0.0.1:25432`) and the workstation; credentials are `iaea`/`iaea-demo-password`.
+An actual PostgreSQL 15 server now runs under the `postgres` service, stores the `iaea_rcs` database on a persistent volume, and accepts connections on port `5432` from the host (`127.0.0.1:25432`) and the Layer 4 Metasploit host; credentials are `iaea`/`iaea-demo-password`.
 
-The Layer 4 `metasploit` service runs `msfrpcd` on port `4444` (exposed to the host as `127.0.0.1:4444` and reachable from the workstation). It is intentionally left open so the lab operators can demonstrate exploitation chains or run payload collection tools against other lab nodes. Connect with `msfconsole` (or `msfrpc`) using `msfadmin/msfadmin` to drive the RPC interface.
+The Layer 4 `metasploit` service runs `msfrpcd` on port `4444` (exposed to the host as `127.0.0.1:4444` and reachable from the Layer 4 Metasploit host). It is intentionally left open so the lab operators can demonstrate exploitation chains or run payload collection tools against other lab nodes. Connect with `msfconsole` (or `msfrpc`) using `msfadmin/msfadmin` to drive the RPC interface.
 
 `plc-main` and `plc-backup` are different:
 
@@ -275,6 +273,8 @@ The Layer 2 operator services are now different as well:
 - The engineering workstation includes `opc-read`, `curl`, `ip`, `nc`, `ping`, and `tcpdump`, autostarts the Ignition Designer Launcher in its noVNC desktop, and serves a small status page on `80` and `443`.
 - The engineering workstation image does not include a graphical web browser, so `xdg-open http://ignition:8088` will not open the gateway UI inside the desktop without adding one.
 - A shell on the engineering workstation is available with `docker exec -it engineer-ws bash`.
+- The Python host-oriented container images now include the host agent bundle from `host_agent/` and start it automatically when the container comes up. If `AGENT_SERVER_URL` is not set explicitly, the entrypoint prefers `http://host.docker.internal:8000` and falls back to the container gateway on port `8000`; the agent uses the shared lab token `iaea-demo-agent-token` unless you override `AGENT_API_TOKEN`.
+- Non-Python services that cannot embed the agent directly use a companion `testbed/ot/agent` sidecar in the same Docker network so they still report to the dashboard.
 
 The Layer 0 field devices are now different as well:
 
@@ -308,9 +308,9 @@ Host access note:
 
 The `database` service is still a simulated HTTP endpoint, not a real PostgreSQL instance, so `psql -h localhost -p 15432` will not succeed. Use `curl http://localhost:15432/` to validate the listener instead.
 
-A real PostgreSQL 15 server is available at `127.0.0.1:25432`; connect with `psql -h 127.0.0.1 -p 25432 -U iaea -d iaea_rcs` (password `iaea-demo-password`). It stores the `iaea_rcs` database on a persistent volume and can be reached from the workstation or other Layer 4 tools that speak PostgreSQL.
+A real PostgreSQL 15 server is available at `127.0.0.1:25432`; connect with `psql -h 127.0.0.1 -p 25432 -U iaea -d iaea_rcs` (password `iaea-demo-password`). It stores the `iaea_rcs` database on a persistent volume and can be reached from the Layer 4 Metasploit host or other Layer 4 tools that speak PostgreSQL.
 
-The Metasploit RPC server listens on `127.0.0.1:4444`; use `msfconsole` or any RPC client with the `msfadmin/msfadmin` credentials to orchestrate payloads or demos from the host or the Layer 4 workstation.
+The Metasploit RPC server listens on `127.0.0.1:4444`; use `msfconsole` or any RPC client with the `msfadmin/msfadmin` credentials to orchestrate payloads or demos from the host or the Layer 4 Metasploit host.
 
 PLC access note:
 
@@ -615,7 +615,7 @@ Same-segment checks that passed:
 
 ```bash
 probe_http hmi 10.2.50.20 443
-probe_http workstation 10.4.50.20 5432
+probe_http metasploit 10.4.50.20 5432
 probe_modbus plc-main 10.3.13.11 502 1 4 0 2
 probe_modbus plc-backup 10.4.23.14 502 4 4 0 2
 ```
@@ -623,7 +623,7 @@ probe_modbus plc-backup 10.4.23.14 502 4 4 0 2
 Observed on `2026-04-04`:
 
 - `probe_http hmi 10.2.50.20 443` returned `200` from the engineer workstation status page.
-- `probe_http workstation 10.4.50.20 5432` returned `200` with the `Database` JSON payload.
+- `probe_http metasploit 10.4.50.20 5432` returned `200` with the `Database` JSON payload.
 - `probe_modbus plc-main 10.3.13.11 502 1 4 0 2` returned `[4518, 1]`.
 - `probe_modbus plc-backup 10.4.23.14 502 4 4 0 2` returned `[4595, 1]`.
 
@@ -647,7 +647,7 @@ Cross-layer forwarding checks that passed:
 
 ```bash
 probe_http hmi 10.3.50.10 4840
-probe_http workstation 10.3.50.10 4840
+probe_http metasploit 10.3.50.10 4840
 probe_http hmi 10.2.23.10 44818
 probe_modbus engineer-ws 10.1.13.10 502 1 3 10 5
 probe_modbus hmi 10.2.23.10 502 1 3 10 5
@@ -659,7 +659,7 @@ probe_modbus plc-backup 10.4.23.1 502 11 3 0 4
 
 Observed on `2026-04-04`:
 
-- `probe_http hmi 10.3.50.10 4840` and `probe_http workstation 10.3.50.10 4840` returned `200` from `historian`, confirming forwarding through `firewall-1` and `firewall-2`.
+- `probe_http hmi 10.3.50.10 4840` and `probe_http metasploit 10.3.50.10 4840` returned `200` from `historian`, confirming forwarding through `firewall-1` and `firewall-2`.
 - `probe_http hmi 10.2.23.10 44818` returned `200` from the `plc-backup` compatibility listener, confirming `firewall-0` is still mediating the legacy Layer 2 to Layer 1 path.
 - `probe_modbus engineer-ws 10.1.13.10 502 1 3 10 5` returned `[4562, 4532, 4546, 4546, 1]`, confirming Layer 2 can read `plc-main` through `firewall-0`.
 - `probe_modbus hmi 10.2.23.10 502 1 3 10 5` returned `[4532, 4546, 4560, 4546, 1]`, confirming Layer 2 can read `plc-backup` through `firewall-0`.
@@ -725,9 +725,9 @@ Observed on `2026-04-04`:
 Blocked and direct-bypass checks that still failed as intended:
 
 ```bash
-expect_blocked_http workstation 10.2.50.10 443
+expect_blocked_http metasploit 10.2.50.10 443
 expect_blocked_http hmi 10.4.50.20 5432
-expect_blocked_tcp workstation 10.1.13.10 502
+expect_blocked_tcp metasploit 10.1.13.10 502
 expect_blocked_tcp hmi 10.3.13.11 502
 ```
 
@@ -784,7 +784,7 @@ curl -I --max-time 3 http://127.0.0.1:18081/
 
 Observed on `2026-04-04`:
 
-- `127.0.0.1:8080` returned the `workstation` payload with `"local_port": 80`.
+- `127.0.0.1:8080` returned the `metasploit` payload with `"local_port": 80`.
 - `127.0.0.1:15432` returned the `database` payload with `"local_port": 5432`.
 - `127.0.0.1:4840` returned the `historian` payload with `"local_port": 4840`.
 - `127.0.0.1:2222` returned the `l2-jump` payload with `"local_port": 22`.
@@ -830,7 +830,7 @@ Generated from [`docker-compose.yml`](./docker-compose.yml) by [`generate_valida
 
 - Full matrix: [`validation_matrix.md`](./validation_matrix.md)
 - CSV export: [`validation_matrix.csv`](./validation_matrix.csv)
-- Service/interface permutations: `495` total, `141` allow, `354` blocked
+- Service/interface permutations: `330` total, `118` allow, `212` blocked
 - Route-isolation checks: `5`
 - Host published-port checks: `11`
 <!-- END GENERATED VALIDATION SUMMARY -->

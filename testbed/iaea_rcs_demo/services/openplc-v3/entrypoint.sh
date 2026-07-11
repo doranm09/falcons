@@ -30,6 +30,11 @@ if [ -n "${STATIC_ROUTES:-}" ]; then
   IFS=$old_ifs
 fi
 
+if [ -f /usr/local/bin/start_host_agent.sh ]; then
+  . /usr/local/bin/start_host_agent.sh
+  start_host_agent
+fi
+
 if [ -n "${PLC_PROGRAM_TEMPLATE:-}" ] || [ -n "${PLC_MODBUS_PROFILE:-}" ]; then
   python3 /opt/openplc-lab/seed_lab_profile.py
 fi
@@ -57,12 +62,18 @@ cleanup() {
   if [ -n "$opc_pid" ]; then
     kill "$opc_pid" 2>/dev/null || true
   fi
+  if [ -n "${HOST_AGENT_PID:-}" ]; then
+    kill "$HOST_AGENT_PID" 2>/dev/null || true
+  fi
   wait "$openplc_pid" 2>/dev/null || true
   if [ -n "$compat_pid" ]; then
     wait "$compat_pid" 2>/dev/null || true
   fi
   if [ -n "$opc_pid" ]; then
     wait "$opc_pid" 2>/dev/null || true
+  fi
+  if [ -n "${HOST_AGENT_PID:-}" ]; then
+    wait "$HOST_AGENT_PID" 2>/dev/null || true
   fi
 }
 

@@ -1,6 +1,6 @@
 # dashboard/tasks.py
 from celery import shared_task
-from .models import AgentCommand, CampaignRun, Link, Node, ScanRun, ScanVulnerability, Vulnerability
+from .models import AgentCommand, CampaignRun, Link, Node, SbomReport, ScanRun, ScanVulnerability, Vulnerability
 from .openvas_client import (
     openvas_session,
     create_target,
@@ -18,8 +18,14 @@ import requests
 import re
 import select
 import logging
+import json
+import shutil
+import tempfile
+import os
 from datetime import datetime
 from django.utils.dateparse import parse_datetime
+from host_agent.sbom.os_sbom import generate_cyclonedx_sbom
+from .sbom import extract_package_dicts_from_sbom, extract_vulnerabilities_from_sbom
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +54,154 @@ def _safe_update_state(task, state, meta):
         task.update_state(state=state, meta=meta)
     except ValueError:
         logger.debug("Skipping task state update without active task id")
+
+
+def _run_scanner(cmd, timeout_seconds):
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except FileNotFoundError:
+        return None, f"{cmd[0]} not installed"
+    except subprocess.TimeoutExpired:
+        return None, f"{cmd[0]} timed out after {timeout_seconds}s"
+
+    if result.returncode != 0:
+        return None, (result.stderr or result.stdout or "").strip() or f"{cmd[0]} exited with {result.returncode}"
+
+    output = (result.stdout or "").strip()
+    if not output:
+        return None, f"{cmd[0]} produced no JSON output"
+
+    try:
+        return json.loads(output), ""
+    except json.JSONDecodeError as exc:
+        return None, f"{cmd[0]} returned invalid JSON: {exc}"
+
+
+def _persist_scanner_vulnerabilities(node, vulnerabilities):
+    if not node or not vulnerabilities:
+        return 0
+
+    deduped = {}
+    for vuln in vulnerabilities:
+        cve_id = vuln.get("cve_id") or ""
+        if not cve_id:
+            continue
+        existing = deduped.get(cve_id)
+        if not existing:
+            deduped[cve_id] = vuln
+            continue
+        current_score = vuln.get("score") or 0
+        existing_score = existing.get("score") or 0
+        if current_score > existing_score:
+            deduped[cve_id] = vuln
+        elif not existing.get("package") and vuln.get("package"):
+            deduped[cve_id] = vuln
+
+    persisted = 0
+    for vuln in deduped.values():
+        cve_id = vuln.get("cve_id") or ""
+        if not cve_id:
+            continue
+        vuln_obj, _ = Vulnerability.objects.get_or_create(
+            cve_id=cve_id[:32],
+            defaults={
+                "description": vuln.get("description") or f"SBOM reported {cve_id}",
+                "severity": vuln.get("severity") or "",
+                "score": vuln.get("score"),
+                "published": now(),
+                "last_modified": now(),
+                "references": vuln.get("references") or "",
+            },
+        )
+        updated = False
+        if vuln.get("description") and vuln_obj.description != vuln.get("description"):
+            vuln_obj.description = vuln.get("description")
+            updated = True
+        if vuln.get("severity") and vuln_obj.severity != vuln.get("severity"):
+            vuln_obj.severity = vuln.get("severity")
+            updated = True
+        if vuln.get("score") is not None and vuln_obj.score != vuln.get("score"):
+            vuln_obj.score = vuln.get("score")
+            updated = True
+        if vuln.get("references") and vuln_obj.references != vuln.get("references"):
+            vuln_obj.references = vuln.get("references")
+            updated = True
+        if updated:
+            vuln_obj.last_modified = now()
+            vuln_obj.save(update_fields=["description", "severity", "score", "references", "last_modified"])
+        node.vulnerability_set.add(vuln_obj)
+        persisted += 1
+
+    return persisted
+
+
+@shared_task(bind=True)
+def scan_sbom_vulnerabilities_task(self, agent_id=None, report_id=None):
+    """
+    Run Trivy and/or Grype on the server side against SBOM or cyber package data.
+    """
+    node = Node.objects.filter(agent_id=agent_id).first() if agent_id else None
+    report = SbomReport.objects.filter(id=report_id).first() if report_id else None
+
+    if report:
+        source_payload = report.document
+    elif node:
+        source_payload = node.installed_libraries or []
+    else:
+        return {"status": "noop", "reason": "no agent or report found"}
+
+    packages = extract_package_dicts_from_sbom(source_payload)
+    if not packages:
+        return {"status": "noop", "reason": "no packages to scan"}
+
+    sbom_json = generate_cyclonedx_sbom(packages)
+    timeout_seconds = int(os.environ.get("SBOM_SCANNER_TIMEOUT_SECONDS", "180") or 180)
+    scanner_order = [name.strip() for name in os.environ.get("SBOM_SCANNERS", "trivy,grype").split(",") if name.strip()]
+    findings = []
+    scanner_results = []
+
+    with tempfile.TemporaryDirectory(prefix="cyber-sbom-scan-") as tempdir:
+        sbom_path = os.path.join(tempdir, "sbom.json")
+        with open(sbom_path, "w", encoding="utf-8") as handle:
+            json.dump(sbom_json, handle)
+
+        for scanner in scanner_order:
+            binary = shutil.which(scanner)
+            if not binary:
+                scanner_results.append({"scanner": scanner, "status": "missing"})
+                continue
+
+            if scanner == "trivy":
+                parsed, error = _run_scanner([binary, "sbom", "--format", "json", sbom_path], timeout_seconds)
+            elif scanner == "grype":
+                parsed, error = _run_scanner([binary, f"sbom:{sbom_path}", "-o", "json"], timeout_seconds)
+            else:
+                scanner_results.append({"scanner": scanner, "status": "unsupported"})
+                continue
+
+            if parsed is None:
+                scanner_results.append({"scanner": scanner, "status": "error", "error": error})
+                continue
+
+            scanner_findings = extract_vulnerabilities_from_sbom(parsed)
+            findings.extend(scanner_findings)
+            scanner_results.append({"scanner": scanner, "status": "ok", "findings": len(scanner_findings)})
+
+    persisted = _persist_scanner_vulnerabilities(node, findings)
+    return {
+        "status": "ok",
+        "agent_id": agent_id or "",
+        "report_id": report_id or "",
+        "packages": len(packages),
+        "findings": len(findings),
+        "persisted": persisted,
+        "scanners": scanner_results,
+    }
 
 
 @shared_task(bind=True)
@@ -368,7 +522,7 @@ def fetch_and_store_cves(keyword="scada"):
         )
 
 @shared_task
-def launch_openvas_scan_task(cidr, config_name=None, scan_id=None):
+def launch_openvas_scan_task(cidr, config_name=None, scan_id=None, excluded_hosts=None):
     if scan_id:
         scan = ScanRun.objects.get(id=scan_id)
         if scan.cidr != cidr:
@@ -379,7 +533,7 @@ def launch_openvas_scan_task(cidr, config_name=None, scan_id=None):
 
     try:
         gmp = openvas_session()
-        target_id = create_target(gmp, cidr)
+        target_id = create_target(gmp, cidr, excluded_hosts=excluded_hosts)
         task_id = start_scan(gmp, target_id, config_name=config_name)
         scan.openvas_task_id = task_id
         scan.result_summary = f"OpenVAS scan launched. Task ID: {task_id}"

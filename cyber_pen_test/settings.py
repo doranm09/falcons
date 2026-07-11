@@ -43,6 +43,16 @@ DEBUG = True
 ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
+    'host.docker.internal',
+    '10.2.50.1',
+    '10.3.50.1',
+    '10.4.50.1',
+    '10.1.13.254',
+    '10.2.23.254',
+    '10.3.13.254',
+    '10.4.23.254',
+    '10.0.13.254',
+    '10.0.23.254',
     '10.137.4.115',  # Specific host that needs access
     # Subnet patterns for broader access:
     '10.137.4.*',    # Allows all IPs in 10.137.4.x range

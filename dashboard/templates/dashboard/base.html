@@ -31,66 +31,22 @@
   <div class="sidebar">
     <div class="logo">
       <img src="{% static 'logo.png' %}" alt="" />
-      <h5 class="mt-2">CyberTwin</h5>
-    </div>
-
-    <!-- Theme Toggle -->
-    <div class="theme-toggle mb-3">
-      <div class="d-flex align-items-center justify-content-between mb-2">
-        <small class="text-muted">Theme</small>
-        <small id="themeLabel" class="text-muted">Light</small>
-      </div>
-      <div class="theme-slider-container">
-        <label class="theme-switch">
-          <input type="checkbox" id="themeToggle" title="Toggle Dark/Light Mode">
-          <span class="slider">
-            <i class="bi bi-sun-fill slider-icon sun-icon"></i>
-            <i class="bi bi-moon-fill slider-icon moon-icon"></i>
-          </span>
-        </label>
-      </div>
-    </div>
-
-    <!-- Home Button -->
-    <div class="mb-3">
-      <nav class="nav flex-column">
-        <a class="nav-link btn btn-primary text-white w-100 text-start" href="{% url 'dashboard:dashboard-home' %}">
-          <i class="bi bi-house"></i> Home
-        </a>
-      </nav>
+      <h5 class="mt-2">FALCONS</h5>
     </div>
 
     <hr />
 
     <!-- Penetration Testing Workflow Sections -->
     <div class="workflow-section mb-3">
-      <h6 class="sidebar-heading">
-        <i class="bi bi-search"></i> Reconnaissance
-      </h6>
       <nav class="nav flex-column">
         <a class="nav-link" href="{% url 'dashboard:agent_monitoring' %}">
           <i class="bi bi-robot"></i> Agent Monitor
-        </a>
-        <a class="nav-link" href="{% url 'dashboard:network_monitoring' %}">
-          <i class="bi bi-activity"></i> Network Monitor
-        </a>
-        <a class="nav-link" href="{% url 'dashboard:dashboard-home' %}">
-          <i class="bi bi-diagram-3"></i> Network Topology
         </a>
       </nav>
     </div>
 
     <div class="workflow-section mb-3">
-      <h6 class="sidebar-heading">
-        <i class="bi bi-binoculars"></i> Vulnerability Assessment
-      </h6>
       <nav class="nav flex-column">
-        <a class="nav-link" href="{% url 'dashboard:network_scans' %}">
-          <i class="bi bi-activity"></i> Network Scans
-        </a>
-        <a class="nav-link" href="{% url 'dashboard:scan-history' %}">
-          <i class="bi bi-activity"></i> Scan History
-        </a>
         <a class="nav-link" href="http://127.0.0.1:9392" target="_blank">
           <i class="bi bi-cpu"></i> OpenVAS Scanner
         </a>
@@ -101,23 +57,14 @@
     </div>
 
     <div class="workflow-section mb-3">
-      <h6 class="sidebar-heading">
-        <i class="bi bi-graph-up"></i> Risk Analysis
-      </h6>
       <nav class="nav flex-column">
-        <a class="nav-link" href="{% url 'dashboard:shortest-paths' %}">
-          <i class="bi bi-signpost"></i> Attack Paths
-        </a>
         <a class="nav-link" href="{% url 'dashboard:risk_assessment' %}">
           <i class="bi bi-shield-exclamation"></i> Risk Assessment
-        </a>
-        <a class="nav-link" href="http://127.0.0.1:9001">
-          <i class="bi bi-code-square"></i> Code Analysis
         </a>
       </nav>
     </div>
 
-    <div class="workflow-section mb-3">
+    <!-- <div class="workflow-section mb-3">
       <h6 class="sidebar-heading">
         <i class="bi bi-bar-chart"></i> SIEM
       </h6>
@@ -141,7 +88,7 @@
           <i class="bi bi-flask"></i> Research Mode
         </a>
       </nav>
-    </div>
+    </div> -->
 
     <div class="workflow-section mb-3">
       <h6 class="sidebar-heading">

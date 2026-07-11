@@ -19,4 +19,4 @@ if [ -f /usr/local/bin/start_host_agent.sh ]; then
   start_host_agent
 fi
 
-exec /usr/local/bin/docker-entrypoint.sh "$@"
+exec /entrypoint.sh "$@"

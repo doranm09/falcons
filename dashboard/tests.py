@@ -610,6 +610,51 @@ class AgentViewTests(TestCase):
         self.assertEqual(len(agents), 1)
         self.assertEqual(agents[0]['agent_id'], 'test-agent-001')
 
+    def test_delete_offline_agents(self):
+        """Test offline agent cleanup endpoint."""
+        offline_agent = AgentStatus.objects.create(
+            agent_id="offline-agent-001",
+            hostname="offline-host",
+            ip_address="192.168.1.200",
+            status="offline",
+            heartbeat_interval=30,
+        )
+        offline_command = AgentCommand.objects.create(
+            agent_id=offline_agent.agent_id,
+            action="ping",
+            acknowledged=False,
+        )
+        CommandResult.objects.create(
+            command=offline_command,
+            agent_id=offline_agent.agent_id,
+            output="offline result",
+        )
+        SbomReport.objects.create(
+            agent_id=offline_agent.agent_id,
+            document={"bomFormat": "CycloneDX"},
+        )
+
+        online_agent = AgentStatus.objects.create(
+            agent_id="online-agent-001",
+            hostname="online-host",
+            ip_address="192.168.1.201",
+            status="online",
+        )
+
+        response = self.client.post(reverse('dashboard:delete_offline_agents'))
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        self.assertEqual(data["status"], "offline_agents_deleted")
+        self.assertEqual(data["deleted_agents"], 1)
+        self.assertIn(offline_agent.agent_id, data["deleted_agent_ids"])
+
+        self.assertFalse(AgentStatus.objects.filter(agent_id=offline_agent.agent_id).exists())
+        self.assertTrue(AgentStatus.objects.filter(agent_id=online_agent.agent_id).exists())
+        self.assertFalse(AgentCommand.objects.filter(agent_id=offline_agent.agent_id).exists())
+        self.assertFalse(CommandResult.objects.filter(agent_id=offline_agent.agent_id).exists())
+        self.assertFalse(SbomReport.objects.filter(agent_id=offline_agent.agent_id).exists())
+
     def test_agent_details_view(self):
         """Test individual agent details view."""
         response = self.client.get(reverse('dashboard:agent_details', args=[self.agent.agent_id]))
@@ -969,6 +1014,25 @@ class TaskTests(TestCase):
         self.assertEqual(scan.scan_type, "openvas")
         self.assertIn("OpenVAS scan launched", scan.result_summary)
 
+    @patch('dashboard.tasks.openvas_session')
+    @patch('dashboard.tasks.create_target')
+    @patch('dashboard.tasks.start_scan')
+    def test_launch_openvas_scan_task_passes_excluded_hosts(self, mock_start_scan, mock_create_target, mock_session):
+        """Test OpenVAS scan launch task forwards excluded hosts to target creation."""
+        session = MagicMock()
+        mock_session.return_value = session
+        mock_create_target.return_value = "target-123"
+        mock_start_scan.return_value = "task-456"
+
+        excluded_hosts = ["10.2.50.10", "10.2.50.40"]
+        launch_openvas_scan_task("192.168.1.0/24", excluded_hosts=excluded_hosts)
+
+        mock_create_target.assert_called_once_with(
+            session,
+            "192.168.1.0/24",
+            excluded_hosts=excluded_hosts,
+        )
+
     @patch('dashboard.tasks.requests.get')
     def test_fetch_and_store_cves(self, mock_get):
         """Test fetching CVEs from NVD."""
@@ -1089,25 +1153,222 @@ class DownloadTests(TestCase):
         self.assertTemplateUsed(response, 'dashboard/agent_download.html')
 
     @patch('dashboard.views.requests.get')
-    @patch('dashboard.views.zipfile.ZipFile')
-    @patch('dashboard.views.tempfile.NamedTemporaryFile')
-    def test_download_host_agent_zip(self, mock_tempfile, mock_zipfile, mock_get):
+    def test_download_host_agent_zip(self, mock_get):
         """Test host agent download (mocked)."""
-        # This is complex to test without actual files, so we mock it
-        mock_zip_obj = MagicMock()
-        mock_zipfile.return_value.__enter__.return_value = mock_zip_obj
+        mock_get.side_effect = Exception("network unavailable")
 
-        mock_temp_obj = MagicMock()
-        mock_temp_obj.name = '/tmp/test.zip'
-        mock_tempfile.return_value.__enter__.return_value = mock_temp_obj
+        response = self.client.get(reverse('dashboard:download_host_agent'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/zip")
+        self.assertIn("attachment", response["Content-Disposition"])
 
-        # Mock file operations
-        with patch('builtins.open', create=True) as mock_open:
-            mock_file = MagicMock()
-            mock_open.return_value.__enter__.return_value = mock_file
 
-            response = self.client.get(reverse('dashboard:download_host_agent'))
-            self.assertEqual(response.status_code, 200)
+class SbomTableTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.agent = AgentStatus.objects.create(
+            agent_id="agent-sbom-001",
+            hostname="sbom-host",
+            ip_address="192.168.1.50",
+            status="online",
+        )
+        SbomReport.objects.create(
+            node=None,
+            agent_id=self.agent.agent_id,
+            format="cyclonedx",
+            bom_format="CycloneDX",
+            spec_version="1.5",
+            document={
+                "components": [
+                    {
+                        "name": "openssl",
+                        "version": "3.0.13",
+                        "type": "library",
+                        "purl": "pkg:deb/ubuntu/openssl@3.0.13",
+                        "scope": "required",
+                        "description": "TLS library",
+                        "licenses": [{"license": {"name": "Apache-2.0"}}],
+                    },
+                    {
+                        "name": "curl",
+                        "version": "8.5.0",
+                        "type": "library",
+                        "purl": "pkg:deb/ubuntu/curl@8.5.0",
+                    },
+                ],
+                "vulnerabilities": [
+                    {
+                        "cve_id": "CVE-2024-0001",
+                        "severity": "High",
+                        "score": 9.8,
+                        "description": "Remote code execution in openssl",
+                        "references": ["https://example.com/cve-2024-0001"],
+                    }
+                ],
+            },
+            package_count=2,
+            os_summary="Ubuntu 24.04",
+        )
+
+    def test_agent_sbom_table(self):
+        response = self.client.get(reverse("dashboard:agent_sbom_export", args=[self.agent.agent_id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "dashboard/agent_sbom_table.html")
+        self.assertContains(response, "openssl")
+        self.assertContains(response, "curl")
+        self.assertContains(response, "Components")
+        self.assertContains(response, "Vulnerabilities")
+        self.assertContains(response, "CVE-2024-0001")
+        self.assertContains(response, "Remote code execution in openssl")
+
+    def test_agent_sbom_table_explicit(self):
+        response = self.client.get(
+            reverse("dashboard:agent_sbom_export", args=[self.agent.agent_id]),
+            {"format": "table"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "dashboard/agent_sbom_table.html")
+        self.assertContains(response, "openssl")
+        self.assertContains(response, "curl")
+        self.assertContains(response, "Components")
+
+    def test_agent_sbom_json_export(self):
+        response = self.client.get(
+            reverse("dashboard:agent_sbom_export", args=[self.agent.agent_id]),
+            {"format": "json"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json")
+        self.assertContains(response, "CVE-2024-0001")
+
+
+class CyberTemplateSbomFallbackTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.agent = AgentStatus.objects.create(
+            agent_id="agent-cyber-sbom-001",
+            hostname="cyber-host",
+            ip_address="192.168.1.60",
+            status="online",
+        )
+        self.node = Node.objects.create(
+            agent_id=self.agent.agent_id,
+            name="cyber-host",
+            ip_address="192.168.1.60",
+            os_info="Ubuntu 24.04",
+            installed_libraries=[
+                "{'name': 'openssl', 'version': '3.0.13', 'type': 'deb'}",
+                "{'name': 'curl', 'version': '8.5.0', 'type': 'deb'}",
+                "{'name': 'python3', 'version': '3.12.3', 'type': 'deb'}",
+            ],
+            active_ports=[{"id": 22, "state": "LISTEN"}],
+        )
+        self.vuln = Vulnerability.objects.create(
+            cve_id="CVE-2024-9999",
+            description="Test vulnerability linked to cyber node",
+            severity="High",
+            score=9.1,
+            published=timezone.now(),
+            last_modified=timezone.now(),
+            references="https://example.com/CVE-2024-9999",
+        )
+        self.node.vulnerability_set.add(self.vuln)
+
+    def test_agent_sbom_table_falls_back_to_cyber_data(self):
+        response = self.client.get(reverse("dashboard:agent_sbom_export", args=[self.agent.agent_id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "dashboard/agent_sbom_table.html")
+        self.assertContains(response, "cyber template data")
+        self.assertContains(response, "openssl")
+        self.assertContains(response, "curl")
+        self.assertContains(response, "python3")
+        self.assertContains(response, "3.0.13")
+        self.assertContains(response, "8.5.0")
+        self.assertContains(response, "CVE-2024-9999")
+        self.assertContains(response, "Test vulnerability linked to cyber node")
+
+    def test_trivy_and_grype_vulnerability_shapes_are_parsed(self):
+        from dashboard.sbom import extract_vulnerabilities_from_sbom
+
+        trivy_payload = {
+            "Results": [
+                {
+                    "Target": "ubuntu:24.04",
+                    "Vulnerabilities": [
+                        {
+                            "VulnerabilityID": "CVE-2024-1111",
+                            "PkgName": "openssl",
+                            "InstalledVersion": "3.0.13",
+                            "FixedVersion": "3.0.14",
+                            "Severity": "HIGH",
+                            "Title": "OpenSSL issue",
+                            "Description": "Example Trivy finding",
+                            "PrimaryURL": "https://example.com/trivy",
+                        }
+                    ],
+                }
+            ]
+        }
+        grype_payload = {
+            "matches": [
+                {
+                    "artifact": {"name": "curl", "version": "8.5.0"},
+                    "vulnerability": {
+                        "id": "CVE-2024-2222",
+                        "severity": "Medium",
+                        "description": "Example Grype finding",
+                    },
+                }
+            ]
+        }
+        trivy_vulns = extract_vulnerabilities_from_sbom(trivy_payload)
+        grype_vulns = extract_vulnerabilities_from_sbom(grype_payload)
+
+        self.assertEqual(trivy_vulns[0]["cve_id"], "CVE-2024-1111")
+        self.assertEqual(trivy_vulns[0]["package"], "openssl")
+        self.assertEqual(trivy_vulns[0]["installed_version"], "3.0.13")
+        self.assertEqual(trivy_vulns[0]["fixed_version"], "3.0.14")
+        self.assertEqual(grype_vulns[0]["cve_id"], "CVE-2024-2222")
+        self.assertEqual(grype_vulns[0]["package"], "curl")
+        self.assertEqual(grype_vulns[0]["installed_version"], "8.5.0")
+
+
+class AgentAnalysisSbomTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.agent = AgentStatus.objects.create(
+            agent_id="agent-analysis-sbom-001",
+            hostname="analysis-host",
+            ip_address="192.168.1.51",
+            status="online",
+        )
+        SbomReport.objects.create(
+            node=None,
+            agent_id=self.agent.agent_id,
+            format="cyclonedx",
+            bom_format="CycloneDX",
+            spec_version="1.5",
+            document={
+                "components": [
+                    {
+                        "name": "libxml2",
+                        "version": "2.12.5",
+                        "type": "library",
+                    }
+                ]
+            },
+            package_count=1,
+            os_summary="Ubuntu 24.04",
+        )
+
+    def test_agent_analysis_includes_sbom_section(self):
+        response = self.client.get(reverse("dashboard:agent_analysis", args=[self.agent.agent_id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "dashboard/agent_analysis.html")
+        self.assertContains(response, "SBOM Reports")
+        self.assertContains(response, "Table View")
+        self.assertContains(response, "JSON")
+        self.assertContains(response, "Ubuntu 24.04")
 
 
 class ShortestPathsTests(TestCase):

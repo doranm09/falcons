@@ -25,6 +25,7 @@ RUNTIME_LOG_DIR=/tmp/eng-ws
 XVFB_LOG="${RUNTIME_LOG_DIR}/xvfb.log"
 X11VNC_LOG="${RUNTIME_LOG_DIR}/x11vnc.log"
 WEBSOCKIFY_LOG="${RUNTIME_LOG_DIR}/websockify.log"
+HOST_AGENT_LOG="${RUNTIME_LOG_DIR}/host-agent.log"
 
 prepare_home() {
   mkdir -p \
@@ -50,6 +51,11 @@ wait_for_x_socket() {
 }
 
 prepare_home
+
+if [ -f /usr/local/bin/start_host_agent.sh ]; then
+  . /usr/local/bin/start_host_agent.sh
+  start_host_agent
+fi
 
 Xvfb "${DISPLAY}" -screen 0 "${DESKTOP_GEOMETRY}x24" -nolisten tcp >>"${XVFB_LOG}" 2>&1 &
 xvfb_pid=$!
@@ -91,11 +97,17 @@ cleanup() {
   kill "${vnc_pid}" 2>/dev/null || true
   kill "${desktop_pid}" 2>/dev/null || true
   kill "${xvfb_pid}" 2>/dev/null || true
+  if [ -n "${HOST_AGENT_PID:-}" ]; then
+    kill "${HOST_AGENT_PID}" 2>/dev/null || true
+  fi
   wait "${main_pid}" 2>/dev/null || true
   wait "${novnc_pid}" 2>/dev/null || true
   wait "${vnc_pid}" 2>/dev/null || true
   wait "${desktop_pid}" 2>/dev/null || true
   wait "${xvfb_pid}" 2>/dev/null || true
+  if [ -n "${HOST_AGENT_PID:-}" ]; then
+    wait "${HOST_AGENT_PID}" 2>/dev/null || true
+  fi
 }
 
 trap cleanup INT TERM

@@ -152,6 +152,32 @@ services:
       retries: 5
 
   # ---------------------- Layer 3 ----------------------
+  historian-db:
+    build:
+      context: ../..
+      dockerfile: testbed/iaea_rcs_demo/services/historian-db/Dockerfile
+    container_name: historian-db
+    hostname: historian-db
+    restart: unless-stopped
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: iaea-demo-password
+      DOCKER_INFLUXDB_INIT_ORG: iaea
+      DOCKER_INFLUXDB_INIT_BUCKET: iaea_rcs
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: iaea-historian-token
+      AGENT_SERVER_URL: "http://host.docker.internal:8000"
+      AGENT_API_TOKEN: "${AGENT_API_TOKEN:-iaea-demo-agent-token}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8086:8086"
+    networks:
+      l3_net:
+        ipv4_address: 10.3.50.20
+    volumes:
+      - historian_db_data:/var/lib/influxdb2
+
   historian:
     <<: *endpoint
     build:
@@ -167,10 +193,16 @@ services:
       SERVICE_PORTS: "443,4840"
       DEVICE_DESC: DMZ historian that exposes status on 443/4840 and polls PLC telemetry
       STATIC_ROUTES: "10.2.50.0/24 via 10.3.50.253;10.4.50.0/24 via 10.3.50.254;10.1.1.0/24 via 10.3.50.253;10.1.2.0/24 via 10.3.50.253"
+      INFLUX_URL: "http://historian-db:8086"
+      INFLUX_TOKEN: "iaea-historian-token"
+      INFLUX_ORG: "iaea"
+      INFLUX_BUCKET: "iaea_rcs"
       MAIN_OPC_URL: "opc.tcp://10.1.1.14:4840/main"
       BACKUP_OPC_URL: "opc.tcp://10.1.2.15:4840/backup"
-      HISTORIAN_POLL_INTERVAL: "6"
+      HISTORIAN_POLL_INTERVAL: "0.5"
     extra_hosts: *agent_extra_hosts
+    depends_on:
+      - historian-db
     networks:
       l3_net:
         ipv4_address: 10.3.50.10
@@ -771,6 +803,127 @@ services:
       - ./data:/data
       - ./models:/models
       - ./plots:/plots
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+
+  # ---------------------- IDS Services ----------------------
+  ids-collector:
+    build:
+      context: .
+      dockerfile: services/ids-collector/Dockerfile
+    restart: unless-stopped
+    container_name: ids-collector
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - ./data:/data
+      - ./models:/models
+      - ./plots:/plots
+      - ./scripts:/app/scripts:ro
+      - ./services/ids-network:/app/services/ids-network:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker:ro
+    command: ["tail", "-f", "/dev/null"]
+
+  ids-network:
+    build:
+      context: ./services/ids-network
+    restart: unless-stopped
+    container_name: ids-network
+    command: ["python", "ids_network_forwarder.py"]
+    cap_add:
+      - NET_ADMIN
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      SIEM_PIPELINE_URL: "${SIEM_PIPELINE_URL:-http://host.docker.internal:8000/dashboard/siem/pipeline/ingest/}"
+      SIEM_INGEST_TOKEN: "${SIEM_INGEST_TOKEN:-iaea-demo-siem-token}"
+      IDS_NETWORK_FORWARD_ANOMALY_ONLY: "${IDS_NETWORK_FORWARD_ANOMALY_ONLY:-1}"
+      IDS_DEMO_NAME: "${IDS_DEMO_NAME:-iaea-rcs-demo}"
+      IDS_NETWORK_IFACE: "${IDS_NETWORK_IFACE:-eth0}"
+      IDS_NETWORK_MODEL_PATH: "${IDS_NETWORK_MODEL_PATH:-/models/ids-network/net_10_1_1/random_forest.joblib}"
+      IDS_NETWORK_DECISION_THRESHOLD: "${IDS_NETWORK_DECISION_THRESHOLD:-0.95}"
+    volumes:
+      - ./data:/data
+      - ./models:/models
+      - ./plots:/plots
+      - ./services/ids-network:/app
+    networks:
+      - cyber_pen_test_appnet
+
+  ids-process:
+    build:
+      context: ./services/ids-process
+    restart: unless-stopped
+    container_name: ids-process
+    command: ["python", "ids_process_forwarder.py"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      SIEM_PIPELINE_URL: "${SIEM_PIPELINE_URL:-http://host.docker.internal:8000/dashboard/siem/pipeline/ingest/}"
+      SIEM_INGEST_TOKEN: "${SIEM_INGEST_TOKEN:-iaea-demo-siem-token}"
+      INFLUX_URL: "${IDS_PROCESS_INFLUX_URL:-http://historian-db:8086}"
+      INFLUX_TOKEN: "${IDS_PROCESS_INFLUX_TOKEN:-iaea-historian-token}"
+      INFLUX_ORG: "${IDS_PROCESS_INFLUX_ORG:-iaea}"
+      INFLUX_BUCKET: "${IDS_PROCESS_INFLUX_BUCKET:-iaea_rcs}"
+      IDS_PROCESS_PROFILE: "${IDS_PROCESS_PROFILE:-main}"
+      IDS_PROCESS_MEASUREMENT: "${IDS_PROCESS_MEASUREMENT:-rcs_metrics}"
+      IDS_PROCESS_TAG_KEYS: "${IDS_PROCESS_TAG_KEYS:-average_pressure}"
+      IDS_PROCESS_MODEL_PATH: "${IDS_PROCESS_MODEL_PATH:-/models/ids-process/autoencoder.joblib}"
+      IDS_PROCESS_DECISION_THRESHOLD: "${IDS_PROCESS_DECISION_THRESHOLD:-10}"
+      IDS_PROCESS_POLL_INTERVAL: "${IDS_PROCESS_POLL_INTERVAL:-1}"
+      IDS_PROCESS_WATCH_RANGE_START: "${IDS_PROCESS_WATCH_RANGE_START:--5s}"
+      IDS_PROCESS_WATCH_ANOMALY_ONLY: "${IDS_PROCESS_WATCH_ANOMALY_ONLY:-1}"
+    depends_on:
+      - historian-db
+      - historian
+    volumes:
+      - ./services/ids-process:/app
+      - ./models:/models
+    networks:
+      - l3_net
+
+  ids-mirror:
+    build:
+      context: ./services/ids-mirror
+    restart: unless-stopped
+    container_name: ids-mirror
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      - ids-network
+    environment:
+      MIRROR_FROM_IFACE: "${IDS_MIRROR_FROM_IFACE:-net_10_1_1}"
+      MIRROR_TARGET_CONTAINER: "${IDS_MIRROR_TARGET_CONTAINER:-ids-network}"
+      MIRROR_REAPPLY_SECONDS: "${IDS_MIRROR_REAPPLY_SECONDS:-5}"
+    command: ["/bin/sh", "-lc", "sh /scripts/auto_port_mirror.sh"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /sys/class/net:/sys/class/net:ro
+      - ./scripts:/scripts:ro
+
+  kali-attacker:
+    build:
+      context: ./services/kali
+    profiles: ["kali"]
+    tty: true
+    stdin_open: true
+    command: ["/bin/bash", "-lc", "python3 /opt/kali/kali_attack_api.py"]
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    ports:
+      - "5001:5001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      net_10_1_1:
+        ipv4_address: 10.1.1.42
+      kali_api_net:
 
 networks:
   l4_net:
@@ -825,10 +978,24 @@ networks:
       config:
         - subnet: 172.31.250.0/24
 
+  # IDS networks
+  cyber_pen_test_appnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+
+  kali_api_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.26.0.0/16
+
 volumes:
   plc_main_data:
   plc_backup_data:
   eng_ws_home:
   postgres_data:
+  historian_db_data:
   siem_sensor_data:
   siem_forwarder_state:

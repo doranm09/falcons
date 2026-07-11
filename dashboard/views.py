@@ -1,3 +1,35 @@
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+import os
+
+# --- Pentest Views ---
+def pentest_page(request):
+    return render(request, "dashboard/pentest.html")
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def pentest_nmap(request):
+    # Call the Flask API in the kali-attacker container via host.docker.internal
+    import requests
+    try:
+        # Use host.docker.internal to reach the published port from inside the container
+        resp = requests.post("http://host.docker.internal:5001/attack/nmap", timeout=65)
+        data = resp.json()
+        return JsonResponse(data, status=resp.status_code)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def pentest_modbus(request):
+    # Call the Flask API in the kali-attacker container via host.docker.internal
+    import requests
+    try:
+        resp = requests.post("http://host.docker.internal:5001/attack/modbus", timeout=65)
+        data = resp.json()
+        return JsonResponse(data, status=resp.status_code)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.contrib import messages
@@ -13,9 +45,7 @@ from .models import (
     RiskNodeMapping,
     SbomReport,
     ScanRun,
-    ScanVulnerability,
     SiemEvent,
-    SiemSensorStatus,
     Vulnerability,
     AlertRule,
     Alert,
@@ -76,23 +106,17 @@ import json
 import math
 import os
 import shutil
-from collections import Counter, defaultdict
+from collections import defaultdict
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count
 from ipaddress import ip_network
 from pathlib import Path
 import time
 from datetime import timedelta
 from functools import wraps
-from urllib.parse import urlencode
 from typing import Optional
-from .siem import (
-    normalize_siem_event,
-    parse_siem_search_params,
-    SiemNormalizeError,
-    SiemQueryError,
-)
+from .siem import normalize_siem_event, parse_siem_search_params, SiemNormalizeError, SiemQueryError
 from .siem_adapters import (
     adapt_agent_status,
     adapt_scan_run,
@@ -100,9 +124,7 @@ from .siem_adapters import (
     adapt_vulnerability,
 )
 from .siem_pipeline import transform_pipeline_events, SiemPipelineError
-from .siem_suricata import transform_suricata_events
-from .siem_zeek import transform_zeek_events
-from .opensearch_client import bulk_index_events, get_opensearch_overview, OpensearchError
+from .opensearch_client import bulk_index_events, OpensearchError
 from .siem_query import parse_search_request, search_siem_events
 from .siem_pivot import resolve_siem_pivot
 from .siem_alerting import process_alerts_for_events
@@ -133,6 +155,7 @@ from .pid_drawio import (
     store_drawio_upload,
     upload_sim_system,
 )
+<<<<<<< HEAD
 from .sim_system import (
     SIM_SYSTEM_SECTION_KEYS,
     build_risk_service_compatible_sim_system,
@@ -174,6 +197,8 @@ def _latest_nodes_by_asset_ip(nodes):
             if ip_text and ip_text not in latest_node_by_ip:
                 latest_node_by_ip[ip_text] = node
     return latest_node_by_ip
+=======
+>>>>>>> ac2ae04 (Add ids process live to web app, track models, remove management info)
 from knowledge_extraction.drawio import DrawioParseError
 from .pid_system import (
     build_system_elements,
@@ -203,492 +228,6 @@ def _sbom_severity_rank(value: str) -> int:
         "": 0,
     }
     return ranks.get(str(value or "").strip().lower(), 0)
-
-
-PURDUE_TOPOLOGY_LAYERS = [
-    {"slug": "L4", "label": "Level 4 / Enterprise IT", "accent": "primary"},
-    {"slug": "L3.5", "label": "Level 3.5 / DMZ & Firewalls", "accent": "warning"},
-    {"slug": "L3", "label": "Level 3 / Operations", "accent": "info"},
-    {"slug": "L2", "label": "Level 2 / Supervisory", "accent": "success"},
-    {"slug": "L1", "label": "Level 1 / Control Network", "accent": "secondary"},
-    {"slug": "L0", "label": "Level 0 / Field & Process", "accent": "dark"},
-]
-
-IAEA_TESTBED_STATIC_TOPOLOGY = [
-    {"hostname": "metasploit", "label": "metasploit", "ip_address": "10.4.50.10", "ip_addresses": ["10.4.50.10"], "aliases": ["ws4a"], "layer": "L4", "role_slug": "offensive", "role_label": "Offensive Host", "icon": "bi-bug-fill", "segment_label": "Enterprise LAN"},
-    {"hostname": "postgres", "label": "postgres", "ip_address": "10.4.50.20", "ip_addresses": ["10.4.50.20"], "aliases": ["pg"], "layer": "L4", "role_slug": "database", "role_label": "Database", "icon": "bi-database-fill", "segment_label": "Enterprise LAN"},
-    {"hostname": "firewall-2", "label": "firewall-2", "ip_address": "10.3.50.254", "ip_addresses": ["10.3.50.254", "10.4.50.254"], "aliases": ["firewall-2-agent", "firewall 2 agent"], "layer": "L3.5", "role_slug": "firewall", "role_label": "Firewall", "icon": "bi-shield-lock-fill", "segment_label": "Operations LAN"},
-    {"hostname": "firewall-1", "label": "firewall-1", "ip_address": "10.2.50.254", "ip_addresses": ["10.2.50.254", "10.3.50.253"], "aliases": ["firewall-1-agent", "firewall 1 agent"], "layer": "L3.5", "role_slug": "firewall", "role_label": "Firewall", "icon": "bi-shield-lock-fill", "segment_label": "Supervisory LAN"},
-    {"hostname": "historian", "label": "historian", "ip_address": "10.3.50.10", "ip_addresses": ["10.3.50.10"], "aliases": [], "layer": "L3", "role_slug": "server", "role_label": "Server", "icon": "bi-server", "segment_label": "Operations LAN"},
-    {"hostname": "hmi", "label": "hmi", "ip_address": "10.2.50.10", "ip_addresses": ["10.2.50.10"], "aliases": [], "layer": "L2", "role_slug": "supervisory", "role_label": "Supervisory", "icon": "bi-display-fill", "segment_label": "Supervisory LAN"},
-    {"hostname": "engineer-ws", "label": "engineer-ws", "ip_address": "10.2.50.20", "ip_addresses": ["10.2.50.20"], "aliases": ["ws2"], "layer": "L2", "role_slug": "workstation", "role_label": "Workstation", "icon": "bi-laptop-fill", "segment_label": "Supervisory LAN"},
-    {"hostname": "firewall-0", "label": "firewall-0", "ip_address": "10.2.50.253", "ip_addresses": ["10.2.50.253", "10.1.1.253", "10.1.2.253"], "aliases": ["firewall-0-agent", "firewall 0 agent"], "layer": "L1", "role_slug": "firewall", "role_label": "Firewall", "icon": "bi-shield-lock-fill", "segment_label": "Supervisory / Control Boundary"},
-    {"hostname": "plc-main", "label": "plc-main", "ip_address": "10.1.1.14", "ip_addresses": ["10.1.1.14", "10.1.2.14"], "aliases": ["plcm", "plc main"], "layer": "L1", "role_slug": "controller", "role_label": "Controller", "icon": "bi-cpu-fill", "segment_label": "Redundant Control Network"},
-    {"hostname": "plc-backup", "label": "plc-backup", "ip_address": "10.1.1.15", "ip_addresses": ["10.1.1.15", "10.1.2.15"], "aliases": ["plcb", "plc backup"], "layer": "L1", "role_slug": "controller", "role_label": "Controller", "icon": "bi-cpu-fill", "segment_label": "Redundant Control Network"},
-    {"hostname": "channel-a", "label": "channel-a", "ip_address": "10.1.1.10", "ip_addresses": ["10.1.1.10", "10.1.2.10"], "aliases": ["cha", "channel a"], "layer": "L1", "role_slug": "controller", "role_label": "Channel", "icon": "bi-bezier2", "segment_label": "Redundant Control Network"},
-    {"hostname": "channel-b", "label": "channel-b", "ip_address": "10.1.1.11", "ip_addresses": ["10.1.1.11", "10.1.2.11"], "aliases": ["chb", "channel b"], "layer": "L1", "role_slug": "controller", "role_label": "Channel", "icon": "bi-bezier2", "segment_label": "Redundant Control Network"},
-    {"hostname": "channel-c", "label": "channel-c", "ip_address": "10.1.1.12", "ip_addresses": ["10.1.1.12", "10.1.2.12"], "aliases": ["chc", "channel c"], "layer": "L1", "role_slug": "controller", "role_label": "Channel", "icon": "bi-bezier2", "segment_label": "Redundant Control Network"},
-    {"hostname": "channel-d", "label": "channel-d", "ip_address": "10.1.1.13", "ip_addresses": ["10.1.1.13", "10.1.2.13"], "aliases": ["chd", "channel d"], "layer": "L1", "role_slug": "controller", "role_label": "Channel", "icon": "bi-bezier2", "segment_label": "Redundant Control Network"},
-    {"hostname": "pt-455", "label": "pt-455", "ip_address": "10.1.1.9", "ip_addresses": ["10.1.1.9", "10.1.2.9"], "aliases": [], "layer": "L0", "role_slug": "sensor", "role_label": "Sensor", "icon": "bi-speedometer2", "segment_label": "Redundant Field Network"},
-    {"hostname": "pt-456", "label": "pt-456", "ip_address": "10.1.1.8", "ip_addresses": ["10.1.1.8", "10.1.2.8"], "aliases": [], "layer": "L0", "role_slug": "sensor", "role_label": "Sensor", "icon": "bi-speedometer2", "segment_label": "Redundant Field Network"},
-    {"hostname": "pt-457", "label": "pt-457", "ip_address": "", "ip_addresses": [], "aliases": ["analog sensor pt-457"], "layer": "L0", "role_slug": "sensor", "role_label": "Analog Sensor", "icon": "bi-speedometer2", "segment_label": "Channel C Analog Path"},
-    {"hostname": "pt-458", "label": "pt-458", "ip_address": "", "ip_addresses": [], "aliases": ["analog sensor pt-458"], "layer": "L0", "role_slug": "sensor", "role_label": "Analog Sensor", "icon": "bi-speedometer2", "segment_label": "Channel D Analog Path"},
-]
-
-
-def _topology_identity_text(*parts) -> str:
-    for part in parts:
-        text = str(part or "").strip()
-        if text:
-            return text
-    return ""
-
-
-def _parse_endpoint_address(value: str = "") -> tuple[str, int | None]:
-    text = str(value or "").strip()
-    if not text:
-        return "", None
-    if text.startswith("[") and "]:" in text:
-        host, _, port_text = text[1:].partition("]:")
-        try:
-            return host, int(port_text)
-        except ValueError:
-            return host, None
-    if text.count(":") == 1:
-        host, port_text = text.rsplit(":", 1)
-        try:
-            return host, int(port_text)
-        except ValueError:
-            return text, None
-    return text, None
-
-
-def _node_interface_ips(node_obj=None) -> list[str]:
-    if not node_obj:
-        return []
-    ips = []
-    primary = str(getattr(node_obj, "ip_address", "") or "").strip()
-    if primary:
-        ips.append(primary)
-    for iface in getattr(node_obj, "interfaces", []).all():
-        iface_ip = str(getattr(iface, "ip", "") or "").strip()
-        if iface_ip and iface_ip not in ips:
-            ips.append(iface_ip)
-    return ips
-
-
-def _agent_interface_ips(agent_obj=None) -> list[str]:
-    if not agent_obj:
-        return []
-    ips = []
-    primary = str(getattr(agent_obj, "ip_address", "") or "").strip()
-    if primary:
-        ips.append(primary)
-    for iface in getattr(agent_obj, "interfaces", []) or []:
-        iface_ip = str(iface.get("ip", "") or "").strip()
-        if iface_ip and iface_ip not in ips and not iface_ip.startswith("127.") and iface_ip != "::1":
-            ips.append(iface_ip)
-    return ips
-
-
-def _metadata_interface_ips(metadata_obj=None) -> list[str]:
-    if not metadata_obj:
-        return []
-    ips = []
-    for iface in getattr(metadata_obj, "interfaces", []) or []:
-        iface_ip = str(iface.get("ip", "") or "").strip()
-        if iface_ip and iface_ip not in ips and not iface_ip.startswith("127.") and iface_ip != "::1":
-            ips.append(iface_ip)
-    return ips
-
-
-def _resolve_iaea_override(hostname: str = "", name: str = "", ip_addresses=None) -> dict | None:
-    ip_addresses = ip_addresses or []
-    for ip_text in ip_addresses:
-        override = _iaea_topology_override(hostname, name, ip_text)
-        if override:
-            return override
-    return _iaea_topology_override(hostname, name, "")
-
-
-def _infer_topology_role(name: str = "", hostname: str = "", ip_address: str = "", description: str = "") -> tuple[str, str, str]:
-    text = " ".join([str(name or ""), str(hostname or ""), str(description or "")]).lower()
-    if any(token in text for token in ["firewall", "gateway"]):
-        return "firewall", "Firewall", "bi-shield-lock-fill"
-    if any(token in text for token in ["metasploit", "attacker", "kali", "red-team"]):
-        return "offensive", "Offensive Host", "bi-bug-fill"
-    if any(token in text for token in ["database", "postgres", "db", "historian-db", "influx"]):
-        return "database", "Database", "bi-database-fill"
-    if any(token in text for token in ["historian", "opc", "collector", "server"]):
-        return "server", "Server", "bi-server"
-    if any(token in text for token in ["engineer", "eng-ws", "workstation", "jump", "desktop", "laptop"]):
-        return "workstation", "Workstation", "bi-laptop-fill"
-    if any(token in text for token in ["hmi", "ignition", "scada", "supervisory"]):
-        return "supervisory", "Supervisory", "bi-display-fill"
-    if any(token in text for token in ["plc", "controller", "rtu", "ied", "dcs"]):
-        return "controller", "Controller", "bi-cpu-fill"
-    if any(token in text for token in ["valve", "vc-", "hv", "pv", "cv"]):
-        return "actuator", "Actuator", "bi-sliders"
-    if any(token in text for token in ["pt-", "lt-", "tt-", "ft-", "sensor", "transmitter"]):
-        return "sensor", "Sensor", "bi-speedometer2"
-    if "10.4.50." in ip_address:
-        return "enterprise", "Enterprise", "bi-building"
-    return "asset", "Asset", "bi-hdd-network-fill"
-
-
-def _infer_purdue_layer(name: str = "", hostname: str = "", ip_address: str = "", description: str = "") -> str:
-    text = " ".join([str(name or ""), str(hostname or ""), str(description or "")]).upper()
-    ip_text = str(ip_address or "").strip()
-    if any(token in text for token in ["PT-455", "PT-456", "PT-457", "PT-458", "SENSOR", "TRANSMITTER", "VALVE", "HEAT", "SPRAY", "PRESSURE RELIEF"]):
-        return "L0"
-    if "HISTORIAN" in text and "DB" not in text and "DATABASE" not in text:
-        return "L3"
-    if any(token in text for token in ["FIREWALL", "DMZ", "GATEWAY"]):
-        return "L3.5"
-    if ip_text.startswith("10.4.50."):
-        return "L4"
-    if ip_text.startswith("10.3.50."):
-        return "L3"
-    if ip_text.startswith("10.2.50."):
-        return "L2"
-    if any(ip_text.startswith(prefix) for prefix in ["10.1.1.", "10.1.2.", "10.1.13.", "10.2.23.", "10.0.13.", "10.0.23."]):
-        return "L1"
-    if any(ip_text.startswith(prefix) for prefix in ["10.3.13.", "10.4.23."]):
-        return "L0"
-    if any(token in text for token in ["ERP", "MES", "CORP", "ENTERPRISE", "BUSINESS", "IT", "OFFICE", "METASPLOIT", "DATABASE", "POSTGRES"]):
-        return "L4"
-    if any(token in text for token in ["HISTORIAN", "OPC"]):
-        return "L3"
-    if any(token in text for token in ["HMI", "IGNITION", "ENGINEER", "JUMP", "SCADA", "SUPERVISOR"]):
-        return "L2"
-    if any(token in text for token in ["PLC", "RTU", "IED", "DCS", "CONTROLLER", "CTRL"]):
-        return "L1"
-    if any(token in text for token in ["SENSOR", "VALVE", "PUMP", "MOTOR", "HEATER", "HV", "PV", "CV", "PT", "LT", "TT", "FT", "PORV"]):
-        return "L0"
-    return "L2"
-
-
-def _topology_segment_label(ip_address: str = "") -> str:
-    ip_text = str(ip_address or "").strip()
-    segment_map = {
-        "10.4.50.": "Enterprise LAN",
-        "10.3.50.": "Operations LAN",
-        "10.2.50.": "Supervisory LAN",
-        "10.1.1.": "Redundant Control Network",
-        "10.1.2.": "Redundant Control Network",
-        "10.1.13.": "Main Control Cell",
-        "10.2.23.": "Backup Control Cell",
-        "10.3.13.": "Main Process Cell",
-        "10.4.23.": "Backup Process Cell",
-        "10.0.13.": "Main Management",
-        "10.0.23.": "Backup Management",
-    }
-    for prefix, label in segment_map.items():
-        if ip_text.startswith(prefix):
-            return label
-    return "Observed Network"
-
-
-def _topology_layer_meta(slug: str) -> dict:
-    for layer in PURDUE_TOPOLOGY_LAYERS:
-        if layer["slug"] == slug:
-            return layer
-    return {"slug": slug, "label": slug, "accent": "secondary"}
-
-
-def _iaea_identity_tokens(item: dict) -> list[str]:
-    tokens = [str(item.get("hostname", "")).strip().lower(), str(item.get("label", "")).strip().lower()]
-    for alias in item.get("aliases", []):
-        tokens.append(str(alias).strip().lower())
-    return [token for token in tokens if token]
-
-
-IAEA_TOPOLOGY_BY_IP = {
-    ip_text: item
-    for item in IAEA_TESTBED_STATIC_TOPOLOGY
-    for ip_text in item.get("ip_addresses", ([item["ip_address"]] if item.get("ip_address") else []))
-    if ip_text
-}
-IAEA_TOPOLOGY_BY_HOSTNAME = {
-    token: item
-    for item in IAEA_TESTBED_STATIC_TOPOLOGY
-    for token in _iaea_identity_tokens(item)
-}
-
-
-def _iaea_topology_override(hostname: str = "", name: str = "", ip_address: str = "") -> dict | None:
-    hostname = str(hostname or "").strip().lower()
-    name = str(name or "").strip().lower()
-    ip_address = str(ip_address or "").strip()
-    if ip_address and ip_address in IAEA_TOPOLOGY_BY_IP:
-        return IAEA_TOPOLOGY_BY_IP[ip_address]
-    if hostname and hostname in IAEA_TOPOLOGY_BY_HOSTNAME:
-        return IAEA_TOPOLOGY_BY_HOSTNAME[hostname]
-    if name and name in IAEA_TOPOLOGY_BY_HOSTNAME:
-        return IAEA_TOPOLOGY_BY_HOSTNAME[name]
-    return None
-
-
-def _should_render_modeled_static_node(item: dict) -> bool:
-    # Keep Level 0 assets visible even before live evidence reaches them.
-    # Also keep the validated engineering workstation visible in L2 so the
-    # supervisory layer reflects the expected hybrid topology.
-    layer = str(item.get("layer") or "").strip()
-    hostname = str(item.get("hostname") or "").strip().lower()
-    return layer == "L0" or hostname == "engineer-ws"
-
-
-MEANINGFUL_PASSIVE_PORTS = {443, 4840, 502, 5432, 44818}
-NOISY_PASSIVE_PROTOCOLS = {"ARP", "ICMP"}
-TOPOLOGY_SCANNER_PROCESS_TOKENS = (
-    "openvas",
-    "ospd-openvas",
-    "gvmd",
-    "greenbone",
-    "gvm",
-    "nmap",
-    "masscan",
-)
-
-
-def _is_likely_docker_gateway(ip_text: str) -> bool:
-    text = str(ip_text or "").strip()
-    if not text:
-        return False
-    gateway_candidates = {
-        "10.1.1.1",
-        "10.1.2.1",
-        "10.2.50.1",
-        "10.3.50.1",
-        "10.4.50.1",
-        "172.17.0.1",
-        "172.31.250.1",
-    }
-    return text in gateway_candidates
-
-
-def _should_surface_inferred_flow_endpoint(
-    *,
-    host: str,
-    port: int | None,
-    protocol: str = "",
-    process_name: str = "",
-    process_cmdline: str = "",
-    override: dict | None = None,
-    known_node=None,
-) -> bool:
-    host = str(host or "").strip()
-    protocol = str(protocol or "").strip().upper()
-    process_name = str(process_name or "").strip().lower()
-    process_cmdline = str(process_cmdline or "").strip().lower()
-    if not host:
-        return False
-    if override or known_node is not None:
-        return True
-    if host in {"127.0.0.1", "::1", "localhost"} or _is_likely_docker_gateway(host):
-        return False
-    if any(token in f"{process_name} {process_cmdline}" for token in TOPOLOGY_SCANNER_PROCESS_TOKENS):
-        return False
-    if process_name == "passive-sniffer":
-        if protocol in NOISY_PASSIVE_PROTOCOLS:
-            return False
-        if protocol == "UDP" and port not in MEANINGFUL_PASSIVE_PORTS:
-            return False
-        if port is None:
-            return False
-        return port in MEANINGFUL_PASSIVE_PORTS
-    return True
-
-
-def _is_topology_noise_flow(
-    *,
-    protocol: str = "",
-    process_name: str = "",
-    process_cmdline: str = "",
-) -> bool:
-    protocol = str(protocol or "").strip().upper()
-    process_name = str(process_name or "").strip().lower()
-    process_cmdline = str(process_cmdline or "").strip().lower()
-    process_text = f"{process_name} {process_cmdline}"
-
-    if any(token in process_text for token in TOPOLOGY_SCANNER_PROCESS_TOKENS):
-        return True
-
-    if process_name == "passive-sniffer" and protocol in NOISY_PASSIVE_PROTOCOLS:
-        return True
-
-    return False
-
-
-def _is_topology_management_flow(
-    *,
-    local_host: str = "",
-    remote_host: str = "",
-    local_port: int | None = None,
-    remote_port: int | None = None,
-    process_name: str = "",
-) -> bool:
-    process_name = str(process_name or "").strip().lower()
-    if process_name != "passive-sniffer":
-        return False
-    ports = {port for port in (local_port, remote_port) if port is not None}
-    if 8000 not in ports:
-        return False
-    return _is_likely_docker_gateway(local_host) or _is_likely_docker_gateway(remote_host)
-
-
-def _promote_static_l0_from_passive_observation(conn, *, iaea_testbed_active: bool) -> list[str]:
-    if not iaea_testbed_active:
-        return []
-    if str(getattr(conn, "process_name", "") or "").strip().lower() != "passive-sniffer":
-        return []
-    if str(getattr(conn, "protocol", "") or "").strip().upper() != "ARP":
-        return []
-
-    promoted_ids = []
-    for candidate in (
-        _parse_endpoint_address(getattr(conn, "local_address", ""))[0],
-        _parse_endpoint_address(getattr(conn, "remote_address", ""))[0],
-    ):
-        override = _resolve_iaea_override("", "", [candidate]) if candidate else None
-        if not override:
-            continue
-        if str(override.get("layer") or "").strip() != "L0":
-            continue
-        promoted_ids.append(f"static:{override['hostname']}")
-    return promoted_ids
-
-
-def _is_iaea_testbed_active(node_candidates, agents) -> bool:
-    known_ranges = (
-        "10.4.50.",
-        "10.3.50.",
-        "10.2.50.",
-        "10.1.1.",
-        "10.1.2.",
-        "10.1.13.",
-        "10.2.23.",
-        "10.3.13.",
-        "10.4.23.",
-        "10.0.13.",
-        "10.0.23.",
-    )
-    for obj in list(node_candidates) + list(agents):
-        ip_text = str(getattr(obj, "ip_address", "") or "").strip()
-        hostname = str(getattr(obj, "hostname", "") or "").strip().lower()
-        name = str(getattr(obj, "name", "") or "").strip().lower()
-        if any(ip_text.startswith(prefix) for prefix in known_ranges):
-            return True
-        if hostname in IAEA_TOPOLOGY_BY_HOSTNAME or name in IAEA_TOPOLOGY_BY_HOSTNAME:
-            return True
-    return False
-
-
-def _normalize_host_identity_text(value: str = "") -> str:
-    return str(value or "").strip()
-
-
-def _choose_primary_ip(interface_records=None, fallback_ip: str = "") -> str:
-    def _ip_rank(ip_text: str) -> tuple[int, str]:
-        try:
-            ip_obj = ipaddress.ip_address(ip_text)
-        except ValueError:
-            return (99, ip_text)
-        if ip_obj.version != 4:
-            return (98, ip_text)
-        if ip_text.startswith("10."):
-            return (0, ip_text)
-        if ip_text.startswith("192.168."):
-            return (1, ip_text)
-        if ip_obj.is_private:
-            return (2, ip_text)
-        return (3, ip_text)
-
-    candidates = []
-    for iface in interface_records or []:
-        iface_ip = str((iface or {}).get("ip", "") or "").strip()
-        if iface_ip and not iface_ip.startswith("127.") and iface_ip != "::1":
-            candidates.append(iface_ip)
-    if candidates:
-        return sorted(candidates, key=_ip_rank)[0]
-    return str(fallback_ip or "").strip()
-
-
-TOPOLOGY_METADATA_LOOKBACK = timedelta(minutes=15)
-TOPOLOGY_CONNECTION_LOOKBACK = timedelta(hours=1)
-
-
-def _rekey_agent_identity(old_agent_id: str, new_agent_id: str) -> None:
-    old_agent_id = _normalize_host_identity_text(old_agent_id)
-    new_agent_id = _normalize_host_identity_text(new_agent_id)
-    if not old_agent_id or not new_agent_id or old_agent_id == new_agent_id:
-        return
-
-    AgentCommand.objects.filter(agent_id=old_agent_id).update(agent_id=new_agent_id)
-    CommandResult.objects.filter(agent_id=old_agent_id).update(agent_id=new_agent_id)
-    SbomReport.objects.filter(agent_id=old_agent_id).update(agent_id=new_agent_id)
-
-
-def _claim_existing_agent_identity(agent_id: str, hostname: str, ip_address: str):
-    agent_id = _normalize_host_identity_text(agent_id)
-    hostname = _normalize_host_identity_text(hostname)
-    ip_address = _normalize_host_identity_text(ip_address)
-    if not agent_id:
-        return None
-
-    existing = AgentStatus.objects.filter(agent_id=agent_id).first()
-    if existing:
-        return existing
-
-    candidate_qs = AgentStatus.objects.exclude(agent_id=agent_id)
-    if hostname and ip_address:
-        candidate_qs = candidate_qs.filter(hostname__iexact=hostname, ip_address=ip_address)
-    elif ip_address:
-        candidate_qs = candidate_qs.filter(ip_address=ip_address)
-    elif hostname:
-        candidate_qs = candidate_qs.filter(hostname__iexact=hostname)
-    else:
-        return None
-
-    candidate = candidate_qs.order_by("-last_heartbeat", "-id").first()
-    if not candidate:
-        return None
-
-    old_agent_id = candidate.agent_id
-    _rekey_agent_identity(old_agent_id, agent_id)
-    candidate.agent_id = agent_id
-    candidate.save(update_fields=["agent_id"])
-    return candidate
-
-
-def _claim_existing_node_identity(agent_id: str, hostname: str, ip_address: str):
-    agent_id = _normalize_host_identity_text(agent_id)
-    hostname = _normalize_host_identity_text(hostname)
-    ip_address = _normalize_host_identity_text(ip_address)
-    if not agent_id:
-        return None
-
-    existing = Node.objects.filter(agent_id=agent_id).first()
-    if existing:
-        return existing
-
-    candidate_qs = Node.objects.filter(scan_run__isnull=True).exclude(agent_id=agent_id)
-    if hostname and ip_address:
-        candidate_qs = candidate_qs.filter(hostname__iexact=hostname, ip_address=ip_address)
-    elif ip_address:
-        candidate_qs = candidate_qs.filter(ip_address=ip_address)
-    elif hostname:
-        candidate_qs = candidate_qs.filter(hostname__iexact=hostname)
-    else:
-        return None
-
-    candidate = candidate_qs.order_by("-last_heartbeat", "-id").first()
-    if not candidate:
-        return None
-
-    candidate.agent_id = agent_id
-    candidate.save(update_fields=["agent_id"])
-    return candidate
 
 
 def _sort_sbom_vulnerability_rows(rows):
@@ -1330,15 +869,12 @@ def home(request):
     running_scans = ScanRun.objects.filter(status="RUNNING").count()
     pending_scans = ScanRun.objects.filter(status="PENDING").count()
 
-    context = _build_network_monitoring_dashboard_context()
-    context.update({
+    return render(request, "dashboard/network_scan_home.html", {
         "scan_history": scan_history,
         "running_scans": running_scans,
         "pending_scans": pending_scans,
         "timestamp": now().timestamp(),
     })
-
-    return render(request, "dashboard/network_monitoring.html", context)
 
 
 def network_scans(request):
@@ -2195,14 +1731,11 @@ def node_details(request, node_id):
     node_data = {
         "id": node.id,
         "name": node.name,
-        "hostname": node.hostname,
         "ip_address": node.ip_address,
         "status": node.status,
         "description": node.description,
         "last_heartbeat": node.last_heartbeat.strftime('%Y-%m-%d %H:%M:%S') if node.last_heartbeat else "Never",
         "agent_id": node.agent_id,
-        "purdue_level": _infer_purdue_layer(node.name, node.hostname, str(node.ip_address), node.description),
-        "role": _infer_topology_role(node.name, node.hostname, str(node.ip_address), node.description)[1],
         "cyber_data": node.get_cyber_template_data(),
         "system_info": {
             "cpu_count": node.cpu_count,
@@ -2248,97 +1781,11 @@ def node_detail_page(request, node_id):
     if agent_status:
         network_metadata = NetworkMetadata.objects.filter(agent=agent_status).order_by('-timestamp').first()
 
-    purdue_level = _infer_purdue_layer(node.name, node.hostname, str(node.ip_address), node.description)
-    role_slug, role_label, role_icon = _infer_topology_role(node.name, node.hostname, str(node.ip_address), node.description)
-    asset_ips = sorted(_node_asset_ips(node))
-    imported_network_findings = list(
-        ScanVulnerability.objects.filter(host_ip__in=asset_ips)
-        .select_related("scan_run")
-        .order_by("-cvss_score", "-timestamp", "cve_id")
-    )
-    gvmd_findings = fetch_gvmd_findings_for_ips(asset_ips)
-    sbom_finding_count = node.vulnerability_set.count()
-    recent_report_scans = list(
-        ScanRun.objects.filter(vulnerabilities__host_ip__in=asset_ips)
-        .distinct()
-        .order_by("-timestamp")[:5]
-    )
-    if not recent_report_scans and node.scan_run_id:
-        recent_report_scans = [node.scan_run]
-
-    context_rollup = {
-        "display_name": _topology_identity_text(node.hostname, node.name, node.ip_address),
-        "purdue_level": purdue_level,
-        "segment_label": _topology_segment_label(str(node.ip_address)),
-        "role_slug": role_slug,
-        "role_label": role_label,
-        "role_icon": role_icon,
-        "scan_finding_count": 0,
-        "sbom_finding_count": sbom_finding_count,
-        "interface_count": node.interfaces.count(),
-        "library_count": len(node.installed_libraries or []),
-        "active_port_count": len(node.active_ports or []),
-        "recent_reports": recent_report_scans,
-    }
-
-    network_finding_rows = []
-    seen_network_keys = set()
-    for finding in imported_network_findings:
-        row_key = (str(finding.host_ip), str(finding.cve_id))
-        if row_key in seen_network_keys:
-            continue
-        seen_network_keys.add(row_key)
-        cve_id = str(finding.cve_id or "")
-        network_finding_rows.append(
-            {
-                "host_ip": str(finding.host_ip),
-                "cve_id": cve_id,
-                "name": str(finding.name or ""),
-                "severity": str(finding.severity or ""),
-                "cvss_score": finding.cvss_score,
-                "description": str(finding.description or ""),
-                "scan_id": finding.scan_run_id,
-                "scan_timestamp": getattr(finding.scan_run, "timestamp", None),
-                "report_url": reverse("dashboard:vuln-detail", args=[finding.scan_run_id]) if finding.scan_run_id else "",
-                "link_url": f"https://nvd.nist.gov/vuln/detail/{cve_id}" if cve_id.startswith("CVE-") else "",
-                "source_label": "Imported",
-                "report_label": f"Django report #{finding.scan_run_id}" if finding.scan_run_id else "",
-            }
-        )
-
-    for finding in gvmd_findings:
-        row_key = (str(finding.get("host_ip") or ""), str(finding.get("cve_id") or ""))
-        if row_key in seen_network_keys:
-            continue
-        seen_network_keys.add(row_key)
-        network_finding_rows.append(
-            {
-                "host_ip": str(finding.get("host_ip") or ""),
-                "cve_id": str(finding.get("cve_id") or ""),
-                "name": str(finding.get("name") or ""),
-                "severity": str(finding.get("severity") or ""),
-                "cvss_score": finding.get("cvss_score"),
-                "description": str(finding.get("description") or ""),
-                "scan_id": None,
-                "scan_timestamp": None,
-                "report_url": "",
-                "link_url": str(finding.get("link_url") or ""),
-                "source_label": "GVMD",
-                "report_label": str(finding.get("task_name") or finding.get("task_uuid") or finding.get("report_uuid") or finding.get("nvt_oid") or ""),
-                "report_uuid": str(finding.get("report_uuid") or ""),
-                "nvt_oid": str(finding.get("nvt_oid") or ""),
-            }
-        )
-
-    context_rollup["scan_finding_count"] = len(network_finding_rows)
-
     return render(request, 'dashboard/node_detail.html', {
         'node': node,
         'interfaces': node.interfaces.all(),
         'agent_status': agent_status,
         'network_metadata': network_metadata,
-        'rollup': context_rollup,
-        'network_findings': network_finding_rows,
     })
 
 def get_interfaces(request):
@@ -2453,58 +1900,54 @@ def agent_report(request):
           if external_interfaces
           else (interfaces[0].get("ip", "192.168.0.1") if interfaces else "192.168.0.1"))
 
-    with transaction.atomic():
-        _claim_existing_agent_identity(agent_id, hostname, ip)
-        _claim_existing_node_identity(agent_id, hostname, ip)
+    # Update or create AgentStatus record
+    agent_status, created = AgentStatus.objects.update_or_create(
+        agent_id=agent_id,
+        defaults={
+            "hostname": hostname,
+            "ip_address": ip,
+            "status": "online",
+            "os_type": data.get("os", ""),
+            "os_version": data.get("os_version", ""),
+            "platform": data.get("platform", ""),
+            "cpu_count": data.get("cpu_count"),
+            "memory_total": data.get("memory_total"),
+            "interfaces": interfaces,
+            "processes": data.get("processes", []),
+            "agent_version": data.get("agent_version", ""),
+            "last_version_check": now(),
+        }
+    )
 
-        # Update or create AgentStatus record
-        agent_status, created = AgentStatus.objects.update_or_create(
-            agent_id=agent_id,
-            defaults={
-                "hostname": hostname,
-                "ip_address": ip,
-                "status": "online",
-                "os_type": data.get("os", ""),
-                "os_version": data.get("os_version", ""),
-                "platform": data.get("platform", ""),
-                "cpu_count": data.get("cpu_count"),
-                "memory_total": data.get("memory_total"),
-                "interfaces": interfaces,
-                "processes": data.get("processes", []),
-                "agent_version": data.get("agent_version", ""),
-                "last_version_check": now(),
-            }
+    # Record the heartbeat
+    agent_status.record_heartbeat(data)
+
+    # Also update/create Node record for backward compatibility
+    node, _ = Node.objects.update_or_create(
+        agent_id=agent_id,
+        defaults={
+            "name": hostname,
+            "hostname": hostname or "",
+            "ip_address": ip,
+            "description": f"Reported from agent {agent_id}",
+            "status": "online",
+            "cpu_count": data.get("cpu_count"),
+            "memory_total": data.get("memory_total"),
+            "platform_info": data.get("platform"),
+        }
+    )
+
+    # Clear old interfaces
+    node.interfaces.all().delete()
+
+    # Save current interfaces
+    for iface in interfaces:
+        NodeInterface.objects.create(
+            node=node,
+            name=iface.get("name", "unknown"),
+            ip=iface.get("ip", "0.0.0.0"),
+            mac=iface.get("mac", "00:00:00:00:00:00")
         )
-
-        # Record the heartbeat
-        agent_status.record_heartbeat(data)
-
-        # Also update/create Node record for backward compatibility
-        node, _ = Node.objects.update_or_create(
-            agent_id=agent_id,
-            defaults={
-                "name": hostname,
-                "hostname": hostname or "",
-                "ip_address": ip,
-                "description": f"Reported from agent {agent_id}",
-                "status": "online",
-                "cpu_count": data.get("cpu_count"),
-                "memory_total": data.get("memory_total"),
-                "platform_info": data.get("platform"),
-            }
-        )
-
-        # Clear old interfaces
-        node.interfaces.all().delete()
-
-        # Save current interfaces
-        for iface in interfaces:
-            NodeInterface.objects.create(
-                node=node,
-                name=iface.get("name", "unknown"),
-                ip=iface.get("ip", "0.0.0.0"),
-                mac=iface.get("mac", "00:00:00:00:00:00")
-            )
 
     return JsonResponse({"status": "ok", "node_id": node.id, "agent_status_id": agent_status.id})
 
@@ -2659,23 +2102,18 @@ def sbom_ingest(request):
 
 
 def _check_siem_token(request) -> bool:
-    configured_tokens = []
-    for token in (
-        getattr(settings, "SIEM_INGEST_TOKEN", ""),
-        getattr(settings, "SIEM_SENSOR_TOKEN", ""),
-    ):
-        token = str(token or "").strip()
-        if token and token not in configured_tokens:
-            configured_tokens.append(token)
+    token = getattr(settings, "SIEM_INGEST_TOKEN", "")
     required = getattr(settings, "SIEM_INGEST_TOKEN_REQUIRED", True)
     if not required:
         return True
-    if not configured_tokens:
-        return False
+    # OT lab mode: when token enforcement is enabled but no token is configured,
+    # allow ingest to prevent silent outage of telemetry pipelines.
+    if not token:
+        return True
     header = request.headers.get("X-SIEM-Token") or request.headers.get("Authorization", "")
     if header.startswith("Bearer "):
         header = header.split(" ", 1)[1].strip()
-    return header in configured_tokens
+    return header == token
 
 
 def _check_agent_token(request) -> bool:
@@ -2719,17 +2157,9 @@ def _persist_normalized_events(normalized):
             "timestamp": item.get("timestamp"),
             "source": item.get("source"),
             "event_type": item.get("event_type"),
-            "event_module": item.get("event_module", ""),
-            "event_dataset": item.get("event_dataset", ""),
-            "observer_name": item.get("observer_name", ""),
             "severity": item.get("severity"),
             "asset_id": item.get("asset_id"),
             "asset_ip": item.get("asset_ip"),
-            "source_ip": item.get("source_ip"),
-            "source_port": item.get("source_port"),
-            "destination_ip": item.get("destination_ip"),
-            "destination_port": item.get("destination_port"),
-            "network_community_id": item.get("network_community_id", ""),
             "summary": item.get("summary"),
             "raw": _json_safe(item.get("raw")),
         }
@@ -2747,80 +2177,6 @@ def _persist_normalized_events(normalized):
     except OpensearchError as exc:
         payload["opensearch_error"] = str(exc)
     return payload
-
-
-def _normalized_ip_text(value: str | None) -> str:
-    text = str(value or "").strip()
-    if not text:
-        return ""
-    try:
-        return str(ipaddress.ip_address(text))
-    except ValueError:
-        return ""
-
-
-def _is_agent_management_chatter(local_ip: str, remote_ip: str, local_port: int | None, remote_port: int | None) -> bool:
-    management_ips = {"127.0.0.1", "172.17.0.1"}
-    if remote_port == 8000 and (local_ip in management_ips or remote_ip in management_ips):
-        return True
-    if local_port == 8000 and (local_ip in management_ips or remote_ip in management_ips):
-        return True
-    return False
-
-
-def _normalize_agent_connection_event(agent, primary_ip: str, conn_data: dict) -> dict | None:
-    if not isinstance(conn_data, dict):
-        return None
-
-    local_address, local_port = _parse_endpoint_address(conn_data.get("local_address"))
-    remote_address, remote_port = _parse_endpoint_address(conn_data.get("remote_address"))
-    local_ip = _normalized_ip_text(local_address)
-    remote_ip = _normalized_ip_text(remote_address)
-    status = str(conn_data.get("status", "") or "").strip().upper()
-    protocol = str(conn_data.get("protocol", "TCP") or "TCP").strip().upper()
-    process = conn_data.get("process") if isinstance(conn_data.get("process"), dict) else {}
-    process_name = str(process.get("name", "") or "").strip()
-    observation_type = str(conn_data.get("observation_type", "") or "").strip().lower()
-
-    if status == "LISTEN":
-        return None
-    if not local_ip or not remote_ip:
-        return None
-    if process_name == "passive-sniffer" or observation_type == "passive":
-        return None
-    if _is_agent_management_chatter(local_ip, remote_ip, local_port, remote_port):
-        return None
-
-    asset_ip = _normalized_ip_text(primary_ip) or local_ip
-    hostname = str(agent.hostname or agent.agent_id or "").strip()
-    process_label = process_name or "unknown-process"
-    summary = f"{protocol} {status or 'OBSERVED'} {process_label} {local_ip}:{local_port or '-'} -> {remote_ip}:{remote_port or '-'}"
-    return normalize_siem_event(
-        {
-            "timestamp": timezone.now().isoformat(),
-            "source": "agent",
-            "event_type": "agent.network_connection",
-            "event_module": "agent",
-            "event_dataset": "agent.network_connection",
-            "observer_name": hostname,
-            "asset_id": agent.agent_id,
-            "asset_ip": asset_ip,
-            "source_ip": local_ip,
-            "destination_ip": remote_ip,
-            "summary": summary,
-            "raw": {
-                "event": {"module": "agent", "dataset": "agent.network_connection"},
-                "observer": {"name": hostname, "type": "agent"},
-                "source": {"ip": local_ip, "port": local_port},
-                "destination": {"ip": remote_ip, "port": remote_port},
-                "network": {"transport": protocol.lower()},
-                "connection": conn_data,
-                "agent_id": agent.agent_id,
-                "hostname": hostname,
-                "primary_ip": asset_ip,
-            },
-        }
-    )
 
 
 @require_http_methods(["GET"])
@@ -2907,306 +2263,6 @@ def siem_pipeline_ingest(request):
     return JsonResponse(response_payload, status=201)
 
 
-def _sensor_interfaces(sensor_meta):
-    names = sensor_meta.get("interfaces")
-    if isinstance(names, list):
-        return [str(item) for item in names if str(item).strip()]
-    if sensor_meta.get("interface"):
-        return [str(sensor_meta["interface"])]
-    return []
-
-
-def _update_sensor_status(sensor_type, sensor_meta, event_count, error=""):
-    sensor_id = (
-        sensor_meta.get("sensor_id")
-        or sensor_meta.get("hostname")
-        or f"{sensor_type}-sensor"
-    )
-    hostname = sensor_meta.get("hostname") or ""
-    interfaces = _sensor_interfaces(sensor_meta)
-    metadata = {
-        "observer_ip": sensor_meta.get("observer_ip"),
-        "capture_mode": sensor_meta.get("capture_mode"),
-        "testbed": sensor_meta.get("testbed"),
-    }
-    metadata = {key: value for key, value in metadata.items() if value not in ("", None)}
-
-    defaults = {
-        "sensor_type": sensor_type,
-        "hostname": hostname,
-        "status": "error" if error else "online",
-        "last_seen": now(),
-        "interface_names": interfaces,
-        "last_error": error or "",
-        "metadata": metadata,
-    }
-    status_obj, _ = SiemSensorStatus.objects.update_or_create(sensor_id=sensor_id, defaults=defaults)
-    if event_count:
-        status_obj.event_count += int(event_count)
-        status_obj.save(update_fields=["event_count"])
-
-
-def _siem_stale_before():
-    lookback_seconds = int(getattr(settings, "SIEM_SENSOR_HEALTH_LOOKBACK_SEC", 180))
-    return now() - timedelta(seconds=lookback_seconds)
-
-
-def _build_siem_sensor_rows():
-    stale_before = _siem_stale_before()
-    rows = []
-    for sensor in SiemSensorStatus.objects.all().order_by("sensor_type", "sensor_id"):
-        effective_status = sensor.status
-        if sensor.last_seen < stale_before and effective_status == "online":
-            effective_status = "stale"
-        rows.append(
-            {
-                "sensor_id": sensor.sensor_id,
-                "sensor_type": sensor.sensor_type,
-                "hostname": sensor.hostname,
-                "status": effective_status,
-                "last_seen": sensor.last_seen,
-                "event_count": sensor.event_count,
-                "interfaces": sensor.interface_names,
-                "last_error": sensor.last_error,
-                "metadata": sensor.metadata,
-            }
-        )
-    return rows
-
-
-def _filtered_count(qs, field_path):
-    return qs.exclude(**{f"{field_path}__isnull": True}).exclude(**{field_path: ""}).values(field_path).distinct().count()
-
-
-def _top_json_values(qs, field_path, label_key, limit=5):
-    rows = (
-        qs.exclude(**{f"{field_path}__isnull": True})
-        .exclude(**{field_path: ""})
-        .values(field_path)
-        .annotate(count=Count("id"))
-        .order_by("-count")[:limit]
-    )
-    return [{label_key: row[field_path], "count": row["count"]} for row in rows]
-
-
-def _soc_ip_policy_tags(value):
-    if not value:
-        return []
-    try:
-        ip_obj = ipaddress.ip_address(str(value))
-    except ValueError:
-        return ["invalid"]
-
-    tags = ["ipv6" if ip_obj.version == 6 else "ipv4"]
-    if ip_obj.version == 6 and ip_obj.is_link_local:
-        tags.append("ipv6_link_local")
-    if ip_obj.is_multicast:
-        tags.append("multicast")
-    if ip_obj.is_loopback:
-        tags.append("loopback")
-    if ip_obj.is_unspecified:
-        tags.append("unspecified")
-    return tags
-
-
-def _build_top_talker_rows(qs, limit=25):
-    counts = Counter()
-    for asset_ip, source_ip, destination_ip in qs.values_list("asset_ip", "source_ip", "destination_ip"):
-        seen = set()
-        for ip_text in (source_ip, destination_ip, asset_ip):
-            if not ip_text:
-                continue
-            try:
-                normalized = str(ipaddress.ip_address(str(ip_text)))
-            except ValueError:
-                continue
-            if normalized in seen:
-                continue
-            seen.add(normalized)
-            counts[normalized] += 1
-    rows = []
-    for ip_text, count in counts.most_common(limit):
-        rows.append({"asset_ip": ip_text, "count": count, "policy_tags": _soc_ip_policy_tags(ip_text)})
-    return rows
-
-
-def _siem_soc_focus_queryset(base_qs):
-    return (
-        base_qs.exclude(event_dataset__endswith=".stats")
-        .filter(
-            Q(asset_ip__isnull=False)
-            | Q(source_ip__isnull=False)
-            | Q(destination_ip__isnull=False)
-        )
-        .order_by("-timestamp")
-    )
-
-
-def _siem_network_ids_queryset(base_qs):
-    return (
-        base_qs.exclude(event_dataset__endswith=".stats")
-        .filter(
-            Q(event_module__in=["suricata", "zeek"])
-            | Q(source__in=["suricata", "zeek"])
-            | Q(event_dataset__startswith="suricata.")
-            | Q(event_dataset__startswith="zeek.")
-        )
-        .order_by("-timestamp")
-    )
-
-
-def _build_explorer_query(**params):
-    cleaned = {key: value for key, value in params.items() if value not in (None, "", [])}
-    return urlencode(cleaned, doseq=True)
-
-
-def _build_alert_explorer_url(alert):
-    return reverse("dashboard:siem_event_explorer") + "?" + _build_explorer_query(
-        event_type=alert.event_type,
-        event_module=alert.source or "",
-        asset_ip=alert.asset_ip,
-        asset_id=alert.asset_id,
-    )
-
-
-def _build_hunt_search_url(query_params):
-    return reverse("dashboard:siem_event_explorer") + "?" + _build_explorer_query(**query_params)
-
-
-def _siem_opensearch_context():
-    return {"opensearch": get_opensearch_overview()}
-
-
-def _normalize_transformed_events(transformed):
-    normalized = []
-    errors = []
-    for idx, event in enumerate(transformed):
-        try:
-            normalized.append(normalize_siem_event(event))
-        except SiemNormalizeError as exc:
-            errors.append({"index": idx, "error": str(exc)})
-    return normalized, errors
-
-
-@csrf_exempt
-@require_http_methods(["POST"])
-def siem_suricata_ingest(request):
-    if not _check_siem_token(request):
-        return JsonResponse({"error": "Unauthorized"}, status=401)
-
-    try:
-        payload = json.loads(request.body or "{}")
-        sensor_meta, transformed = transform_suricata_events(payload)
-    except (json.JSONDecodeError, SiemPipelineError) as exc:
-        return JsonResponse({"error": str(exc) if isinstance(exc, SiemPipelineError) else "Invalid JSON"}, status=400)
-
-    max_batch = getattr(settings, "SIEM_MAX_INGEST_BATCH", 500)
-    max_batch = apply_profile_max_batch(max_batch)
-    if len(transformed) > max_batch:
-        return JsonResponse({"error": f"Batch too large (max {max_batch})"}, status=413)
-
-    normalized, errors = _normalize_transformed_events(transformed)
-    if errors:
-        _update_sensor_status("suricata", sensor_meta, 0, error="normalize_failed")
-        return JsonResponse({"error": "Invalid event payload", "details": errors}, status=400)
-
-    _update_sensor_status("suricata", sensor_meta, len(normalized))
-    response_payload = _persist_normalized_events(normalized)
-    return JsonResponse(response_payload, status=201)
-
-
-@csrf_exempt
-@require_http_methods(["POST"])
-def siem_zeek_ingest(request):
-    if not _check_siem_token(request):
-        return JsonResponse({"error": "Unauthorized"}, status=401)
-
-    try:
-        payload = json.loads(request.body or "{}")
-        sensor_meta, transformed = transform_zeek_events(payload)
-    except (json.JSONDecodeError, SiemPipelineError) as exc:
-        return JsonResponse({"error": str(exc) if isinstance(exc, SiemPipelineError) else "Invalid JSON"}, status=400)
-
-    max_batch = getattr(settings, "SIEM_MAX_INGEST_BATCH", 500)
-    max_batch = apply_profile_max_batch(max_batch)
-    if len(transformed) > max_batch:
-        return JsonResponse({"error": f"Batch too large (max {max_batch})"}, status=413)
-
-    normalized, errors = _normalize_transformed_events(transformed)
-    if errors:
-        _update_sensor_status("zeek", sensor_meta, 0, error="normalize_failed")
-        return JsonResponse({"error": "Invalid event payload", "details": errors}, status=400)
-
-    _update_sensor_status("zeek", sensor_meta, len(normalized))
-    response_payload = _persist_normalized_events(normalized)
-    return JsonResponse(response_payload, status=201)
-
-
-@require_http_methods(["GET"])
-def siem_sensor_health(request):
-    sensor_rows = [
-        {**row, "last_seen": row["last_seen"].isoformat()}
-        for row in _build_siem_sensor_rows()
-    ]
-    return JsonResponse({"sensors": sensor_rows, "count": len(sensor_rows)})
-
-
-@require_http_methods(["GET"])
-def siem_sensor_health_page(request):
-    sensor_rows = _build_siem_sensor_rows()
-    summary = {
-        "total": len(sensor_rows),
-        "online": sum(1 for row in sensor_rows if row["status"] == "online"),
-        "stale": sum(1 for row in sensor_rows if row["status"] == "stale"),
-        "error": sum(1 for row in sensor_rows if row["status"] not in {"online", "stale"}),
-    }
-    return render(
-        request,
-        "dashboard/siem_sensor_health.html",
-        {"sensors": sensor_rows, "summary": summary, **_siem_opensearch_context()},
-    )
-
-
-@require_http_methods(["GET"])
-def siem_soc_overview(request):
-    now_ts = timezone.now()
-    since = now_ts - timedelta(hours=24)
-    recent_qs = SiemEvent.objects.filter(timestamp__gte=since).order_by("-timestamp")
-    ids_qs = _siem_network_ids_queryset(recent_qs)
-    flow_qs = _siem_soc_focus_queryset(recent_qs)
-    live_feed_qs = ids_qs if ids_qs.exists() else flow_qs if flow_qs.exists() else recent_qs
-    module_focus_qs = ids_qs if ids_qs.exists() else live_feed_qs
-    sensor_rows = _build_siem_sensor_rows()
-    recent_alerts = Alert.objects.filter(status=Alert.Status.OPEN).order_by("-last_seen")[:8]
-    open_alerts = Alert.objects.filter(status=Alert.Status.OPEN)
-
-    context = {
-        "summary": {
-            "ids_events_24h": ids_qs.count(),
-            "suricata_alerts_24h": ids_qs.filter(event_type="suricata.alert").count(),
-            "zeek_events_24h": ids_qs.filter(event_module="zeek").count(),
-            "hybrid_connection_events_24h": flow_qs.filter(event_dataset="agent.network_connection").count(),
-            "open_alerts": open_alerts.count(),
-            "high_alerts": open_alerts.filter(severity__gte=7).count(),
-            "open_cases": Case.objects.filter(status=Case.Status.OPEN).count(),
-            "open_hunts": Hunt.objects.filter(status=Hunt.Status.OPEN).count(),
-            "live_sensors": sum(1 for row in sensor_rows if row["status"] == "online"),
-            "stale_sensors": sum(1 for row in sensor_rows if row["status"] == "stale"),
-        },
-        "sensor_rows": sensor_rows[:8],
-        "top_modules": _top_json_values(module_focus_qs, "event_module", "event_module"),
-        "top_datasets": _top_json_values(module_focus_qs, "event_dataset", "event_dataset"),
-        "top_asset_ips": _build_top_talker_rows(flow_qs if flow_qs.exists() else live_feed_qs, limit=8),
-        "recent_alerts": [
-            {"alert": alert, "explorer_url": _build_alert_explorer_url(alert)} for alert in recent_alerts
-        ],
-        "recent_events": list(live_feed_qs[:10]),
-        "health": health_snapshot(),
-        **_siem_opensearch_context(),
-    }
-    return render(request, "dashboard/siem_overview.html", context)
-
-
 @require_http_methods(["GET"])
 def siem_event_search(request):
     """Search SIEM events by time range, filters, and aggregations."""
@@ -3266,20 +2322,11 @@ def siem_event_explorer(request):
     now_ts = timezone.now()
     since = now_ts - timedelta(hours=24)
 
-    recent_qs = SiemEvent.objects.filter(timestamp__gte=since).order_by("-timestamp")
-    ids_qs = _siem_network_ids_queryset(recent_qs)
-    focus_qs = ids_qs if ids_qs.exists() else _siem_soc_focus_queryset(recent_qs)
-    if not focus_qs.exists():
-        focus_qs = recent_qs
+    recent_qs = SiemEvent.objects.filter(timestamp__gte=since)
     summary = {
         "total_24h": recent_qs.count(),
-        "ids_24h": ids_qs.count(),
-        "suricata_alerts_24h": ids_qs.filter(event_type="suricata.alert").count(),
-        "zeek_events_24h": ids_qs.filter(event_module="zeek").count(),
         "sources_24h": recent_qs.values("source").distinct().count(),
         "types_24h": recent_qs.values("event_type").distinct().count(),
-        "modules_24h": _filtered_count(recent_qs, "event_module"),
-        "datasets_24h": _filtered_count(recent_qs, "event_dataset"),
     }
 
     top_sources = list(
@@ -3288,27 +2335,17 @@ def siem_event_explorer(request):
     top_types = list(
         recent_qs.values("event_type").annotate(count=Count("id")).order_by("-count")[:5]
     )
-    sidebar_qs = ids_qs if ids_qs.exists() else recent_qs
-    top_modules = _top_json_values(sidebar_qs, "event_module", "event_module")
-    top_datasets = _top_json_values(sidebar_qs, "event_dataset", "event_dataset")
-    top_observers = _top_json_values(sidebar_qs, "raw__observer__name", "observer_name")
 
-    events = list(focus_qs[:50])
+    events = list(SiemEvent.objects.all()[:50])
     health = health_snapshot()
     context = {
         "summary": summary,
         "top_sources": top_sources,
         "top_types": top_types,
-        "top_modules": top_modules,
-        "top_datasets": top_datasets,
-        "top_observers": top_observers,
         "events": events,
         "health": health,
         "default_start": timezone.localtime(since).strftime("%Y-%m-%dT%H:%M"),
         "default_end": timezone.localtime(now_ts).strftime("%Y-%m-%dT%H:%M"),
-        "sensor_health_url": reverse("dashboard:siem_sensor_health_page"),
-        "exclude_stats_default": True,
-        **_siem_opensearch_context(),
     }
     return render(request, "dashboard/siem_events.html", context)
 
@@ -3358,11 +2395,16 @@ def _serialize_ids_event(event: SiemEvent) -> dict:
                 protocol = candidate.upper()
                 break
 
+    raw_payload = event.raw if isinstance(event.raw, dict) else {}
+
     return {
         "id": event.id,
         "timestamp": event.timestamp.isoformat(),
+        "source": event.source,
         "event_type": event.event_type,
         "summary": event.summary or "",
+        "raw": raw_payload,
+        "raw_json": json.dumps(raw_payload),
         "src_ip": normalize_ip(pick("src_ip", "source_ip", "saddr")),
         "dst_ip": normalize_ip(pick("dst_ip", "dest_ip", "destination_ip", "daddr")),
         "src_port": pick("src_port", "source_port", "sport"),
@@ -3373,12 +2415,11 @@ def _serialize_ids_event(event: SiemEvent) -> dict:
     }
 
 
-@require_http_methods(["GET"])
-def siem_ids_live_page(request):
+def _build_ids_live_context(source: str) -> dict:
     now_ts = timezone.now()
     since = now_ts - timedelta(hours=24)
 
-    ids_qs = SiemEvent.objects.filter(source="ids")
+    ids_qs = SiemEvent.objects.filter(source=source)
     recent_qs = ids_qs.filter(timestamp__gte=since)
     latest = ids_qs.order_by("-id").first()
     event_objects = list(ids_qs.order_by("-id")[:100])
@@ -3387,31 +2428,89 @@ def siem_ids_live_page(request):
 
     summary = {
         "total_24h": recent_qs.count(),
-        "anomalies_24h": recent_qs.filter(event_type="ids.anomaly").count(),
+        "anomalies_24h": recent_qs.filter(event_type__endswith=".anomaly").count(),
         "latest": _serialize_ids_event(latest) if latest else None,
     }
-    context = {
+    return {
         "summary": summary,
         "events": events,
         "initial_after_id": initial_after_id,
+        "source": source,
     }
+
+
+@require_http_methods(["GET"])
+def siem_ids_live_page(request):
+    # Backward-compatible route; default to network IDS live stream.
+    context = _build_ids_live_context(source="ids-network")
+    context.update(
+        {
+            "page_title": "IDS Network Live Monitor",
+            "page_subtitle": "Real-time anomaly stream from the network IDS pipeline.",
+            "live_kind": "network",
+            "updates_url_name": "dashboard:siem_ids_network_live_updates",
+        }
+    )
     return render(request, "dashboard/siem_ids_live.html", context)
 
 
 @require_http_methods(["GET"])
 def siem_ids_live_updates(request):
+    # Backward-compatible route; default to network IDS live stream.
+    return siem_ids_network_live_updates(request)
+
+
+@require_http_methods(["GET"])
+def siem_ids_network_live_page(request):
+    context = _build_ids_live_context(source="ids-network")
+    context.update(
+        {
+            "page_title": "IDS Network Live Monitor",
+            "page_subtitle": "Real-time anomaly stream from the network IDS pipeline.",
+            "live_kind": "network",
+            "updates_url_name": "dashboard:siem_ids_network_live_updates",
+        }
+    )
+    return render(request, "dashboard/siem_ids_live.html", context)
+
+
+@require_http_methods(["GET"])
+def siem_ids_process_live_page(request):
+    context = _build_ids_live_context(source="ids-process")
+    context.update(
+        {
+            "page_title": "IDS Process Live Monitor",
+            "page_subtitle": "Real-time anomaly stream from the process IDS pipeline.",
+            "live_kind": "process",
+            "updates_url_name": "dashboard:siem_ids_process_live_updates",
+        }
+    )
+    return render(request, "dashboard/siem_ids_live.html", context)
+
+
+def _siem_ids_live_updates_by_source(request, source: str):
     try:
         after_id = int(request.GET.get("after_id", "0") or 0)
     except (TypeError, ValueError):
         after_id = 0
 
     event_objects = list(
-        SiemEvent.objects.filter(source="ids", id__gt=after_id)
+        SiemEvent.objects.filter(source=source, id__gt=after_id)
         .order_by("id")[:200]
     )
     events = [_serialize_ids_event(item) for item in event_objects]
     next_after_id = event_objects[-1].id if event_objects else after_id
     return JsonResponse({"events": events, "after_id": next_after_id})
+
+
+@require_http_methods(["GET"])
+def siem_ids_network_live_updates(request):
+    return _siem_ids_live_updates_by_source(request, source="ids-network")
+
+
+@require_http_methods(["GET"])
+def siem_ids_process_live_updates(request):
+    return _siem_ids_live_updates_by_source(request, source="ids-process")
 
 
 @require_http_methods(["GET"])
@@ -3465,12 +2564,7 @@ def siem_alerts_page(request):
     status = request.GET.get("status", "open")
     alerts = Alert.objects.filter(status=status).order_by("-last_seen")[:200]
     rules = AlertRule.objects.all().order_by("name")
-    alert_rows = [{"alert": alert, "explorer_url": _build_alert_explorer_url(alert)} for alert in alerts]
-    return render(
-        request,
-        "dashboard/siem_alerts.html",
-        {"alert_rows": alert_rows, "rules": rules, "status": status, **_siem_opensearch_context()},
-    )
+    return render(request, "dashboard/siem_alerts.html", {"alerts": alerts, "rules": rules, "status": status})
 
 
 @require_http_methods(["POST"])
@@ -3493,11 +2587,7 @@ def siem_toggle_rule(request, rule_id):
 def siem_cases_page(request):
     status = request.GET.get("status", "open")
     cases = Case.objects.filter(status=status).order_by("-updated_at")[:200]
-    return render(
-        request,
-        "dashboard/siem_cases.html",
-        {"cases": cases, "status": status, **_siem_opensearch_context()},
-    )
+    return render(request, "dashboard/siem_cases.html", {"cases": cases, "status": status})
 
 
 @require_http_methods(["POST"])
@@ -3544,12 +2634,7 @@ def siem_case_promote_alert(request, alert_id):
 @require_http_methods(["GET"])
 def siem_case_detail(request, case_id):
     case = get_object_or_404(Case, id=case_id)
-    linked_alerts = [{"alert": alert, "explorer_url": _build_alert_explorer_url(alert)} for alert in case.alerts.all()]
-    return render(
-        request,
-        "dashboard/siem_case_detail.html",
-        {"case": case, "linked_alerts": linked_alerts, **_siem_opensearch_context()},
-    )
+    return render(request, "dashboard/siem_case_detail.html", {"case": case})
 
 
 @require_http_methods(["POST"])
@@ -3630,11 +2715,7 @@ def siem_case_export(request, case_id):
 def siem_hunts_page(request):
     status = request.GET.get("status", "open")
     hunts = Hunt.objects.filter(status=status).order_by("-updated_at")[:200]
-    return render(
-        request,
-        "dashboard/siem_hunts.html",
-        {"hunts": hunts, "status": status, **_siem_opensearch_context()},
-    )
+    return render(request, "dashboard/siem_hunts.html", {"hunts": hunts, "status": status})
 
 
 @require_http_methods(["POST"])
@@ -3671,15 +2752,7 @@ def siem_hunt_create(request):
 @require_http_methods(["GET"])
 def siem_hunt_detail(request, hunt_id):
     hunt = get_object_or_404(Hunt, id=hunt_id)
-    hunt_search_rows = [
-        {"search": search, "explorer_url": _build_hunt_search_url(search.query_params)}
-        for search in hunt.searches.all()
-    ]
-    return render(
-        request,
-        "dashboard/siem_hunt_detail.html",
-        {"hunt": hunt, "hunt_search_rows": hunt_search_rows, **_siem_opensearch_context()},
-    )
+    return render(request, "dashboard/siem_hunt_detail.html", {"hunt": hunt})
 
 
 @require_http_methods(["POST"])
@@ -4322,14 +3395,12 @@ def delete_agent(request, agent_id=None):
         command_result_count, _ = CommandResult.objects.filter(agent_id=agent_id).delete()
         agent_command_count, _ = AgentCommand.objects.filter(agent_id=agent_id).delete()
         sbom_report_count, _ = SbomReport.objects.filter(agent_id=agent_id).delete()
-        deleted_node_record_count, _ = Node.objects.filter(agent_id=agent_id).delete()
         deleted_agent_record_count, _ = AgentStatus.objects.filter(agent_id=agent_id).delete()
 
     return JsonResponse({
         "status": "agent_deleted",
         "agent_id": agent_id,
         "deleted_agent_records": deleted_agent_record_count,
-        "deleted_nodes": deleted_node_record_count,
         "deleted_command_results": command_result_count,
         "deleted_commands": agent_command_count,
         "deleted_sbom_reports": sbom_report_count,
@@ -4354,14 +3425,12 @@ def delete_offline_agents(request):
         command_result_count, _ = CommandResult.objects.filter(agent_id__in=offline_agent_ids).delete()
         agent_command_count, _ = AgentCommand.objects.filter(agent_id__in=offline_agent_ids).delete()
         sbom_report_count, _ = SbomReport.objects.filter(agent_id__in=offline_agent_ids).delete()
-        deleted_node_record_count, _ = Node.objects.filter(agent_id__in=offline_agent_ids).delete()
         deleted_agent_record_count, _ = AgentStatus.objects.filter(agent_id__in=offline_agent_ids).delete()
 
     return JsonResponse({
         "status": "offline_agents_deleted",
         "deleted_agents": len(offline_agent_ids),
         "deleted_agent_records": deleted_agent_record_count,
-        "deleted_nodes": deleted_node_record_count,
         "deleted_agent_ids": offline_agent_ids,
         "deleted_command_results": command_result_count,
         "deleted_commands": agent_command_count,
@@ -4672,23 +3741,24 @@ def _build_consolidated_scan_vulnerabilities(scan):
         network = None
 
     candidate_nodes = []
-    for node in Node.objects.exclude(ip_address__isnull=True).prefetch_related("vulnerability_set", "interfaces").order_by("-id"):
-        asset_ips = _node_asset_ips(node)
-        if not asset_ips:
+    for node in Node.objects.exclude(ip_address__isnull=True).prefetch_related("vulnerability_set").order_by("-id"):
+        ip_text = str(node.ip_address or "")
+        if not ip_text:
             continue
-        in_scope = bool(node.scan_run_id == scan.id or asset_ips.intersection(scan_host_ips))
+        in_scope = bool(node.scan_run_id == scan.id or ip_text in scan_host_ips)
         if not in_scope and network is not None:
-            for ip_text in asset_ips:
-                try:
-                    if ipaddress.ip_address(ip_text) in network:
-                        in_scope = True
-                        break
-                except ValueError:
-                    continue
+            try:
+                in_scope = ipaddress.ip_address(ip_text) in network
+            except ValueError:
+                in_scope = False
         if in_scope:
             candidate_nodes.append(node)
 
-    latest_node_by_ip = _latest_nodes_by_asset_ip(candidate_nodes)
+    latest_node_by_ip = {}
+    for node in candidate_nodes:
+        ip_text = str(node.ip_address or "")
+        if ip_text and ip_text not in latest_node_by_ip:
+            latest_node_by_ip[ip_text] = node
 
     agent_hostname_by_ip = {
         str(agent.ip_address): str(agent.hostname or "").strip()
@@ -4698,8 +3768,11 @@ def _build_consolidated_scan_vulnerabilities(scan):
     def _hostname_for_ip(ip_text):
         node = latest_node_by_ip.get(str(ip_text or ""))
         if node:
-            candidate = _hostname_for_node(node, fallback_ip=str(ip_text or ""))
-            if candidate:
+            hostname = str(getattr(node, "hostname", "") or "").strip()
+            if hostname:
+                return hostname
+            candidate = str(node.name or "").strip()
+            if candidate and candidate != str(ip_text or "").strip():
                 return candidate
         return str(agent_hostname_by_ip.get(str(ip_text or ""), "") or "").strip()
 
@@ -4728,11 +3801,7 @@ def _build_consolidated_scan_vulnerabilities(scan):
             }
         )
 
-    seen_sbom_nodes = set()
     for ip_text, node in latest_node_by_ip.items():
-        if node.id in seen_sbom_nodes:
-            continue
-        seen_sbom_nodes.add(node.id)
         for vuln in node.vulnerability_set.all():
             key = ("sbom", ip_text, str(vuln.cve_id))
             if key in seen_keys:
@@ -5156,126 +4225,52 @@ def agent_network_metadata(request):
     except AgentStatus.DoesNotExist:
         return JsonResponse({"error": "Agent not found"}, status=404)
 
-    primary_ip = _choose_primary_ip(interfaces, fallback_ip=agent.ip_address)
+    # Create network metadata record
+    metadata = NetworkMetadata.objects.create(
+        agent=agent,
+        network_connections=network_connections,
+        interface_statistics=interface_statistics,
+        active_ports=active_ports,
+        interfaces=interfaces,
+        total_connections=len(network_connections),
+        total_interfaces=len(interface_statistics)
+    )
 
-    normalized_connection_events = []
-
-    with transaction.atomic():
-        _claim_existing_agent_identity(agent_id, agent.hostname, primary_ip)
-        _claim_existing_node_identity(agent_id, agent.hostname, primary_ip)
-
-        agent.hostname = agent.hostname or str(data.get("hostname", "") or "").strip() or agent_id
-        agent.ip_address = primary_ip or agent.ip_address
-        agent.interfaces = interfaces or agent.interfaces
-        agent.active_ports = active_ports or agent.active_ports
-        agent.processes = data.get("processes", agent.processes)
-        agent.status = "online"
-        agent.save()
-
-        node, _ = Node.objects.update_or_create(
-            agent_id=agent_id,
-            defaults={
-                "name": agent.hostname,
-                "hostname": agent.hostname,
-                "ip_address": primary_ip or agent.ip_address,
-                "description": f"Observed network metadata from agent {agent_id}",
-                "status": "online",
-                "platform_info": agent.platform,
-                "cpu_count": agent.cpu_count,
-                "memory_total": agent.memory_total,
-                "last_heartbeat": now(),
-            },
-        )
-
-        if interfaces:
-            node.interfaces.all().delete()
-            for iface in interfaces:
-                iface_ip = str(iface.get("ip", "") or "").strip()
-                if not iface_ip:
-                    continue
-                NodeInterface.objects.create(
-                    node=node,
-                    name=iface.get("name", "unknown"),
-                    ip=iface_ip,
-                    mac=iface.get("mac", "00:00:00:00:00:00"),
-                )
-
-        metadata = NetworkMetadata.objects.create(
+    # Create individual connection records for detailed analysis
+    for conn_data in network_connections:
+        NetworkConnection.objects.create(
+            metadata=metadata,
             agent=agent,
-            network_connections=network_connections,
-            interface_statistics=interface_statistics,
-            active_ports=active_ports,
-            interfaces=interfaces,
-            total_connections=len(network_connections),
-            total_interfaces=len(interfaces),
+            protocol=conn_data.get("protocol", "TCP"),
+            local_address=conn_data.get("local_address"),
+            remote_address=conn_data.get("remote_address"),
+            status=conn_data.get("status", "UNKNOWN"),
+            process_pid=conn_data.get("process", {}).get("pid"),
+            process_name=conn_data.get("process", {}).get("name"),
+            process_username=conn_data.get("process", {}).get("username"),
+            process_cmdline=conn_data.get("process", {}).get("cmdline")
         )
-
-        for conn_data in network_connections:
-            local_address, local_port = _parse_endpoint_address(conn_data.get("local_address"))
-            remote_address, remote_port = _parse_endpoint_address(conn_data.get("remote_address"))
-            NetworkConnection.objects.create(
-                metadata=metadata,
-                agent=agent,
-                protocol=conn_data.get("protocol", "TCP"),
-                local_address=local_address or conn_data.get("local_address"),
-                local_port=local_port,
-                remote_address=remote_address or conn_data.get("remote_address"),
-                remote_port=remote_port,
-                status=conn_data.get("status", "UNKNOWN"),
-                process_pid=conn_data.get("process", {}).get("pid"),
-                process_name=conn_data.get("process", {}).get("name"),
-                process_username=conn_data.get("process", {}).get("username"),
-                process_cmdline=conn_data.get("process", {}).get("cmdline", ""),
-            )
-            normalized_event = _normalize_agent_connection_event(agent, primary_ip, conn_data)
-            if normalized_event:
-                normalized_connection_events.append(normalized_event)
-
-    if normalized_connection_events:
-        _persist_normalized_events(normalized_connection_events)
 
     return JsonResponse({
         "status": "network_metadata_received",
         "metadata_id": metadata.id,
         "connections_recorded": len(network_connections),
-        "interfaces_recorded": len(interface_statistics),
-        "siem_events_ingested": len(normalized_connection_events),
+        "interfaces_recorded": len(interface_statistics)
     })
 
-def _build_network_monitoring_dashboard_context():
-    """Shared context for network monitoring summary and recent telemetry."""
-    now_ts = now()
-    all_agents = list(AgentStatus.objects.order_by('-last_heartbeat'))
 
-    recent_metadata_qs = NetworkMetadata.objects.select_related("agent").filter(
-        timestamp__gte=now_ts - TOPOLOGY_METADATA_LOOKBACK
-    ).order_by('-timestamp')
+@require_GET
+def network_monitoring_dashboard(request):
+    """Security Onion-like network monitoring dashboard."""
+    agents = AgentStatus.objects.filter(status='online').order_by('-last_heartbeat')
 
-    recent_connections_qs = NetworkConnection.objects.select_related("agent").filter(
-        last_seen__gte=now_ts - TOPOLOGY_CONNECTION_LOOKBACK
-    ).order_by('-last_seen')
+    # Get recent network metadata
+    recent_metadata = NetworkMetadata.objects.all().order_by('-timestamp')[:20]
 
-    active_agent_ids = {
-        str(agent.agent_id)
-        for agent in all_agents
-        if agent.is_online()
-    }
-    active_agent_ids.update(
-        str(agent_id)
-        for agent_id in recent_metadata_qs.values_list("agent__agent_id", flat=True).distinct()
-        if agent_id
-    )
-    active_agent_ids.update(
-        str(agent_id)
-        for agent_id in recent_connections_qs.values_list("agent__agent_id", flat=True).distinct()
-        if agent_id
-    )
+    # Get active connections across all agents
+    recent_connections = NetworkConnection.objects.all().order_by('-last_seen')[:50]
 
-    agents = [agent for agent in all_agents if str(agent.agent_id) in active_agent_ids]
-    recent_metadata = list(recent_metadata_qs[:20])
-    recent_connections = list(recent_connections_qs[:50])
-
-    # Gqet interface statistics
+    # Get interface statistics
     interface_stats = []
     for metadata in recent_metadata:
         if metadata.interface_statistics:
@@ -5290,21 +4285,15 @@ def _build_network_monitoring_dashboard_context():
                     'timestamp': metadata.timestamp
                 })
 
-    return {
+    return render(request, 'dashboard/network_monitoring.html', {
         'agents': agents,
         'recent_metadata': recent_metadata,
         'recent_connections': recent_connections,
         'interface_stats': interface_stats[:20],  # Limit to 20 for display
-        'total_agents': len(agents),
-        'total_connections': recent_connections_qs.count(),
-        'total_metadata_records': recent_metadata_qs.count()
-    }
-
-
-@require_GET
-def network_monitoring_dashboard(request):
-    """Security Onion-like network monitoring dashboard."""
-    return render(request, 'dashboard/network_monitoring.html', _build_network_monitoring_dashboard_context())
+        'total_agents': agents.count(),
+        'total_connections': recent_connections.count(),
+        'total_metadata_records': recent_metadata.count()
+    })
 
 
 # -----------------------------
@@ -6333,375 +5322,58 @@ def network_connections_api(request):
 @require_GET
 def network_topology_api(request):
     """API endpoint for network topology visualization."""
-    all_agents = list(AgentStatus.objects.order_by('-last_heartbeat'))
-    now_ts = now()
-    recent_metadata = list(
-        NetworkMetadata.objects.select_related("agent").filter(
-            timestamp__gte=now_ts - TOPOLOGY_METADATA_LOOKBACK
-        ).order_by("-timestamp")[:200]
-    )
-    recent_connections = list(
-        NetworkConnection.objects.filter(
-            last_seen__gte=now_ts - TOPOLOGY_CONNECTION_LOOKBACK
-        ).select_related('agent')
-    )
-    latest_metadata_by_agent_id = {}
-    for metadata in recent_metadata:
-        if metadata.agent_id not in latest_metadata_by_agent_id:
-            latest_metadata_by_agent_id[metadata.agent_id] = metadata
-    current_agent_ids = {
-        str(agent.agent_id)
-        for agent in all_agents
-        if agent.is_online() or str(agent.agent_id) in latest_metadata_by_agent_id
-    }
-    recent_observed_ips = set()
-    for metadata in recent_metadata:
-        recent_observed_ips.update(_metadata_interface_ips(metadata))
-    for conn in recent_connections:
-        local_host, _ = _parse_endpoint_address(conn.local_address)
-        remote_host, _ = _parse_endpoint_address(conn.remote_address)
-        if local_host:
-            recent_observed_ips.add(local_host)
-        if remote_host:
-            recent_observed_ips.add(remote_host)
-    agents = [agent for agent in all_agents if str(agent.agent_id) in current_agent_ids]
-    node_candidates = []
-    for node in Node.objects.exclude(ip_address__isnull=True).order_by('-id'):
-        node_ips = set(_node_interface_ips(node))
-        if str(getattr(node, "agent_id", "") or "") in current_agent_ids or node_ips.intersection(recent_observed_ips):
-            node_candidates.append(node)
-    iaea_testbed_active = _is_iaea_testbed_active(node_candidates, agents)
+    # Get all agents and their recent connections
+    agents = AgentStatus.objects.filter(status='online')
 
-    topology_nodes = {}
+    nodes = []
     edges = []
-    node_by_agent_id = {str(node.agent_id): node for node in node_candidates if node.agent_id}
-    node_by_ip = {}
-    for node in node_candidates:
-        for ip_text in _node_interface_ips(node):
-            if ip_text and ip_text not in node_by_ip:
-                node_by_ip[ip_text] = node
-    layer_map = {layer["slug"]: {"slug": layer["slug"], "label": layer["label"], "accent": layer["accent"], "nodes": []} for layer in PURDUE_TOPOLOGY_LAYERS}
-    layer_order = {layer["slug"]: index for index, layer in enumerate(PURDUE_TOPOLOGY_LAYERS)}
-    topology_id_by_agent_id = {}
-    topology_id_by_ip = {}
 
-    def _payload_identity(override, node_obj, agent_obj, ip_text):
-        if override:
-            return f"static:{override['hostname']}"
-        return str(getattr(node_obj, "id", "") or getattr(agent_obj, "agent_id", "") or ip_text)
-
-    def _merge_ip_addresses(existing_payload, new_ips):
-        ip_values = [ip for ip in existing_payload.get("ip_addresses", []) if ip]
-        for ip in new_ips:
-            if ip and ip not in ip_values:
-                ip_values.append(ip)
-        existing_payload["ip_addresses"] = ip_values
-        if not existing_payload.get("ip_address") and ip_values:
-            existing_payload["ip_address"] = ip_values[0]
-
-    def _upsert_topology_payload(payload):
-        payload_id = payload["id"]
-        existing = topology_nodes.get(payload_id)
-        if not existing:
-            topology_nodes[payload_id] = payload
-            for ip_text in payload.get("ip_addresses", []):
-                if ip_text:
-                    topology_id_by_ip[ip_text] = payload_id
-            if payload.get("agent_id"):
-                topology_id_by_agent_id[str(payload["agent_id"])] = payload_id
-            layer_map.setdefault(payload["purdue_level"], {
-                "slug": payload["purdue_level"],
-                "label": _topology_layer_meta(payload["purdue_level"])["label"],
-                "accent": _topology_layer_meta(payload["purdue_level"])["accent"],
-                "nodes": [],
-            })
-            layer_map[payload["purdue_level"]]["nodes"].append(payload)
-            return
-
-        _merge_ip_addresses(existing, payload.get("ip_addresses", []))
-        for ip_text in existing.get("ip_addresses", []):
-            if ip_text:
-                topology_id_by_ip[ip_text] = payload_id
-        existing["status"] = "online" if "online" in {existing.get("status"), payload.get("status")} else (existing.get("status") or payload.get("status"))
-        existing["vulnerability_count"] = max(existing.get("vulnerability_count", 0), payload.get("vulnerability_count", 0))
-        existing["node_id"] = existing.get("node_id") or payload.get("node_id")
-        existing["node_url"] = existing.get("node_url") or payload.get("node_url")
-        existing["agent_id"] = existing.get("agent_id") or payload.get("agent_id")
-        if existing.get("agent_id"):
-            topology_id_by_agent_id[str(existing["agent_id"])] = payload_id
-        existing["os_type"] = existing.get("os_type") or payload.get("os_type")
-        existing["last_heartbeat"] = payload.get("last_heartbeat") if payload.get("last_heartbeat") not in ("", "Never", "N/A") else existing.get("last_heartbeat")
-        if existing.get("type") == "static" and payload.get("type") != "static":
-            existing["type"] = payload["type"]
-
-    def _mark_topology_node_online(payload_id: str):
-        payload = topology_nodes.get(str(payload_id or ""))
-        if not payload:
-            return
-        payload["status"] = "online"
-        if payload.get("type") == "static":
-            payload["type"] = "inferred"
-
-    def _append_topology_node(node_obj=None, agent_obj=None, metadata_obj=None, inferred_ip="", inferred_port=None, inferred_protocol=""):
-        observed_ips = []
-        observed_ips.extend(_node_interface_ips(node_obj))
-        for ip_text in _agent_interface_ips(agent_obj):
-            if ip_text not in observed_ips:
-                observed_ips.append(ip_text)
-        for ip_text in _metadata_interface_ips(metadata_obj):
-            if ip_text not in observed_ips:
-                observed_ips.append(ip_text)
-        if inferred_ip and inferred_ip not in observed_ips:
-            observed_ips.append(inferred_ip)
-        ip_text = observed_ips[0] if observed_ips else ""
-        agent_id_text = _topology_identity_text(getattr(agent_obj, "agent_id", ""), getattr(node_obj, "agent_id", ""))
-        name = _topology_identity_text(getattr(node_obj, "name", ""), getattr(agent_obj, "hostname", ""), agent_id_text)
-        hostname = _topology_identity_text(getattr(node_obj, "hostname", ""), getattr(agent_obj, "hostname", ""), agent_id_text, name, inferred_ip)
-        override = _resolve_iaea_override(hostname, name, observed_ips) if iaea_testbed_active else None
-        if override:
-            layer = override["layer"]
-            role_slug = override["role_slug"]
-            role_label = override["role_label"]
-            role_icon = override["icon"]
-            label = override["label"]
-            segment_label = override["segment_label"]
-        else:
-            layer = _infer_purdue_layer(name, hostname, ip_text, getattr(node_obj, "description", ""))
-            role_slug, role_label, role_icon = _infer_topology_role(name, hostname, ip_text, getattr(node_obj, "description", ""))
-            label = _topology_identity_text(hostname, name, ip_text)
-            segment_label = _topology_segment_label(ip_text)
-            if inferred_port and role_slug == "asset":
-                if inferred_port in (443, 4840):
-                    role_slug, role_label, role_icon = ("server", "Server", "bi-server")
-                    layer = "L3" if inferred_port == 4840 else layer
-                elif inferred_port in (502, 44818):
-                    role_slug, role_label, role_icon = ("controller", "Controller", "bi-cpu-fill")
-                    layer = "L1"
-        node_url = reverse("dashboard:node_detail_page", args=[node_obj.id]) if node_obj else ""
-        merged_ips = []
-        if override:
-            merged_ips.extend(override.get("ip_addresses", []))
-        merged_ips.extend(observed_ips)
-        payload = {
-            "id": _payload_identity(override, node_obj, agent_obj, ip_text),
-            "node_id": getattr(node_obj, "id", None),
-            "label": label,
-            "hostname": override["hostname"] if override else hostname,
-            "name": name,
-            "ip_address": (override.get("ip_address") if override else ip_text) or ip_text,
-            "ip_addresses": [],
-            "type": "node" if node_obj else ("agent" if agent_obj else "inferred"),
-            "status": getattr(agent_obj, "status", getattr(node_obj, "status", "online" if inferred_ip else "unknown")) or ("online" if inferred_ip else "unknown"),
-            "os_type": getattr(agent_obj, "os_type", ""),
-            "last_heartbeat": (
-                getattr(agent_obj, "last_heartbeat", None).strftime('%Y-%m-%d %H:%M:%S')
-                if getattr(agent_obj, "last_heartbeat", None) else
-                (getattr(node_obj, "last_heartbeat", None).strftime('%Y-%m-%d %H:%M:%S') if getattr(node_obj, "last_heartbeat", None) else 'Never')
-            ),
-            "purdue_level": layer,
-            "purdue_label": _topology_layer_meta(layer)["label"],
-            "segment_label": segment_label,
-            "role": role_slug,
-            "role_label": role_label,
-            "icon": role_icon,
-            "node_url": node_url,
-            "agent_id": getattr(agent_obj, "agent_id", getattr(node_obj, "agent_id", "")),
-            "vulnerability_count": (
-                ScanVulnerability.objects.filter(host_ip=ip_text).count() if ip_text else 0
-            ) + (node_obj.vulnerability_set.count() if node_obj else 0),
-        }
-        _merge_ip_addresses(payload, merged_ips)
-        _upsert_topology_payload(payload)
-        return payload["id"]
-
-    for node in node_candidates:
-        _append_topology_node(
-            node_obj=node,
-            agent_obj=None,
-            metadata_obj=latest_metadata_by_agent_id.get(str(node.agent_id or "")),
-        )
+    # Add agent nodes
     for agent in agents:
-        _append_topology_node(
-            node_obj=node_by_agent_id.get(str(agent.agent_id)) or node_by_ip.get(str(agent.ip_address)),
-            agent_obj=agent,
-            metadata_obj=latest_metadata_by_agent_id.get(str(agent.agent_id)),
-        )
+        nodes.append({
+            'id': agent.agent_id,
+            'label': agent.hostname,
+            'ip_address': agent.ip_address,
+            'type': 'agent',
+            'status': agent.status,
+            'os_type': agent.os_type,
+            'last_heartbeat': agent.last_heartbeat.strftime('%Y-%m-%d %H:%M:%S') if agent.last_heartbeat else 'Never'
+        })
 
-    if iaea_testbed_active:
-        for static_node in IAEA_TESTBED_STATIC_TOPOLOGY:
-            if not _should_render_modeled_static_node(static_node):
-                continue
-            static_id = f"static:{static_node['hostname']}"
-            if static_id in topology_nodes:
-                continue
-            layer = static_node["layer"]
-            payload = {
-                "id": static_id,
-                "node_id": None,
-                "label": static_node["label"],
-                "hostname": static_node["hostname"],
-                "name": static_node["label"],
-                "ip_address": static_node.get("ip_address", ""),
-                "ip_addresses": list(static_node.get("ip_addresses", [])),
-                "type": "static",
-                "status": "modeled",
-                "os_type": "",
-                "last_heartbeat": "N/A",
-                "purdue_level": layer,
-                "purdue_label": _topology_layer_meta(layer)["label"],
-                "segment_label": static_node["segment_label"],
-                "role": static_node["role_slug"],
-                "role_label": static_node["role_label"],
-                "icon": static_node["icon"],
-                "node_url": "",
-                "agent_id": "",
-                "vulnerability_count": 0,
-            }
-            _upsert_topology_payload(payload)
-
-    nodes = sorted(topology_nodes.values(), key=lambda item: (layer_order.get(item["purdue_level"], 99), item["label"]))
+    # Get recent connections to build edges
+    recent_connections = NetworkConnection.objects.filter(
+        agent__status='online',
+        last_seen__gte=now() - timedelta(hours=1)  # Last hour
+    ).select_related('agent')
 
     # Group connections by source/destination to create flows
     flows = {}
     for conn in recent_connections:
-        if _is_topology_noise_flow(
-            protocol=conn.protocol,
-            process_name=conn.process_name,
-            process_cmdline=conn.process_cmdline,
-        ):
-            continue
         if conn.remote_address and conn.remote_address != '127.0.0.1' and conn.remote_address != 'localhost':
-            flow_key = (
-                conn.agent.agent_id,
-                conn.local_address,
-                conn.remote_address,
-                conn.remote_port,
-                conn.protocol,
-                conn.process_name,
-                conn.process_cmdline,
-            )
+            flow_key = (conn.agent.agent_id, conn.remote_address, conn.protocol)
             if flow_key not in flows:
                 flows[flow_key] = {
                     'source': conn.agent.agent_id,
-                    'local_address': conn.local_address,
-                    'local_port': conn.local_port,
                     'target': conn.remote_address,
-                    'remote_port': conn.remote_port,
                     'protocol': conn.protocol,
-                    'process_name': conn.process_name,
-                    'process_cmdline': conn.process_cmdline,
                     'connection_count': 0,
+                    'total_bytes': 0
                 }
             flows[flow_key]['connection_count'] += 1
 
-    # Convert flows to logical-node edges to suppress duplicate endpoint noise.
-    logical_edges = {}
+    # Convert flows to edges
     for flow in flows.values():
-        local_host, _ = _parse_endpoint_address(flow.get("local_address"))
-        if _is_topology_management_flow(
-            local_host=local_host,
-            remote_host=_parse_endpoint_address(flow["target"])[0],
-            local_port=flow.get("local_port"),
-            remote_port=flow.get("remote_port"),
-            process_name=flow.get("process_name", ""),
-        ):
-            continue
-        local_override = _resolve_iaea_override(local_host, "", [local_host]) if iaea_testbed_active and local_host else None
-        if (
-            local_host
-            and local_host not in topology_id_by_ip
-            and _should_surface_inferred_flow_endpoint(
-                host=local_host,
-                port=None,
-                protocol=flow.get("protocol", ""),
-                process_name=flow.get("process_name", ""),
-                process_cmdline=flow.get("process_cmdline", ""),
-                override=local_override,
-                known_node=node_by_ip.get(local_host),
-            )
-        ):
-            source_id = _append_topology_node(
-                node_obj=node_by_ip.get(local_host),
-                agent_obj=None,
-                metadata_obj=None,
-                inferred_ip=local_host,
-                inferred_protocol=flow.get("protocol", ""),
-            )
-        else:
-            source_id = topology_id_by_ip.get(local_host) or topology_id_by_agent_id.get(str(flow["source"]))
-        remote_host, _ = _parse_endpoint_address(flow["target"])
-        remote_override = _resolve_iaea_override(remote_host, "", [remote_host]) if iaea_testbed_active and remote_host else None
-        if (
-            remote_host
-            and remote_host not in topology_id_by_ip
-            and _should_surface_inferred_flow_endpoint(
-                host=remote_host,
-                port=flow.get("remote_port"),
-                protocol=flow.get("protocol", ""),
-                process_name=flow.get("process_name", ""),
-                process_cmdline=flow.get("process_cmdline", ""),
-                override=remote_override,
-                known_node=node_by_ip.get(remote_host),
-            )
-        ):
-            target_id = _append_topology_node(
-                node_obj=node_by_ip.get(remote_host),
-                agent_obj=None,
-                metadata_obj=None,
-                inferred_ip=remote_host,
-                inferred_port=flow.get("remote_port"),
-                inferred_protocol=flow.get("protocol", ""),
-            )
-        else:
-            target_id = topology_id_by_ip.get(remote_host)
-        if not source_id or not target_id:
-            continue
-        if source_id == target_id:
-            continue
-        _mark_topology_node_online(source_id)
-        _mark_topology_node_online(target_id)
-        edge_key = (source_id, target_id, flow["protocol"])
-        if edge_key not in logical_edges:
-            logical_edges[edge_key] = {
-                'from': source_id,
-                'to': target_id,
-                'label': "",
-                'protocol': flow['protocol'],
-                'connection_count': 0,
-                'target_ip': remote_host or flow['target'],
-            }
-        logical_edges[edge_key]['connection_count'] += flow['connection_count']
-
-    for edge in logical_edges.values():
-        edge['label'] = f"{edge['protocol']} ({edge['connection_count']} conn)"
-        edges.append(edge)
-
-    # Passive bridge sensors often see ARP for the field devices even when the
-    # underlying Docker bridge does not mirror all peer TCP payload traffic into
-    # the span container. Promote those known static L0 assets to online without
-    # rendering noisy ARP edges.
-    for conn in recent_connections:
-        for payload_id in _promote_static_l0_from_passive_observation(
-            conn,
-            iaea_testbed_active=iaea_testbed_active,
-        ):
-            _mark_topology_node_online(payload_id)
-
-    nodes = sorted(topology_nodes.values(), key=lambda item: (layer_order.get(item["purdue_level"], 99), item["label"]))
-    layers = []
-    for layer in PURDUE_TOPOLOGY_LAYERS:
-        layer_payload = layer_map.get(layer["slug"], {"nodes": []})
-        layers.append({
-            "slug": layer["slug"],
-            "label": layer["label"],
-            "accent": layer["accent"],
-            "nodes": sorted(layer_payload.get("nodes", []), key=lambda item: item["label"]),
+        edges.append({
+            'from': flow['source'],
+            'to': flow['target'],
+            'label': f"{flow['protocol']} ({flow['connection_count']} conn)",
+            'protocol': flow['protocol'],
+            'connection_count': flow['connection_count']
         })
 
     return JsonResponse({
         'nodes': nodes,
         'edges': edges,
-        'layers': layers,
         'timestamp': now().strftime('%Y-%m-%d %H:%M:%S')
     })
 

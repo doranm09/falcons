@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 # Keep core Python deps in a separate cached layer.
 RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
-   pip install --no-cache-dir pyod nfstream joblib numpy tqdm matplotlib
+   pip install --no-cache-dir pyod joblib numpy scipy scikit-learn tqdm matplotlib
 
 # Torch is heavy; isolate it so edits to other deps don't invalidate this layer.
 RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
@@ -23,12 +23,11 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
 
 WORKDIR /app
 
-COPY ids.py /app/ids.py
-COPY ids_common.py /app/ids_common.py
-COPY ids_forwarder.py /app/ids_forwarder.py
-COPY inspect_flows.py /app/inspect_flows.py
+COPY ids_network.py /app/ids_network.py
+COPY ids_network_common.py /app/ids_network_common.py
 COPY entrypoint.sh /entrypoint.sh
 
 RUN chmod +x /entrypoint.sh
 
-ENTRYPOINT ["/entrypoint.sh", "/bin/sh", "-c", "while true; do sleep 3600; done"]
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["/bin/sh", "-c", "while true; do sleep 3600; done"]

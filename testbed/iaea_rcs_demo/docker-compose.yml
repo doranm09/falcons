@@ -26,24 +26,6 @@ x-openplc: &openplc
   tmpfs:
     - /tmp
 
-x-agent-env: &agent_env
-  AGENT_SERVER_URL: "http://host.docker.internal:8000"
-  AGENT_API_TOKEN: "${AGENT_API_TOKEN:-iaea-demo-agent-token}"
-
-x-agent-extra-hosts: &agent_extra_hosts
-  - "host.docker.internal:host-gateway"
-
-x-agent-sensor: &agent_sensor
-  build:
-    context: ../..
-    dockerfile: testbed/iaea_rcs_demo/services/sim-endpoint/Dockerfile
-  restart: unless-stopped
-  cap_drop: ["ALL"]
-  cap_add: ["NET_ADMIN", "NET_RAW"]
-  read_only: true
-  tmpfs:
-    - /tmp
-
 x-actuator-modbus-env: &actuator_modbus_env
   MODBUS_PORT: "502"
   MODBUS_PROFILE: actuator
@@ -53,6 +35,127 @@ x-actuator-modbus-env: &actuator_modbus_env
   MODBUS_COMMAND_MAX: "100"
 
 services:
+  # ---------------------- Pentesting / IDS ----------------------
+
+
+
+  ids-collector:
+    build:
+      context: .
+      dockerfile: services/ids-collector/Dockerfile
+    restart: unless-stopped
+    container_name: ids-collector
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - ./data:/data
+      - ./models:/models
+      - ./plots:/plots
+      - ./scripts:/app/scripts:ro
+      - ./services/ids-network:/app/services/ids-network:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker:ro
+    command: ["tail", "-f", "/dev/null"]
+
+  ids-network:
+    build:
+      context: ./services/ids-network
+    restart: unless-stopped
+    container_name: ids-network
+    command: ["python", "ids_network_forwarder.py"]
+    cap_add:
+      - NET_ADMIN
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      SIEM_PIPELINE_URL: "${SIEM_PIPELINE_URL:-http://host.docker.internal:8000/dashboard/siem/pipeline/ingest/}"
+      SIEM_INGEST_TOKEN: "${SIEM_INGEST_TOKEN:-iaea-demo-siem-token}"
+      IDS_NETWORK_FORWARD_ANOMALY_ONLY: "${IDS_NETWORK_FORWARD_ANOMALY_ONLY:-1}"
+      IDS_DEMO_NAME: "${IDS_DEMO_NAME:-iaea-rcs-demo}"
+      IDS_NETWORK_IFACE: "${IDS_NETWORK_IFACE:-eth0}"
+      IDS_NETWORK_MODEL_PATH: "${IDS_NETWORK_MODEL_PATH:-/models/ids-network/br_rcs_l1m/random_forest.joblib}"
+      IDS_NETWORK_DECISION_THRESHOLD: "${IDS_NETWORK_DECISION_THRESHOLD:-0.95}"
+    volumes:
+      - ./data:/data
+      - ./models:/models
+      - ./plots:/plots
+      - ./services/ids-network:/app
+    networks:
+      - cyber_pen_test_appnet
+
+  ids-process:
+    build:
+      context: ./services/ids-process
+    restart: unless-stopped
+    container_name: ids-process
+    command: ["python", "ids_process_forwarder.py"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      SIEM_PIPELINE_URL: "${SIEM_PIPELINE_URL:-http://host.docker.internal:8000/dashboard/siem/pipeline/ingest/}"
+      SIEM_INGEST_TOKEN: "${SIEM_INGEST_TOKEN:-iaea-demo-siem-token}"
+      INFLUX_URL: "${IDS_PROCESS_INFLUX_URL:-http://historian-db:8086}"
+      INFLUX_TOKEN: "${IDS_PROCESS_INFLUX_TOKEN:-iaea-historian-token}"
+      INFLUX_ORG: "${IDS_PROCESS_INFLUX_ORG:-iaea}"
+      INFLUX_BUCKET: "${IDS_PROCESS_INFLUX_BUCKET:-iaea_rcs}"
+      IDS_PROCESS_PROFILE: "${IDS_PROCESS_PROFILE:-main}"
+      IDS_PROCESS_MEASUREMENT: "${IDS_PROCESS_MEASUREMENT:-rcs_metrics}"
+      IDS_PROCESS_TAG_KEYS: "${IDS_PROCESS_TAG_KEYS:-average_pressure}"
+      IDS_PROCESS_MODEL_PATH: "${IDS_PROCESS_MODEL_PATH:-/models/ids-process/autoencoder.joblib}"
+      IDS_PROCESS_DECISION_THRESHOLD: "${IDS_PROCESS_DECISION_THRESHOLD:-10}"
+      IDS_PROCESS_POLL_INTERVAL: "${IDS_PROCESS_POLL_INTERVAL:-1}"
+      IDS_PROCESS_WATCH_RANGE_START: "${IDS_PROCESS_WATCH_RANGE_START:--5s}"
+      IDS_PROCESS_WATCH_ANOMALY_ONLY: "${IDS_PROCESS_WATCH_ANOMALY_ONLY:-1}"
+    depends_on:
+      - historian-db
+      - historian
+    volumes:
+      - ./services/ids-process:/app
+      - ./models:/models
+    networks:
+      - l2_net
+
+  ids-mirror:
+    build:
+      context: ./services/ids-mirror
+    restart: unless-stopped
+    container_name: ids-mirror
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      - ids-network
+    environment:
+      MIRROR_FROM_IFACE: "${IDS_MIRROR_FROM_IFACE:-br_rcs_l1m}"
+      MIRROR_TARGET_CONTAINER: "${IDS_MIRROR_TARGET_CONTAINER:-ids-network}"
+      MIRROR_REAPPLY_SECONDS: "${IDS_MIRROR_REAPPLY_SECONDS:-5}"
+    command: ["/bin/sh", "-lc", "sh /scripts/auto_port_mirror.sh"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /sys/class/net:/sys/class/net:ro
+      - ./scripts:/scripts:ro
+
+  kali-attacker:
+    build:
+      context: ./services/kali
+    profiles: ["kali"]
+    tty: true
+    stdin_open: true
+    command: ["/bin/bash", "-lc", "python3 /opt/kali/kali_attack_api.py"]
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    ports:
+      - "5001:5001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      l1_main:
+        ipv4_address: 10.1.13.42
+      kali_api_net:
+
   # ---------------------- Layer 4 ----------------------
   database:
     <<: *endpoint
@@ -179,7 +282,6 @@ services:
     container_name: historian
     hostname: historian
     environment:
-      <<: *agent_env
       DEVICE_NAME: Layer4 Historian
       DEVICE_ROLE: Layer4 historical archive
       SERVICE_PORTS: ""
@@ -191,23 +293,14 @@ services:
       INFLUX_TOKEN: iaea-historian-token
       INFLUX_ORG: iaea
       INFLUX_BUCKET: iaea_rcs
-      HISTORIAN_POLL_INTERVAL: "6"
+      HISTORIAN_POLL_INTERVAL: "0.5"
     depends_on:
       - historian-db
-    extra_hosts: *agent_extra_hosts
     networks:
       l2_net:
         ipv4_address: 10.2.50.31
 
-  ids:
-    build:
-      context: ./services/ids
-    container_name: ids
-    restart: unless-stopped
-    volumes:
-      - ./data:/data
-      - ./models:/models
-      - ./plots:/plots
+
 
   # ---------------------- Firewalls ----------------------
   firewall-2:
@@ -293,7 +386,6 @@ services:
     container_name: hmi
     hostname: hmi
     environment:
-      <<: *agent_env
       DEVICE_NAME: HMI
       DEVICE_ROLE: Layer2 HMI
       SERVICE_PORTS: "80,443"
@@ -305,7 +397,6 @@ services:
       # Layer 2 reaches Layer 3 and Layer 4 through firewall-1, and reaches
       # the PLC subnets through firewall-0 on the shared Layer 2 segment.
       STATIC_ROUTES: "10.3.50.0/24 via 10.2.50.254;10.4.50.0/24 via 10.2.50.254;10.1.13.0/24 via 10.2.50.253;10.2.23.0/24 via 10.2.50.253"
-    extra_hosts: *agent_extra_hosts
     networks:
       l2_net:
         ipv4_address: 10.2.50.10
@@ -361,7 +452,6 @@ services:
     container_name: engineer-ws
     hostname: engineer-ws
     environment:
-      <<: *agent_env
       DEVICE_NAME: Engineer-Workstation
       DEVICE_ROLE: Layer2 engineering workstation
       SERVICE_PORTS: "80,443"
@@ -373,7 +463,6 @@ services:
       # Same routing model as the HMI: historian/database via firewall-1 and
       # PLC access via firewall-0.
       STATIC_ROUTES: "10.3.50.0/24 via 10.2.50.254;10.4.50.0/24 via 10.2.50.254;10.1.13.0/24 via 10.2.50.253;10.2.23.0/24 via 10.2.50.253"
-    extra_hosts: *agent_extra_hosts
     networks:
       l2_net:
         ipv4_address: 10.2.50.20
@@ -389,13 +478,11 @@ services:
     container_name: l2-jump
     hostname: l2-jump
     environment:
-      <<: *agent_env
       DEVICE_NAME: Layer2-Jumpbox
       DEVICE_ROLE: Layer2 utility node
       SERVICE_PORTS: "22,443"
       DEVICE_DESC: Jumpbox for testing and packet capture
       STATIC_ROUTES: "10.3.50.0/24 via 10.2.50.254;10.4.50.0/24 via 10.2.50.254"
-    extra_hosts: *agent_extra_hosts
     networks:
       l2_net:
         ipv4_address: 10.2.50.30
@@ -409,7 +496,6 @@ services:
     container_name: plc-main
     hostname: plc-main
     environment:
-      <<: *agent_env
       DEVICE_NAME: PLC-Main
       DEVICE_ROLE: Layer1 controller
       DEVICE_DESC: Primary PLC
@@ -429,7 +515,6 @@ services:
       # Traffic into the main process cell goes through firewall-main-cell,
       # which is the p13_net next hop visible from the PLC.
       STATIC_ROUTES: "10.2.50.0/24 via 10.1.13.253;10.3.13.0/24 via 10.1.13.252"
-    extra_hosts: *agent_extra_hosts
     volumes:
       - plc_main_data:/docker_persistent
     networks:
@@ -445,7 +530,6 @@ services:
     container_name: plc-backup
     hostname: plc-backup
     environment:
-      <<: *agent_env
       DEVICE_NAME: PLC-Backup
       DEVICE_ROLE: Layer1 controller
       DEVICE_DESC: Backup PLC
@@ -465,7 +549,6 @@ services:
       # Traffic into the backup process cell goes through firewall-backup-cell,
       # which is the p23_net next hop visible from the PLC.
       STATIC_ROUTES: "10.2.50.0/24 via 10.2.23.253;10.4.23.0/24 via 10.2.23.252"
-    extra_hosts: *agent_extra_hosts
     volumes:
       - plc_backup_data:/docker_persistent
     networks:
@@ -482,7 +565,6 @@ services:
     container_name: pt-455
     hostname: pt-455
     environment:
-      <<: *agent_env
       DEVICE_NAME: PT-455
       DEVICE_ROLE: Pressure Transmitter
       SERVICE_PORTS: "502"
@@ -496,7 +578,6 @@ services:
       # Single-homed main-cell device: the only remote PLC subnet is l1_main,
       # reached through firewall-main-cell on the local p13_net segment.
       STATIC_ROUTES: "10.1.13.0/24 via 10.3.13.253"
-    extra_hosts: *agent_extra_hosts
     networks:
       p13_net:
         ipv4_address: 10.3.13.11
@@ -506,7 +587,6 @@ services:
     container_name: pt-456
     hostname: pt-456
     environment:
-      <<: *agent_env
       DEVICE_NAME: PT-456
       DEVICE_ROLE: Pressure Transmitter
       SERVICE_PORTS: "502"
@@ -522,7 +602,6 @@ services:
       # process network: l1_main via firewall-main-cell on p13_net, and
       # l1_backup via firewall-backup-cell on p23_net.
       STATIC_ROUTES: "10.1.13.0/24 via 10.3.13.253;10.2.23.0/24 via 10.4.23.253"
-    extra_hosts: *agent_extra_hosts
     networks:
       p13_net:
         ipv4_address: 10.3.13.12
@@ -534,7 +613,6 @@ services:
     container_name: pt-457
     hostname: pt-457
     environment:
-      <<: *agent_env
       DEVICE_NAME: PT-457
       DEVICE_ROLE: Pressure Transmitter
       SERVICE_PORTS: "502"
@@ -548,7 +626,6 @@ services:
       # Same dual-homed routing model as pt-456: each PLC subnet is reached
       # through the firewall on the corresponding local process segment.
       STATIC_ROUTES: "10.1.13.0/24 via 10.3.13.253;10.2.23.0/24 via 10.4.23.253"
-    extra_hosts: *agent_extra_hosts
     networks:
       p13_net:
         ipv4_address: 10.3.13.13
@@ -560,7 +637,6 @@ services:
     container_name: pt-458
     hostname: pt-458
     environment:
-      <<: *agent_env
       DEVICE_NAME: PT-458
       DEVICE_ROLE: Pressure Transmitter
       SERVICE_PORTS: "502"
@@ -574,7 +650,6 @@ services:
       # Single-homed backup-cell device: the only remote PLC subnet is
       # l1_backup, reached through firewall-backup-cell on p23_net.
       STATIC_ROUTES: "10.2.23.0/24 via 10.4.23.253"
-    extra_hosts: *agent_extra_hosts
     networks:
       p23_net:
         ipv4_address: 10.4.23.14
@@ -584,14 +659,13 @@ services:
     container_name: vc-hv455a
     hostname: vc-hv455a
     environment:
-      <<: [*actuator_modbus_env, *agent_env]
+      <<: *actuator_modbus_env
       DEVICE_NAME: VC-HV455A
       DEVICE_ROLE: Control Valve
       SERVICE_PORTS: "502"
       # Dual-homed process device: use the firewall attached to the local
       # process segment as the next hop for each remote PLC subnet.
       STATIC_ROUTES: "10.1.13.0/24 via 10.3.13.253;10.2.23.0/24 via 10.4.23.253"
-    extra_hosts: *agent_extra_hosts
     networks:
       p13_net:
         ipv4_address: 10.3.13.1
@@ -603,14 +677,13 @@ services:
     container_name: vc-pv455b
     hostname: vc-pv455b
     environment:
-      <<: [*actuator_modbus_env, *agent_env]
+      <<: *actuator_modbus_env
       DEVICE_NAME: VC-PV455B
       DEVICE_ROLE: Control Valve
       SERVICE_PORTS: "502"
       # Dual-homed process device: l1_main is behind firewall-main-cell and
       # l1_backup is behind firewall-backup-cell.
       STATIC_ROUTES: "10.1.13.0/24 via 10.3.13.253;10.2.23.0/24 via 10.4.23.253"
-    extra_hosts: *agent_extra_hosts
     networks:
       p13_net:
         ipv4_address: 10.3.13.2
@@ -622,14 +695,13 @@ services:
     container_name: vc-pv455c
     hostname: vc-pv455c
     environment:
-      <<: [*actuator_modbus_env, *agent_env]
+      <<: *actuator_modbus_env
       DEVICE_NAME: VC-PV455C
       DEVICE_ROLE: Control Valve
       SERVICE_PORTS: "502"
       # Dual-homed process device: route each PLC subnet through the firewall
       # that sits on the same directly attached process network.
       STATIC_ROUTES: "10.1.13.0/24 via 10.3.13.253;10.2.23.0/24 via 10.4.23.253"
-    extra_hosts: *agent_extra_hosts
     networks:
       p13_net:
         ipv4_address: 10.3.13.3
@@ -641,91 +713,18 @@ services:
     container_name: heat-ctrl
     hostname: heat-ctrl
     environment:
-      <<: [*actuator_modbus_env, *agent_env]
+      <<: *actuator_modbus_env
       DEVICE_NAME: Heat-Ctrl
       DEVICE_ROLE: Heater Controller
       SERVICE_PORTS: "502"
       # Dual-homed process device: next hops point to the Layer 1/0 firewalls,
       # not the PLCs, because the PLC subnets are remote from both cell nets.
       STATIC_ROUTES: "10.1.13.0/24 via 10.3.13.253;10.2.23.0/24 via 10.4.23.253"
-    extra_hosts: *agent_extra_hosts
     networks:
       p13_net:
         ipv4_address: 10.3.13.5
       p23_net:
         ipv4_address: 10.4.23.5
-
-  span-l1-main:
-    <<: *agent_sensor
-    container_name: span-l1-main
-    hostname: span-l1-main
-    command: ["sleep", "infinity"]
-    environment:
-      <<: *agent_env
-      AGENT_ID: span-l1-main
-      DEVICE_NAME: Span-L1-Main
-      DEVICE_ROLE: Passive network sensor
-      DEVICE_DESC: SPAN-style passive sensor for the main Layer 1 bridge
-      SERVICE_PORTS: ""
-      HOST_AGENT_SNIFF_INTERFACES: "eth0"
-    extra_hosts: *agent_extra_hosts
-    networks:
-      l1_main:
-        ipv4_address: 10.1.13.250
-
-  span-l1-backup:
-    <<: *agent_sensor
-    container_name: span-l1-backup
-    hostname: span-l1-backup
-    command: ["sleep", "infinity"]
-    environment:
-      <<: *agent_env
-      AGENT_ID: span-l1-backup
-      DEVICE_NAME: Span-L1-Backup
-      DEVICE_ROLE: Passive network sensor
-      DEVICE_DESC: SPAN-style passive sensor for the backup Layer 1 bridge
-      SERVICE_PORTS: ""
-      HOST_AGENT_SNIFF_INTERFACES: "eth0"
-    extra_hosts: *agent_extra_hosts
-    networks:
-      l1_backup:
-        ipv4_address: 10.2.23.250
-
-  span-p13:
-    <<: *agent_sensor
-    container_name: span-p13
-    hostname: span-p13
-    command: ["sleep", "infinity"]
-    environment:
-      <<: *agent_env
-      AGENT_ID: span-p13
-      DEVICE_NAME: Span-P13
-      DEVICE_ROLE: Passive network sensor
-      DEVICE_DESC: SPAN-style passive sensor for the main process cell bridge
-      SERVICE_PORTS: ""
-      HOST_AGENT_SNIFF_INTERFACES: "eth0"
-    extra_hosts: *agent_extra_hosts
-    networks:
-      p13_net:
-        ipv4_address: 10.3.13.250
-
-  span-p23:
-    <<: *agent_sensor
-    container_name: span-p23
-    hostname: span-p23
-    command: ["sleep", "infinity"]
-    environment:
-      <<: *agent_env
-      AGENT_ID: span-p23
-      DEVICE_NAME: Span-P23
-      DEVICE_ROLE: Passive network sensor
-      DEVICE_DESC: SPAN-style passive sensor for the backup process cell bridge
-      SERVICE_PORTS: ""
-      HOST_AGENT_SNIFF_INTERFACES: "eth0"
-    extra_hosts: *agent_extra_hosts
-    networks:
-      p23_net:
-        ipv4_address: 10.4.23.250
 
 networks:
   l4_net:
@@ -755,7 +754,12 @@ networks:
     driver_opts:
       com.docker.network.bridge.name: br_rcs_l1m
     ipam:
-      config: [{ subnet: 10.1.13.0/24, gateway: 10.1.13.254, aux_addresses: { span_l1_main: 10.1.13.250 } }]
+      config: [{ subnet: 10.1.13.0/24, gateway: 10.1.13.254 }]
+
+  kali_api_net:
+    driver: bridge
+    ipam:
+      config: [{ subnet: 172.28.10.0/24 }]
 
   l1_backup:
     driver: bridge
@@ -763,7 +767,7 @@ networks:
     driver_opts:
       com.docker.network.bridge.name: br_rcs_l1b
     ipam:
-      config: [{ subnet: 10.2.23.0/24, gateway: 10.2.23.254, aux_addresses: { span_l1_backup: 10.2.23.250 } }]
+      config: [{ subnet: 10.2.23.0/24, gateway: 10.2.23.254 }]
 
   p13_net:
     driver: bridge
@@ -771,7 +775,7 @@ networks:
     driver_opts:
       com.docker.network.bridge.name: br_rcs_p13
     ipam:
-      config: [{ subnet: 10.3.13.0/24, gateway: 10.3.13.254, aux_addresses: { span_p13: 10.3.13.250 } }]
+      config: [{ subnet: 10.3.13.0/24, gateway: 10.3.13.254 }]
 
   p23_net:
     driver: bridge
@@ -779,7 +783,7 @@ networks:
     driver_opts:
       com.docker.network.bridge.name: br_rcs_p23
     ipam:
-      config: [{ subnet: 10.4.23.0/24, gateway: 10.4.23.254, aux_addresses: { span_p23: 10.4.23.250 } }]
+      config: [{ subnet: 10.4.23.0/24, gateway: 10.4.23.254 }]
 
   mgmt13_net:
     driver: bridge

@@ -27,7 +27,7 @@ INFLUX_URL = os.getenv("INFLUX_URL", "").strip()
 INFLUX_TOKEN = os.getenv("INFLUX_TOKEN", "iaea-historian-token")
 INFLUX_ORG = os.getenv("INFLUX_ORG", "iaea")
 INFLUX_BUCKET = os.getenv("INFLUX_BUCKET", "iaea_rcs")
-POLL_INTERVAL = float(os.getenv("HISTORIAN_POLL_INTERVAL", "5"))
+POLL_INTERVAL = float(os.getenv("HISTORIAN_POLL_INTERVAL", "0.5"))
 
 TAG_KEYS = [
     "average_pressure",
@@ -45,7 +45,12 @@ TAG_KEYS = [
     "heat_owner",
     "heat_applied",
 ]
-SENSOR_PREFIXES = ["pt455", "pt456", "pt457", "pt458"]
+SENSOR_TAG_MAP = {
+    "pt455": "pt455_pv",
+    "pt456": "pt456_pv",
+    "pt457": "pt457_pv",
+    "pt458": "pt458_pv",
+}
 
 STATE_LOCK = threading.Lock()
 STATE = {
@@ -170,10 +175,18 @@ def sample_loop():
         logging.info("historian telemetry persistence disabled; no INFLUX_URL configured")
     while True:
         try:
+            sensor_nodes = list(SENSOR_TAG_MAP.values())
             with OpcSampler(MAIN_OPC_URL, 2) as main_sampler:
-                main_data = main_sampler.read_tags(TAG_KEYS + SENSOR_PREFIXES)
+                main_data = main_sampler.read_tags(TAG_KEYS + sensor_nodes)
             with OpcSampler(BACKUP_OPC_URL, 2) as backup_sampler:
-                backup_data = backup_sampler.read_tags(TAG_KEYS + SENSOR_PREFIXES)
+                backup_data = backup_sampler.read_tags(TAG_KEYS + sensor_nodes)
+
+            for target_key, source_key in SENSOR_TAG_MAP.items():
+                if source_key in main_data:
+                    main_data[target_key] = main_data.pop(source_key)
+                if source_key in backup_data:
+                    backup_data[target_key] = backup_data.pop(source_key)
+
             if main_data:
                 write_measurement(write_api, "main", main_data)
                 update_profile(

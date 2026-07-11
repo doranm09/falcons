@@ -42,8 +42,11 @@
         <a class="nav-link" href="{% url 'dashboard:agent_monitoring' %}">
           <i class="bi bi-robot"></i> Agent Monitor
         </a>
-        <a class="nav-link" href="{% url 'dashboard:siem_ids_live_page' %}">
+        <a class="nav-link" href="{% url 'dashboard:siem_ids_network_live_page' %}">
           <i class="bi bi-activity"></i> IDS Live
+        </a>
+        <a class="nav-link" href="{% url 'dashboard:pentest' %}">
+          <i class="bi bi-bug"></i> Pentest
         </a>
       </nav>
     </div>
@@ -75,14 +78,8 @@
         <i class="bi bi-bar-chart"></i> SIEM
       </h6>
       <nav class="nav flex-column">
-        <a class="nav-link {% if request.resolver_match.url_name == 'siem_soc_overview' %}active{% endif %}" href="{% url 'dashboard:siem_soc_overview' %}">
-          <i class="bi bi-speedometer2"></i> Live Monitor
-        </a>
         <a class="nav-link {% if request.resolver_match.url_name == 'siem_event_explorer' %}active{% endif %}" href="{% url 'dashboard:siem_event_explorer' %}">
           <i class="bi bi-search"></i> Event Explorer
-        </a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'siem_sensor_health_page' %}active{% endif %}" href="{% url 'dashboard:siem_sensor_health_page' %}">
-          <i class="bi bi-broadcast-pin"></i> Sensor Health
         </a>
         <a class="nav-link {% if request.resolver_match.url_name == 'siem_alerts_page' %}active{% endif %}" href="{% url 'dashboard:siem_alerts_page' %}">
           <i class="bi bi-bell"></i> Alert Queue

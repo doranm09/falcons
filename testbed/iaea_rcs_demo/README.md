@@ -746,6 +746,24 @@ sudo tcpdump -i "$P13_BR" -nn -s0 -w /tmp/p13-502.pcap 'tcp port 502'
 probe_modbus plc-main 10.3.13.1 502 11 3 0 4
 ```
 
+Docker-integrated IDS mirroring (automatic):
+
+- The stack now includes an `ids-mirror` service that continuously applies host-side `tc` mirroring from the Layer 1 main bridge into the `ids-network` container and keeps the bridge in promiscuous mode.
+
+Optional overrides:
+
+```bash
+IDS_MIRROR_FROM_IFACE=br_rcs_l1b docker compose up -d ids-network ids-mirror
+IDS_MIRROR_TARGET_CONTAINER=ids-network docker compose up -d ids-network ids-mirror
+IDS_MIRROR_REAPPLY_SECONDS=2 docker compose up -d ids-network ids-mirror
+```
+
+Check mirror status:
+
+```bash
+docker logs ids-mirror --tail 50
+```
+
 To inspect or apply the host-side demo interface names after `docker compose up -d`:
 
 ```bash

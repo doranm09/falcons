@@ -161,6 +161,7 @@ def list_host_interfaces() -> list[str]:
 
 def collect_mirroring_rules() -> list[tuple[str, str, str]]:
     mirror_entries: list[tuple[str, str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
     device_pattern = re.compile(r"to device\s+(\S+)\)")
 
     for iface in list_host_interfaces():
@@ -174,9 +175,61 @@ def collect_mirroring_rules() -> list[tuple[str, str, str]]:
                 continue
             match = device_pattern.search(line)
             target_iface = match.group(1) if match else "unknown"
-            mirror_entries.append((iface, target_iface, line.strip()))
+            entry = (iface, target_iface, line.strip())
+            if entry in seen:
+                continue
+            seen.add(entry)
+            mirror_entries.append(entry)
 
     return mirror_entries
+
+
+def has_mirroring_rule(from_iface: str, to_iface: str) -> bool:
+    result = run_command(["tc", "filter", "show", "dev", from_iface, "parent", "ffff:"], echo=False)
+    if result.returncode != 0:
+        return False
+
+    target_token = f"to device {to_iface})"
+    for line in result.stdout.splitlines():
+        lowered = line.lower()
+        if "mirred" not in lowered or "mirror" not in lowered:
+            continue
+        if target_token in line:
+            return True
+    return False
+
+
+def collect_iface_mirror_actions(from_iface: str) -> list[str]:
+    result = run_command(["tc", "filter", "show", "dev", from_iface, "parent", "ffff:"], echo=False)
+    if result.returncode != 0:
+        return []
+
+    entries: list[str] = []
+    for line in result.stdout.splitlines():
+        lowered = line.lower()
+        if "mirred" in lowered and "mirror" in lowered:
+            entries.append(line.strip())
+    return entries
+
+
+def cleanup_ghost_mirroring_rules(from_iface: str, to_iface: str) -> bool:
+    mirror_actions = collect_iface_mirror_actions(from_iface)
+    if len(mirror_actions) <= 1:
+        return False
+
+    print(
+        f"detected {len(mirror_actions)} mirror actions on {from_iface}; resetting ingress to clear ghost rules"
+    )
+    delete_result = run_command(["tc", "qdisc", "del", "dev", from_iface, "ingress"])
+    if delete_result.returncode != 0:
+        stderr = delete_result.stderr.strip().lower()
+        if "no such file" not in stderr and "cannot find" not in stderr:
+            raise SystemExit(f"failed to reset ingress qdisc on {from_iface}: {delete_result.stderr.strip()}")
+
+    ensure_ingress_qdisc(from_iface)
+    install_mirror_filter(from_iface, to_iface)
+    print(f"ghost tc mirrors cleared on {from_iface}; restored mirror to {to_iface}")
+    return True
 
 
 def get_running_container_ids() -> list[str]:
@@ -307,6 +360,17 @@ def main() -> int:
     ensure_interface_exists(to_iface)
 
     ensure_ingress_qdisc(args.from_iface)
+
+    if cleanup_ghost_mirroring_rules(args.from_iface, to_iface):
+        print(f"resolved host veth for {args.container_id}: {to_iface}")
+        print(f"mirroring enabled: {args.from_iface} -> {to_iface}")
+        return 0
+
+    if has_mirroring_rule(args.from_iface, to_iface):
+        print(f"resolved host veth for {args.container_id}: {to_iface}")
+        print(f"mirroring already configured: {args.from_iface} -> {to_iface}")
+        return 0
+
     install_mirror_filter(args.from_iface, to_iface)
 
     print(f"resolved host veth for {args.container_id}: {to_iface}")

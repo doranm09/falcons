@@ -2,11 +2,11 @@
 {% load static %}
 
 {% block content %}
-<div class="container-fluid px-4 py-4" id="siem-ids-live" data-updates-url="{% url 'dashboard:siem_ids_live_updates' %}" data-after-id="{{ initial_after_id }}">
+<div class="container-fluid px-4 py-4" id="siem-ids-live" data-updates-url="{% url updates_url_name %}" data-after-id="{{ initial_after_id }}" data-live-kind="{{ live_kind }}">
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
     <div>
-      <h2 class="mb-1">IDS Live Monitor</h2>
-      <p class="text-muted mb-0">Real-time anomaly stream from the IDS pipeline.</p>
+      <h2 class="mb-1">{{ page_title }}</h2>
+      <p class="text-muted mb-0">{{ page_subtitle }}</p>
     </div>
     <div class="d-flex align-items-center gap-2">
       <span class="badge bg-primary-subtle text-primary border" id="ids-total-24h">{{ summary.total_24h }} events (24h)</span>
@@ -20,7 +20,10 @@
       <a class="nav-link" href="{% url 'dashboard:siem_event_explorer' %}">Event Explorer</a>
     </li>
     <li class="nav-item">
-      <a class="nav-link active" href="{% url 'dashboard:siem_ids_live_page' %}">IDS Live</a>
+      <a class="nav-link {% if live_kind == 'network' %}active{% endif %}" href="{% url 'dashboard:siem_ids_network_live_page' %}">IDS Network Live</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if live_kind == 'process' %}active{% endif %}" href="{% url 'dashboard:siem_ids_process_live_page' %}">IDS Process Live</a>
     </li>
   </ul>
 
@@ -29,10 +32,6 @@
       <div class="card shadow-sm h-100">
         <div class="card-body">
           <h5 class="card-title">Stream Controls</h5>
-          <div class="form-check form-switch mb-3">
-            <input class="form-check-input" type="checkbox" id="ids-anomaly-only" checked>
-            <label class="form-check-label" for="ids-anomaly-only">Show anomalies only</label>
-          </div>
           <button class="btn btn-outline-secondary btn-sm" id="ids-clear-table">Clear Live Rows</button>
           <p class="text-muted small mt-3 mb-0">Keep this tab open to watch score and threshold changes in real time.</p>
         </div>
@@ -64,39 +63,61 @@
             <tr>
               <th>Timestamp</th>
               <th>Type</th>
+              {% if live_kind != 'process' %}
               <th>Src IP</th>
               <th>Dst IP</th>
               <th>Protocol</th>
+              {% endif %}
               <th>Score</th>
               <th>Threshold</th>
+              <th>View</th>
             </tr>
           </thead>
           <tbody>
             {% for event in events %}
-            <tr data-event-id="{{ event.id }}" data-event-type="{{ event.event_type }}">
+            <tr data-event-id="{{ event.id }}" data-event-type="{{ event.event_type }}" data-source="{{ event.source|default:source }}" data-raw="{{ event.raw_json|escape }}">
               <td data-ids-ts="{{ event.timestamp }}">{{ event.timestamp }}</td>
               <td>
-                {% if event.event_type == 'ids.anomaly' %}
-                  <span class="badge bg-danger">ids.anomaly</span>
+                {% if '.anomaly' in event.event_type %}
+                  <span class="badge bg-danger">{{ event.event_type }}</span>
                 {% else %}
                   <span class="badge bg-secondary">{{ event.event_type }}</span>
                 {% endif %}
               </td>
+              {% if live_kind != 'process' %}
               <td>
                 <code class="small">{{ event.src_ip|default:'-' }}</code>
               </td>
               <td><code class="small">{{ event.dst_ip|default:'-' }}</code></td>
               <td>{{ event.protocol|default:'-' }}</td>
+              {% endif %}
               <td>{{ event.score|default:'-' }}</td>
               <td>{{ event.decision_threshold|default:'-' }}</td>
+              <td>
+                <button class="btn btn-sm btn-outline-primary" data-action="view-raw" data-event-id="{{ event.id }}">View</button>
+              </td>
             </tr>
             {% empty %}
             <tr>
-              <td colspan="7" class="text-muted text-center">No IDS events ingested yet.</td>
+              <td colspan="{% if live_kind == 'process' %}5{% else %}8{% endif %}" class="text-muted text-center">No IDS events ingested yet.</td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="ids-raw-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Raw Event Payload</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <pre class="bg-dark text-light p-3 rounded" id="ids-raw-content"></pre>
       </div>
     </div>
   </div>

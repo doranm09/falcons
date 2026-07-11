@@ -47,6 +47,8 @@ services:
       RISK_ASSESSMENT_API_URL: ${RISK_ASSESSMENT_API_URL:-http://risk-assessment:7890}
       TRIVY_CACHE_DIR: /tmp/cyber-sbom-cache/trivy
       GRYPE_DB_CACHE_DIR: /tmp/cyber-sbom-cache/grype/db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy

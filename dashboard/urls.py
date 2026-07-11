@@ -4,6 +4,10 @@ from . import views
 app_name = 'dashboard'
 
 urlpatterns = [
+    # Pentest URLs
+    path('pentest/', views.pentest_page, name='pentest'),
+    path('pentest/nmap/', views.pentest_nmap, name='pentest_nmap'),
+    path('pentest/modbus/', views.pentest_modbus, name='pentest_modbus'),
     path('', views.home, name='dashboard-home'),
     path('healthz/', views.healthz, name='healthz'),
     path('metrics/', views.metrics, name='metrics'),
@@ -25,18 +29,16 @@ urlpatterns = [
     path('scan/history/', views.get_scan_history, name='scan-history'),
     path('agent/report/', views.agent_report, name='agent_report'),
     path('agent/cyber_report/', views.agent_cyber_report, name='agent_cyber_report'),
-    path('agent/network_metadata/', views.agent_network_metadata, name='agent_network_metadata'),
     path('sbom/', views.sbom_ingest, name='sbom_ingest'),
     path('siem/ingest/', views.siem_event_ingest, name='siem_event_ingest'),
     path('siem/pipeline/ingest/', views.siem_pipeline_ingest, name='siem_pipeline_ingest'),
-    path('siem/sensors/suricata/eve/', views.siem_suricata_ingest, name='siem_suricata_ingest'),
-    path('siem/sensors/zeek/logs/', views.siem_zeek_ingest, name='siem_zeek_ingest'),
-    path('siem/sensors/health/', views.siem_sensor_health, name='siem_sensor_health'),
-    path('siem/sensors/health/view/', views.siem_sensor_health_page, name='siem_sensor_health_page'),
-    path('siem/', views.siem_soc_overview, name='siem_soc_overview'),
     path('siem/events/', views.siem_event_search, name='siem_event_search'),
     path('siem/export/', views.siem_export, name='siem_export'),
     path('siem/events/explorer/', views.siem_event_explorer, name='siem_event_explorer'),
+    path('siem/ids/network/', views.siem_ids_network_live_page, name='siem_ids_network_live_page'),
+    path('siem/ids/network/updates/', views.siem_ids_network_live_updates, name='siem_ids_network_live_updates'),
+    path('siem/ids/process/', views.siem_ids_process_live_page, name='siem_ids_process_live_page'),
+    path('siem/ids/process/updates/', views.siem_ids_process_live_updates, name='siem_ids_process_live_updates'),
     path('siem/ids/', views.siem_ids_live_page, name='siem_ids_live_page'),
     path('siem/ids/updates/', views.siem_ids_live_updates, name='siem_ids_live_updates'),
     path('siem/adapters/agent/<str:agent_id>/', views.siem_adapter_agent, name='siem_adapter_agent'),

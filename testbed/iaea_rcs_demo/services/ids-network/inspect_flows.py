@@ -5,7 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
-from ids_common import extract_numeric_keys, load_flows, matrix_from_flows
+from ids_network_common import extract_numeric_keys, load_flows, matrix_from_flows
 
 
 def parse_args() -> argparse.Namespace:

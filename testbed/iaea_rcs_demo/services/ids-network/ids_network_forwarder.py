@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Any, Dict
 from urllib import error, request
 
-from ids import load_live_inference_context, score_live_flow
-from ids_common import iter_flows_from_interface
+from ids_network import load_live_inference_context, score_live_flow
+from ids_network_common import iter_flows_from_interface
 
 
 DEFAULT_PIPELINE_URL = "http://host.docker.internal:8000/dashboard/siem/pipeline/ingest/"
@@ -42,8 +42,8 @@ def _build_event(flow: Dict[str, Any]) -> Dict[str, Any]:
     threshold = flow.get("decision_threshold")
 
     return {
-        "source": "ids",
-        "event_type": "ids.anomaly" if anomaly else "ids.flow",
+        "source": "ids-network",
+        "event_type": "ids-network.anomaly" if anomaly else "ids-network.flow",
         "timestamp": _iso_now(),
         "score": score,
         "decision_threshold": threshold,
@@ -89,15 +89,26 @@ def iter_scored_interface_flows(
 def main() -> int:
     pipeline_url = os.environ.get("SIEM_PIPELINE_URL", DEFAULT_PIPELINE_URL)
     siem_token = os.environ.get("SIEM_INGEST_TOKEN", "")
-    anomaly_only = _env_bool("IDS_FORWARD_ANOMALY_ONLY", True)
-    iface = os.environ.get("IDS_IFACE", "eth0")
-    model_path = Path(os.environ.get("IDS_MODEL_PATH", "/models/br_rcs_l1m/autoencoder.joblib"))
-    threshold_raw = os.environ.get("IDS_DECISION_THRESHOLD", "100")
+    anomaly_only = _env_bool(
+        "IDS_NETWORK_FORWARD_ANOMALY_ONLY",
+        _env_bool("IDS_FORWARD_ANOMALY_ONLY", True),
+    )
+    iface = os.environ.get("IDS_NETWORK_IFACE", os.environ.get("IDS_IFACE", "eth0"))
+    model_path = Path(
+        os.environ.get(
+            "IDS_NETWORK_MODEL_PATH",
+            os.environ.get("IDS_MODEL_PATH", "/models/ids-network/br_rcs_l1m/autoencoder.joblib"),
+        )
+    )
+    threshold_raw = os.environ.get(
+        "IDS_NETWORK_DECISION_THRESHOLD",
+        os.environ.get("IDS_DECISION_THRESHOLD", "100"),
+    )
     decision_threshold = float(threshold_raw) if threshold_raw not in {"", "none", "None"} else None
 
     print(
         (
-            f"[ids-forwarder] iface={iface} model={model_path} threshold={decision_threshold} "
+            f"[ids-network-forwarder] iface={iface} model={model_path} threshold={decision_threshold} "
             f"forwarding={pipeline_url} anomaly_only={anomaly_only}"
         ),
         file=sys.stderr,
@@ -111,7 +122,7 @@ def main() -> int:
             decision_threshold=decision_threshold,
         )
     except Exception as exc:
-        print(f"[ids-forwarder] failed to initialize IDS iterator: {exc}", file=sys.stderr, flush=True)
+        print(f"[ids-network-forwarder] failed to initialize IDS iterator: {exc}", file=sys.stderr, flush=True)
         return 1
 
     for record in flow_iter:
@@ -128,7 +139,7 @@ def main() -> int:
         try:
             _post_json(pipeline_url, event, siem_token)
         except (error.URLError, TimeoutError, RuntimeError) as exc:
-            print(f"[ids-forwarder] failed to forward event: {exc}", file=sys.stderr, flush=True)
+            print(f"[ids-network-forwarder] failed to forward event: {exc}", file=sys.stderr, flush=True)
 
     return 0
 

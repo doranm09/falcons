@@ -41,7 +41,6 @@ Thumbs.db
 data/db/
 testbed/ot/data/
 testbed/iaea_rcs_demo/data/network/*.pcap
-testbed/iaea_rcs_demo/models/**/*.joblib
 testbed/iaea_rcs_demo/plots/**/*.png
 
 # === Coverage / Testing ===

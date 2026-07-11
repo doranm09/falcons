@@ -100,6 +100,7 @@ def parse_dashboard_json(json_data: dict) -> List[DiscoveredHost]:
         if ip:
             host = DiscoveredHost(
                 host_id=host_id,
+                interface_name=iface_name,
                 ip=ip,
                 mac=mac,
                 os_family=os_family,

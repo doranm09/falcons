@@ -180,7 +180,7 @@ import copy
 import json
 import math
 import shutil
-from collections import defaultdict
+from collections import Counter, defaultdict
 import tempfile
 from django.conf import settings
 from django.db import transaction
@@ -3690,24 +3690,48 @@ def agent_report(request):
         fallback_ip=str(data.get("ip_address") or "").strip(),
     ) or "192.168.0.1"
 
-    # Update or create AgentStatus record
-    agent_status, created = AgentStatus.objects.update_or_create(
-        agent_id=agent_id,
-        defaults={
-            "hostname": hostname,
-            "ip_address": ip,
-            "status": "online",
-            "os_type": data.get("os", ""),
-            "os_version": data.get("os_version", ""),
-            "platform": data.get("platform", ""),
-            "cpu_count": data.get("cpu_count"),
-            "memory_total": data.get("memory_total"),
-            "interfaces": interfaces,
-            "processes": data.get("processes", []),
-            "agent_version": data.get("agent_version", ""),
-            "last_version_check": now(),
-        }
-    )
+    agent_defaults = {
+        "hostname": hostname,
+        "ip_address": ip,
+        "status": "online",
+        "os_type": data.get("os", ""),
+        "os_version": data.get("os_version", ""),
+        "platform": data.get("platform", ""),
+        "cpu_count": data.get("cpu_count"),
+        "memory_total": data.get("memory_total"),
+        "interfaces": interfaces,
+        "processes": data.get("processes", []),
+        "agent_version": data.get("agent_version", ""),
+        "last_version_check": now(),
+    }
+
+    with transaction.atomic():
+        agent_status = AgentStatus.objects.select_for_update().filter(agent_id=agent_id).first()
+        if agent_status is None:
+            agent_status = (
+                AgentStatus.objects.select_for_update()
+                .filter(hostname=hostname, ip_address=ip)
+                .exclude(agent_id=agent_id)
+                .order_by("-last_heartbeat")
+                .first()
+            )
+
+        if agent_status is None:
+            agent_status = AgentStatus.objects.create(agent_id=agent_id, **agent_defaults)
+        else:
+            previous_agent_id = agent_status.agent_id
+            if previous_agent_id != agent_id:
+                agent_status.agent_id = agent_id
+                agent_status.save(update_fields=["agent_id"])
+                AgentCommand.objects.filter(agent_id=previous_agent_id).update(agent_id=agent_id)
+                CommandResult.objects.filter(agent_id=previous_agent_id).update(agent_id=agent_id)
+                SbomReport.objects.filter(agent_id=previous_agent_id).update(agent_id=agent_id)
+                if not Node.objects.filter(agent_id=agent_id).exists():
+                    Node.objects.filter(agent_id=previous_agent_id).update(agent_id=agent_id)
+
+            for field, value in agent_defaults.items():
+                setattr(agent_status, field, value)
+            agent_status.save()
 
     # Record the heartbeat
     agent_status.record_heartbeat(data)
@@ -4251,11 +4275,107 @@ def siem_sensor_health_page(request):
     )
 
 
-def _talker_policy_tags(asset_ip: str | None) -> list[str]:
-    ip_text = str(asset_ip or "").strip().lower()
-    if ip_text.startswith("fe80:"):
-        return ["link_local_ipv6"]
-    return []
+def _soc_ip_policy_tags(value):
+    if not value:
+        return []
+    try:
+        ip_obj = ipaddress.ip_address(str(value))
+    except ValueError:
+        return ["invalid"]
+
+    tags = ["ipv6" if ip_obj.version == 6 else "ipv4"]
+    if ip_obj.version == 6 and ip_obj.is_link_local:
+        tags.append("ipv6_link_local")
+    if ip_obj.is_multicast:
+        tags.append("multicast")
+    if ip_obj.is_loopback:
+        tags.append("loopback")
+    if ip_obj.is_unspecified:
+        tags.append("unspecified")
+    return tags
+
+
+def _build_top_talker_rows(qs, limit=25):
+    counts = Counter()
+    for asset_ip, source_ip, destination_ip in qs.values_list(
+        "asset_ip", "source_ip", "destination_ip"
+    ):
+        seen = set()
+        for ip_text in (source_ip, destination_ip, asset_ip):
+            if not ip_text:
+                continue
+            try:
+                normalized = str(ipaddress.ip_address(str(ip_text)))
+            except ValueError:
+                continue
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            counts[normalized] += 1
+    return [
+        {
+            "asset_ip": ip_text,
+            "count": count,
+            "policy_tags": _soc_ip_policy_tags(ip_text),
+        }
+        for ip_text, count in counts.most_common(limit)
+    ]
+
+
+def _filtered_count(qs, field_path):
+    return (
+        qs.exclude(**{f"{field_path}__isnull": True})
+        .exclude(**{field_path: ""})
+        .values(field_path)
+        .distinct()
+        .count()
+    )
+
+
+def _top_json_values(qs, field_path, label_key, limit=5):
+    rows = (
+        qs.exclude(**{f"{field_path}__isnull": True})
+        .exclude(**{field_path: ""})
+        .values(field_path)
+        .annotate(count=Count("id"))
+        .order_by("-count", field_path)[:limit]
+    )
+    return [{label_key: row[field_path], "count": row["count"]} for row in rows]
+
+
+def _siem_soc_focus_queryset(base_qs):
+    return (
+        base_qs.exclude(event_dataset__endswith=".stats")
+        .exclude(event_type__endswith=".stats")
+        .filter(
+            Q(asset_ip__isnull=False)
+            | Q(source_ip__isnull=False)
+            | Q(destination_ip__isnull=False)
+        )
+        .order_by("-timestamp")
+    )
+
+
+def _build_explorer_query(**params):
+    cleaned = {key: value for key, value in params.items() if value not in (None, "", [])}
+    return urlencode(cleaned, doseq=True)
+
+
+def _build_alert_explorer_url(alert):
+    return reverse("dashboard:siem_event_explorer") + "?" + _build_explorer_query(
+        event_type=alert.event_type,
+        event_module=alert.source or "",
+        asset_ip=alert.asset_ip,
+        asset_id=alert.asset_id,
+    )
+
+
+def _build_hunt_search_url(query_params):
+    return reverse("dashboard:siem_event_explorer") + "?" + _build_explorer_query(**query_params)
+
+
+def _siem_opensearch_context():
+    return {"opensearch": get_opensearch_overview()}
 
 
 @require_http_methods(["GET"])
@@ -4283,18 +4403,7 @@ def siem_soc_overview(request):
         .annotate(count=Count("id"))
         .order_by("-count", "event_dataset")[:8]
     )
-    top_asset_ips = [
-        {
-            "asset_ip": row["asset_ip"],
-            "count": row["count"],
-            "policy_tags": _talker_policy_tags(row["asset_ip"]),
-        }
-        for row in recent_qs.exclude(asset_ip__isnull=True)
-        .exclude(asset_ip="")
-        .values("asset_ip")
-        .annotate(count=Count("id"))
-        .order_by("-count", "asset_ip")[:8]
-    ]
+    top_asset_ips = _build_top_talker_rows(recent_qs, limit=8)
     recent_alerts = [
         {
             "alert": alert,
@@ -4389,11 +4498,16 @@ def siem_event_explorer(request):
     now_ts = timezone.now()
     since = now_ts - timedelta(hours=24)
 
-    recent_qs = SiemEvent.objects.filter(timestamp__gte=since)
+    recent_qs = SiemEvent.objects.filter(timestamp__gte=since).order_by("-timestamp")
+    focus_qs = _siem_soc_focus_queryset(recent_qs)
+    if not focus_qs.exists():
+        focus_qs = recent_qs
     summary = {
         "total_24h": recent_qs.count(),
         "sources_24h": recent_qs.values("source").distinct().count(),
         "types_24h": recent_qs.values("event_type").distinct().count(),
+        "modules_24h": _filtered_count(recent_qs, "event_module"),
+        "datasets_24h": _filtered_count(recent_qs, "event_dataset"),
     }
 
     top_sources = list(
@@ -4402,17 +4516,26 @@ def siem_event_explorer(request):
     top_types = list(
         recent_qs.values("event_type").annotate(count=Count("id")).order_by("-count")[:5]
     )
+    top_modules = _top_json_values(recent_qs, "event_module", "event_module")
+    top_datasets = _top_json_values(recent_qs, "event_dataset", "event_dataset")
+    top_observers = _top_json_values(recent_qs, "observer_name", "observer_name")
 
-    events = list(SiemEvent.objects.all()[:50])
+    events = list(focus_qs[:50])
     health = health_snapshot()
     context = {
         "summary": summary,
         "top_sources": top_sources,
         "top_types": top_types,
+        "top_modules": top_modules,
+        "top_datasets": top_datasets,
+        "top_observers": top_observers,
         "events": events,
         "health": health,
         "default_start": timezone.localtime(since).strftime("%Y-%m-%dT%H:%M"),
         "default_end": timezone.localtime(now_ts).strftime("%Y-%m-%dT%H:%M"),
+        "sensor_health_url": reverse("dashboard:siem_sensor_health_page"),
+        "exclude_stats_default": True,
+        **_siem_opensearch_context(),
     }
     return render(request, "dashboard/siem_events.html", context)
 
@@ -4751,7 +4874,12 @@ def siem_alerts_page(request):
     status = request.GET.get("status", "open")
     alerts = Alert.objects.filter(status=status).order_by("-last_seen")[:200]
     rules = AlertRule.objects.all().order_by("name")
-    return render(request, "dashboard/siem_alerts.html", {"alerts": alerts, "rules": rules, "status": status})
+    alert_rows = [{"alert": alert, "explorer_url": _build_alert_explorer_url(alert)} for alert in alerts]
+    return render(
+        request,
+        "dashboard/siem_alerts.html",
+        {"alert_rows": alert_rows, "rules": rules, "status": status, **_siem_opensearch_context()},
+    )
 
 
 @require_http_methods(["POST"])
@@ -4774,7 +4902,11 @@ def siem_toggle_rule(request, rule_id):
 def siem_cases_page(request):
     status = request.GET.get("status", "open")
     cases = Case.objects.filter(status=status).order_by("-updated_at")[:200]
-    return render(request, "dashboard/siem_cases.html", {"cases": cases, "status": status})
+    return render(
+        request,
+        "dashboard/siem_cases.html",
+        {"cases": cases, "status": status, **_siem_opensearch_context()},
+    )
 
 
 @require_http_methods(["POST"])
@@ -4821,7 +4953,15 @@ def siem_case_promote_alert(request, alert_id):
 @require_http_methods(["GET"])
 def siem_case_detail(request, case_id):
     case = get_object_or_404(Case, id=case_id)
-    return render(request, "dashboard/siem_case_detail.html", {"case": case})
+    linked_alerts = [
+        {"alert": alert, "explorer_url": _build_alert_explorer_url(alert)}
+        for alert in case.alerts.all()
+    ]
+    return render(
+        request,
+        "dashboard/siem_case_detail.html",
+        {"case": case, "linked_alerts": linked_alerts, **_siem_opensearch_context()},
+    )
 
 
 @require_http_methods(["POST"])
@@ -4902,7 +5042,11 @@ def siem_case_export(request, case_id):
 def siem_hunts_page(request):
     status = request.GET.get("status", "open")
     hunts = Hunt.objects.filter(status=status).order_by("-updated_at")[:200]
-    return render(request, "dashboard/siem_hunts.html", {"hunts": hunts, "status": status})
+    return render(
+        request,
+        "dashboard/siem_hunts.html",
+        {"hunts": hunts, "status": status, **_siem_opensearch_context()},
+    )
 
 
 @require_http_methods(["POST"])
@@ -4939,7 +5083,15 @@ def siem_hunt_create(request):
 @require_http_methods(["GET"])
 def siem_hunt_detail(request, hunt_id):
     hunt = get_object_or_404(Hunt, id=hunt_id)
-    return render(request, "dashboard/siem_hunt_detail.html", {"hunt": hunt})
+    hunt_search_rows = [
+        {"search": search, "explorer_url": _build_hunt_search_url(search.query_params)}
+        for search in hunt.searches.all()
+    ]
+    return render(
+        request,
+        "dashboard/siem_hunt_detail.html",
+        {"hunt": hunt, "hunt_search_rows": hunt_search_rows, **_siem_opensearch_context()},
+    )
 
 
 @require_http_methods(["POST"])
@@ -5596,6 +5748,7 @@ def delete_agent(request, agent_id=None):
         command_result_count, _ = CommandResult.objects.filter(agent_id=agent_id).delete()
         agent_command_count, _ = AgentCommand.objects.filter(agent_id=agent_id).delete()
         sbom_report_count, _ = SbomReport.objects.filter(agent_id=agent_id).delete()
+        deleted_node_count, _ = Node.objects.filter(agent_id=agent_id).delete()
         deleted_agent_record_count, _ = AgentStatus.objects.filter(agent_id=agent_id).delete()
 
     return JsonResponse({
@@ -5605,6 +5758,7 @@ def delete_agent(request, agent_id=None):
         "deleted_command_results": command_result_count,
         "deleted_commands": agent_command_count,
         "deleted_sbom_reports": sbom_report_count,
+        "deleted_nodes": deleted_node_count,
     })
 
 @require_http_methods(["POST"])
@@ -5626,6 +5780,7 @@ def delete_offline_agents(request):
         command_result_count, _ = CommandResult.objects.filter(agent_id__in=offline_agent_ids).delete()
         agent_command_count, _ = AgentCommand.objects.filter(agent_id__in=offline_agent_ids).delete()
         sbom_report_count, _ = SbomReport.objects.filter(agent_id__in=offline_agent_ids).delete()
+        deleted_node_count, _ = Node.objects.filter(agent_id__in=offline_agent_ids).delete()
         deleted_agent_record_count, _ = AgentStatus.objects.filter(agent_id__in=offline_agent_ids).delete()
 
     return JsonResponse({
@@ -5636,6 +5791,7 @@ def delete_offline_agents(request):
         "deleted_command_results": command_result_count,
         "deleted_commands": agent_command_count,
         "deleted_sbom_reports": sbom_report_count,
+        "deleted_nodes": deleted_node_count,
     })
 
 
@@ -6388,7 +6544,7 @@ def download_host_agent(request):
 def agent_version_api(request):
     """API endpoint for agent version information."""
     try:
-        from host_agent.agent import AGENT_VERSION, AGENT_NAME
+        from host_agent import AGENT_VERSION, AGENT_NAME
     except Exception:
         AGENT_VERSION = "unknown"
         AGENT_NAME = "host_agent"

@@ -6,6 +6,7 @@ from typing import List, Optional
 class DiscoveredHost:
     """Represents a host discovered from network scans"""
     host_id: str
+    interface_name: Optional[str] = None
     ip: Optional[str] = None
     mac: Optional[str] = None
     os_family: Optional[str] = None

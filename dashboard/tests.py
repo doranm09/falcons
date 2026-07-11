@@ -279,9 +279,11 @@ class AgentStatusModelTest(TestCase):
         """Test update_status method."""
         # Mock time to simulate old heartbeat
         old_time = timezone.now() - timezone.timedelta(minutes=5)
-        self.agent.last_heartbeat = old_time
-        self.agent.status = "online"
-        self.agent.save()
+        AgentStatus.objects.filter(pk=self.agent.pk).update(
+            last_heartbeat=old_time,
+            status="online",
+        )
+        self.agent.refresh_from_db()
         self.agent.update_status()
         self.assertEqual(self.agent.status, "offline")
         self.assertEqual(self.agent.consecutive_failures, 1)
@@ -3421,14 +3423,17 @@ class AgentVersionTests(TestCase):
         self.agent = AgentStatus.objects.create(
             agent_id="version-agent",
             hostname="version-host",
+            ip_address="192.0.2.10",
             agent_version="1.2.3",
             last_version_check=timezone.now()
         )
 
     def test_agent_version_api(self):
         """Test agent version API."""
-        with patch('dashboard.views.AGENT_VERSION', '2.0.0'), \
-             patch('dashboard.views.AGENT_NAME', 'TestAgent'):
+        import host_agent as host_agent_module
+
+        with patch.object(host_agent_module, 'AGENT_VERSION', '2.0.0'), \
+             patch.object(host_agent_module, 'AGENT_NAME', 'TestAgent'):
 
             response = self.client.get(reverse('dashboard:agent_version_api'))
             self.assertEqual(response.status_code, 200)

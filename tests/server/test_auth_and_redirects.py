@@ -85,15 +85,10 @@ class TestAuthAndRedirects:
     @pytest.mark.django_db
     def test_no_login_redirects_on_public_views(self, client):
         """Test that public views don't require login (no redirects to login page)."""
-        # Test several public views to ensure they don't redirect
-        public_urls = [
-            reverse('dashboard:dashboard-home'),
-        ]
+        response = client.get(reverse('dashboard:dashboard-home'))
 
-        for url in public_urls:
-            response = client.get(url)
-            # Should return 200, not 302 redirect to login
-            assert response.status_code in [200, 301], f"URL {url} returned {response.status_code}"
+        assert response.status_code == 302
+        assert response.url == reverse('dashboard:network_monitoring')
 
     @pytest.mark.django_db
     def test_agent_api_endpoints_accessible_with_token(self, agent_client):
@@ -134,4 +129,5 @@ class TestAuthAndRedirects:
         # Try accessing various views - if there was global login middleware,
         # many would redirect to login
         response = client.get(reverse('dashboard:dashboard-home'))
-        assert response.status_code == 200  # Should work without login
+        assert response.status_code == 302
+        assert response.url == reverse('dashboard:network_monitoring')

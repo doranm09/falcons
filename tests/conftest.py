@@ -17,6 +17,15 @@ def setup_isolated_media_root(tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def isolate_host_agent_zip_cache():
+    """Prevent the shared temporary agent ZIP from leaking between tests."""
+    cache_path = Path(tempfile.gettempdir()) / "cyber_agent_zips" / "host_agent.zip"
+    cache_path.unlink(missing_ok=True)
+    yield
+    cache_path.unlink(missing_ok=True)
+
+
+@pytest.fixture(autouse=True)
 def setup_siem_tokens(settings):
     settings.SIEM_INGEST_TOKEN = "test-siem-token"
     settings.SIEM_SENSOR_TOKEN = "test-siem-token"

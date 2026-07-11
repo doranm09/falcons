@@ -390,9 +390,13 @@ def test_risk_assessment_probability_proxy_cyber_data(user_client, monkeypatch):
     assert response.json()["updated_nodes"] == ["PLC-1"]
     assert mock_post.call_args.args[0].endswith("/post_cyberpen")
     assert mock_post.call_args.kwargs["json"]["nodes"] == ["PLC-1"]
-    assert mock_post.call_args.kwargs["json"]["findings"] == [
-        {"id": "CVE-2024-0001", "epss": 0.7, "asset": "PLC-1", "cve": "CVE-2024-0001"}
-    ]
+    findings = mock_post.call_args.kwargs["json"]["findings"]
+    assert len(findings) == 1
+    assert findings[0]["id"] == "CVE-2024-0001"
+    assert findings[0]["epss"] == pytest.approx(0.7)
+    assert findings[0]["asset"] == "PLC-1"
+    assert findings[0]["cve"] == "CVE-2024-0001"
+    assert findings[0]["bucket_hint"] == "vul_tech2"
 
 
 @pytest.mark.django_db
@@ -505,9 +509,14 @@ def test_build_cyber_data_for_risk_nodes_filters_scan_vulnerabilities_by_scan_ru
     cyber_data, mapped = build_cyber_data_for_risk_nodes(["PLC-2"], scan_run_id=scan_a.id)
 
     scanned_nodes = {entry["id"]: entry for entry in cyber_data["scanned_nodes"]}
-    assert scanned_nodes["PLC-2"]["vulnerability"] == [
-        {"id": "CVE-2024-1000", "epss": pytest.approx(0.72), "sources": ["scan"]}
-    ]
+    vulnerabilities = scanned_nodes["PLC-2"]["vulnerability"]
+    assert len(vulnerabilities) == 1
+    assert vulnerabilities[0]["id"] == "CVE-2024-1000"
+    assert vulnerabilities[0]["epss"] == pytest.approx(0.72)
+    assert vulnerabilities[0]["cvss"] == pytest.approx(7.2)
+    assert vulnerabilities[0]["severity"] == "High"
+    assert vulnerabilities[0]["bucket_hint"] == "vul_tech2"
+    assert vulnerabilities[0]["sources"] == ["scan"]
     assert mapped[0]["vulnerability_count"] == 1
     assert mapped[0]["vulnerabilities"][0]["id"] == "CVE-2024-1000"
 
@@ -530,9 +539,14 @@ def test_build_cyber_data_for_risk_nodes_includes_secondary_interface_scan_vulne
     cyber_data, mapped = build_cyber_data_for_risk_nodes(["plc-main"])
 
     scanned_nodes = {entry["id"]: entry for entry in cyber_data["scanned_nodes"]}
-    assert scanned_nodes["plc-main"]["vulnerability"] == [
-        {"id": "CVE-2024-3000", "epss": pytest.approx(0.76), "sources": ["scan"]}
-    ]
+    vulnerabilities = scanned_nodes["plc-main"]["vulnerability"]
+    assert len(vulnerabilities) == 1
+    assert vulnerabilities[0]["id"] == "CVE-2024-3000"
+    assert vulnerabilities[0]["epss"] == pytest.approx(0.76)
+    assert vulnerabilities[0]["cvss"] == pytest.approx(7.6)
+    assert vulnerabilities[0]["severity"] == "High"
+    assert vulnerabilities[0]["bucket_hint"] == "vul_tech2"
+    assert vulnerabilities[0]["sources"] == ["scan"]
     assert mapped[0]["risk_node_id"] == "plc-main"
     assert mapped[0]["ip_address"] == "10.1.1.14"
     assert mapped[0]["vulnerability_count"] == 1
@@ -570,26 +584,34 @@ def test_build_cyber_data_for_risk_nodes_uses_gvmd_and_skips_stale_hybrid_nodes(
 
     cyber_data, mapped = build_cyber_data_for_risk_nodes(["plc-main"])
 
-    assert mapped == [
-        {
-            "node_id": current.id,
-            "name": "plc-main.iaea.ifan.com",
-            "ip_address": "10.1.1.14",
-            "risk_node_id": "plc-main",
-            "vulnerability_count": 1,
-            "vulnerabilities": [{"id": "CVE-2024-3999", "epss": pytest.approx(0.95), "sources": ["gvmd"]}],
-            "has_vulnerabilities": True,
-        }
-    ]
-    assert cyber_data == {
-        "scanned_nodes": [
-            {
-                "id": "plc-main",
-                "type": "network_node",
-                "vulnerability": [{"id": "CVE-2024-3999", "epss": pytest.approx(0.95), "sources": ["gvmd"]}],
-            }
-        ]
-    }
+    assert len(mapped) == 1
+    assert mapped[0]["node_id"] == current.id
+    assert mapped[0]["name"] == "plc-main.iaea.ifan.com"
+    assert mapped[0]["ip_address"] == "10.1.1.14"
+    assert mapped[0]["risk_node_id"] == "plc-main"
+    assert mapped[0]["vulnerability_count"] == 1
+    assert mapped[0]["has_vulnerabilities"] is True
+
+    vulnerabilities = mapped[0]["vulnerabilities"]
+    assert len(vulnerabilities) == 1
+    assert vulnerabilities[0]["id"] == "CVE-2024-3999"
+    assert vulnerabilities[0]["epss"] == pytest.approx(0.95)
+    assert vulnerabilities[0]["cvss"] == pytest.approx(9.8)
+    assert vulnerabilities[0]["severity"] == "Critical"
+    assert vulnerabilities[0]["bucket_hint"] == "vul_tech2"
+    assert vulnerabilities[0]["sources"] == ["gvmd"]
+
+    assert len(cyber_data["scanned_nodes"]) == 1
+    scanned_node = cyber_data["scanned_nodes"][0]
+    assert scanned_node["id"] == "plc-main"
+    assert scanned_node["type"] == "network_node"
+    assert len(scanned_node["vulnerability"]) == 1
+    assert scanned_node["vulnerability"][0]["id"] == "CVE-2024-3999"
+    assert scanned_node["vulnerability"][0]["epss"] == pytest.approx(0.95)
+    assert scanned_node["vulnerability"][0]["cvss"] == pytest.approx(9.8)
+    assert scanned_node["vulnerability"][0]["severity"] == "Critical"
+    assert scanned_node["vulnerability"][0]["bucket_hint"] == "vul_tech2"
+    assert scanned_node["vulnerability"][0]["sources"] == ["gvmd"]
 
 
 def test_summarize_risk_results_assigns_levels():
@@ -670,9 +692,16 @@ def test_risk_assessment_network_compute_proxy(user_client, monkeypatch):
     posted_payload = mock_post.call_args.kwargs["json"]
     assert mock_post.call_args.args[0].endswith("/post_cyberpen")
     assert posted_payload["nodes"] == ["10.0.0.20", "PLC-1"]
-    assert posted_payload["findings"] == [
-        {"id": "CVE-2024-0003", "epss": 0.7, "sources": ["scan"], "asset": "PLC-1", "cve": "CVE-2024-0003"}
-    ]
+    findings = posted_payload["findings"]
+    assert len(findings) == 1
+    assert findings[0]["id"] == "CVE-2024-0003"
+    assert findings[0]["epss"] == pytest.approx(0.7)
+    assert findings[0]["cvss"] == pytest.approx(7.0)
+    assert findings[0]["severity"] == "High"
+    assert findings[0]["bucket_hint"] == "vul_tech2"
+    assert findings[0]["sources"] == ["scan"]
+    assert findings[0]["asset"] == "PLC-1"
+    assert findings[0]["cve"] == "CVE-2024-0003"
 
 
 def test_risk_local_model_payload_auto_falls_back_to_latest_prefixed_file(tmp_path, settings):

@@ -4,14 +4,15 @@
 
   const searchUrl = explorer.dataset.searchUrl;
   const form = document.getElementById('siem-search-form');
-  const defaultSource = explorer.dataset.defaultSource || 'ids-network';
-  const defaultEventType = explorer.dataset.defaultEventType || 'ids-network.anomaly';
+  const defaultSource = explorer.dataset.defaultSource || '';
+  const defaultEventType = explorer.dataset.defaultEventType || '';
   const statusEl = document.getElementById('siem-status');
   const resultsCountBadge = document.querySelector('[data-testid="siem-results-count"]');
   const tbody = document.querySelector('[data-testid="siem-events-body"]');
   const modalEl = document.getElementById('siem-raw-modal');
   const modalContent = document.getElementById('siem-raw-content');
   const quickRangeButtons = explorer.querySelectorAll('[data-range]');
+  const workflowButtons = explorer.querySelectorAll('[data-workflow]');
   const resetButton = document.getElementById('siem-reset');
   const timelineBars = document.getElementById('siem-timeline-bars');
   const timelineLabel = document.getElementById('siem-timeline-label');
@@ -22,10 +23,19 @@
   const inputs = {
     start: document.getElementById('siem-start'),
     end: document.getElementById('siem-end'),
+    eventModule: document.getElementById('siem-event-module'),
+    eventDataset: document.getElementById('siem-event-dataset'),
+    observerName: document.getElementById('siem-observer-name'),
     eventType: document.getElementById('siem-event-type'),
     source: document.getElementById('siem-source'),
+    sourceIp: document.getElementById('siem-source-ip'),
+    sourcePort: document.getElementById('siem-source-port'),
+    destinationIp: document.getElementById('siem-destination-ip'),
+    destinationPort: document.getElementById('siem-destination-port'),
+    communityId: document.getElementById('siem-community-id'),
     query: document.getElementById('siem-query'),
     limit: document.getElementById('siem-limit'),
+    excludeStats: document.getElementById('siem-exclude-stats'),
   };
 
   function toDatetimeLocalValue(date) {
@@ -51,6 +61,13 @@
     params.set(key, input.value.trim());
   }
 
+  function setScalarOrList(params, key, input) {
+    if (!input || !input.value) return;
+    const value = input.value.trim();
+    if (!value) return;
+    params.set(value.includes(',') ? `${key}_in` : key, value);
+  }
+
   function formatSeverityBadge(severity) {
     if (severity === null || severity === undefined || severity === '') {
       return '<span class="text-muted">-</span>';
@@ -74,10 +91,19 @@
     const params = new URLSearchParams();
     if (inputs.start?.value) params.set('start', new Date(inputs.start.value).toISOString());
     if (inputs.end?.value) params.set('end', new Date(inputs.end.value).toISOString());
+    setScalarOrList(params, 'event_module', inputs.eventModule);
+    setScalarOrList(params, 'event_dataset', inputs.eventDataset);
+    setScalarOrList(params, 'observer_name', inputs.observerName);
     setParamIfPresent(params, 'event_type', inputs.eventType);
     setParamIfPresent(params, 'source', inputs.source);
+    setScalarOrList(params, 'source_ip', inputs.sourceIp);
+    setScalarOrList(params, 'source_port', inputs.sourcePort);
+    setScalarOrList(params, 'destination_ip', inputs.destinationIp);
+    setScalarOrList(params, 'destination_port', inputs.destinationPort);
+    setParamIfPresent(params, 'network_community_id', inputs.communityId);
     setParamIfPresent(params, 'q', inputs.query);
     setParamIfPresent(params, 'limit', inputs.limit);
+    if (inputs.excludeStats?.checked) params.set('exclude_stats', '1');
     return params;
   }
 
@@ -213,6 +239,10 @@
         input.value = defaultEnd;
         return;
       }
+      if (input.id === 'siem-exclude-stats') {
+        input.checked = explorer.dataset.excludeStatsDefault === '1';
+        return;
+      }
       if (input.id === 'siem-source') {
         input.value = defaultSource;
         return;
@@ -223,6 +253,7 @@
       }
       input.value = '';
     });
+    workflowButtons.forEach((button) => button.classList.remove('active'));
     setStatus('Filters cleared. Showing most recent events.');
     runSearch();
   });
@@ -235,6 +266,49 @@
       const start = new Date(end.getTime() - minutes * 60 * 1000);
       inputs.end.value = toDatetimeLocalValue(end);
       inputs.start.value = toDatetimeLocalValue(start);
+      runSearch();
+    });
+  });
+
+  const workflowPresets = {
+    hybrid: {
+      eventModule: '',
+      eventDataset: 'agent.network_connection,zeek.conn,suricata.flow',
+      eventType: '',
+      source: '',
+      destinationPort: '',
+      message: 'Showing connection-centric hybrid telemetry.',
+    },
+    modbus: {
+      eventModule: '',
+      eventDataset: '',
+      eventType: '',
+      source: '',
+      destinationPort: '502',
+      message: 'Showing traffic targeting Modbus/TCP port 502.',
+    },
+    opc: {
+      eventModule: '',
+      eventDataset: '',
+      eventType: '',
+      source: '',
+      destinationPort: '4840',
+      message: 'Showing traffic targeting OPC UA port 4840.',
+    },
+  };
+
+  workflowButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const preset = workflowPresets[button.dataset.workflow];
+      if (!preset) return;
+      inputs.eventModule.value = preset.eventModule;
+      inputs.eventDataset.value = preset.eventDataset;
+      inputs.eventType.value = preset.eventType;
+      inputs.source.value = preset.source;
+      inputs.destinationPort.value = preset.destinationPort;
+      if (inputs.excludeStats) inputs.excludeStats.checked = true;
+      workflowButtons.forEach((item) => item.classList.toggle('active', item === button));
+      setStatus(preset.message, false);
       runSearch();
     });
   });

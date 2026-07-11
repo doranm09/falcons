@@ -2,6 +2,7 @@ import json
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 
 
 @pytest.mark.django_db
@@ -9,7 +10,7 @@ def test_siem_event_explorer_shows_ingested_event(siem_client):
     payload = {
         "event_type": "agent.heartbeat",
         "source": "agent",
-        "timestamp": "2026-02-06T11:00:00Z",
+        "timestamp": timezone.now().isoformat(),
         "message": "Agent heartbeat",
         "severity": 1,
         "asset_ip": "10.10.0.5",

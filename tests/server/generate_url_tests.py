@@ -20,15 +20,10 @@ class TestComprehensiveURLCoverage:
 
     @pytest.mark.django_db
     def test_dashboard_home_view(self, client):
-        """Test dashboard-home: GET / (home view)"""
+        """Test dashboard-home redirects to the network monitoring landing page."""
         response = client.get(reverse('dashboard:dashboard-home'))
-        assert response.status_code == 200
-        assert 'dashboard/home.html' in [t.name for t in response.templates]
-
-        # Check context contains expected data
-        assert 'nodes' in response.context
-        assert 'current_processes' in response.context
-        assert 'timestamp' in response.context
+        assert response.status_code == 302
+        assert response.url == reverse('dashboard:network_monitoring')
 
     @pytest.mark.django_db
     def test_network_scans_view(self, client):

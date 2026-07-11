@@ -231,8 +231,12 @@ services:
 networks:
   appnet:
   greenbone_net:
+    external: true
+    name: cyber_pen_test_greenbone_shared
 
 volumes:
   redis_data:
   opensearch_data:
   psql_socket_vol:
+    external: true
+    name: cyber_pen_test_gvmd_psql_socket

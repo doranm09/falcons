@@ -49,6 +49,33 @@ wait_for_x_socket() {
   return 1
 }
 
+ensure_x_display_ready() {
+  local lock_file="/tmp/.X${DISPLAY_NUMBER}-lock"
+  local socket="/tmp/.X11-unix/X${DISPLAY_NUMBER}"
+  local lock_pid=""
+
+  mkdir -p /tmp/.X11-unix
+
+  if [ -f "${lock_file}" ]; then
+    lock_pid="$(tr -cd '0-9' < "${lock_file}" || true)"
+  fi
+
+  if [ -n "${lock_pid}" ] && kill -0 "${lock_pid}" 2>/dev/null; then
+    echo "reusing active X display ${DISPLAY} from pid ${lock_pid}"
+    xvfb_pid=""
+    return 0
+  fi
+
+  if [ -f "${lock_file}" ] || [ -S "${socket}" ]; then
+    echo "removing stale X display state for ${DISPLAY}"
+    rm -f "${lock_file}" "${socket}"
+  fi
+
+  Xvfb "${DISPLAY}" -screen 0 "${DESKTOP_GEOMETRY}x24" -nolisten tcp >>"${XVFB_LOG}" 2>&1 &
+  xvfb_pid=$!
+  wait_for_x_socket
+}
+
 prepare_home
 
 if [ -f /usr/local/bin/start_host_agent.sh ]; then
@@ -56,9 +83,7 @@ if [ -f /usr/local/bin/start_host_agent.sh ]; then
   start_host_agent
 fi
 
-Xvfb "${DISPLAY}" -screen 0 "${DESKTOP_GEOMETRY}x24" -nolisten tcp >>"${XVFB_LOG}" 2>&1 &
-xvfb_pid=$!
-wait_for_x_socket
+ensure_x_display_ready
 
 su -s /bin/bash engineer -c "HOME=${ENGINEER_HOME} DISPLAY=${DISPLAY} /opt/eng-ws/desktop-session.sh" &
 desktop_pid=$!

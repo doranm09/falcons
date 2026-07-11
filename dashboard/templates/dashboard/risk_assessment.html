@@ -261,14 +261,36 @@
               <div class="mb-3">
                 <label class="form-label" for="risk-prediction-nodes">Module Nodes</label>
                 <textarea class="form-control" id="risk-prediction-nodes" rows="6"></textarea>
-                <div class="form-text">Comma or newline separated node ids from the integrated module model.</div>
+                <div class="form-text">Comma or newline separated node ids from the integrated module model. Default is a single focus node.</div>
+              </div>
+              <div class="mb-3">
+                <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                  <label class="form-label mb-0" for="risk-prediction-node-filter">Available Module Nodes</label>
+                  <div id="risk-prediction-node-count" class="small text-muted">Loading…</div>
+                </div>
+                <input
+                  type="search"
+                  class="form-control form-control-sm mt-2"
+                  id="risk-prediction-node-filter"
+                  placeholder="Filter module nodes"
+                >
+                <div id="risk-prediction-node-picker" class="risk-node-picker mt-2">
+                  <div class="text-muted small">Loading module nodes…</div>
+                </div>
+                <div class="form-text">Click nodes here to add or remove them from the prediction query.</div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="risk-prediction-update-payload">Optional Update Payload</label>
+                <textarea class="form-control font-monospace" id="risk-prediction-update-payload" rows="10" placeholder='{"findings":[{"asset":"plc-main","cve":"CVE-TEST-0001","epss":0.42}]}'></textarea>
+                <div class="form-text">
+                  If JSON is present here, <code>Run Prediction</code> will apply it first, then query probabilities.
+                  Supported keys include <code>vulnerabilities</code>, <code>findings</code>, <code>modelPatch</code>,
+                  <code>topologyPatch</code>, or <code>cyber_data.scanned_nodes</code>.
+                </div>
               </div>
               <div class="d-flex gap-2 flex-wrap">
                 <button class="btn btn-primary" id="risk-prediction-run">
                   <i class="bi bi-play-fill"></i> Run Prediction
-                </button>
-                <button class="btn btn-outline-secondary" id="risk-prediction-defaults">
-                  Use Core Module Nodes
                 </button>
               </div>
               <div id="risk-prediction-status" class="text-muted mt-3">Ready to query the loaded DBN.</div>
@@ -281,6 +303,9 @@
               <h5 class="mb-0">Prediction Results</h5>
             </div>
             <div class="card-body">
+              <div id="risk-prediction-update-summary" class="risk-detail-card mb-3 text-muted">
+                Run a prediction to see the active request, any applied updates, and returned warnings.
+              </div>
               <div id="risk-prediction-summary" class="risk-summary-grid mb-3"></div>
               <div id="risk-prediction-results" class="risk-prediction-results text-muted">Run a prediction query to render module node timelines.</div>
             </div>
@@ -756,6 +781,37 @@
     display: grid;
     gap: 0.85rem;
   }
+  .risk-node-picker {
+    max-height: 16rem;
+    overflow: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    padding: 0.5rem;
+    background: #f8fafc;
+  }
+  .risk-node-picker-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 0.45rem;
+  }
+  .risk-node-picker-item {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.65rem;
+    padding: 0.4rem 0.55rem;
+    background: #ffffff;
+    cursor: pointer;
+    min-height: 2.4rem;
+  }
+  .risk-node-picker-item input {
+    margin: 0;
+  }
+  .risk-node-picker-item.is-selected {
+    border-color: #2563eb;
+    background: #eff6ff;
+  }
   .risk-prediction-table {
     width: 100%;
     font-size: 0.84rem;
@@ -830,10 +886,14 @@
   const faultTreeDetail = document.getElementById('risk-fault-tree-detail');
 
   const predictionRunButton = document.getElementById('risk-prediction-run');
-  const predictionDefaultsButton = document.getElementById('risk-prediction-defaults');
   const predictionTInput = document.getElementById('risk-prediction-t');
   const predictionNodesInput = document.getElementById('risk-prediction-nodes');
+  const predictionNodeFilterInput = document.getElementById('risk-prediction-node-filter');
+  const predictionNodePicker = document.getElementById('risk-prediction-node-picker');
+  const predictionNodeCount = document.getElementById('risk-prediction-node-count');
+  const predictionUpdateInput = document.getElementById('risk-prediction-update-payload');
   const predictionStatus = document.getElementById('risk-prediction-status');
+  const predictionUpdateSummary = document.getElementById('risk-prediction-update-summary');
   const predictionSummary = document.getElementById('risk-prediction-summary');
   const predictionResults = document.getElementById('risk-prediction-results');
 
@@ -867,6 +927,8 @@
   let historyStartEpoch = null;
   let historySamples = [];
   let activityLog = [];
+  let predictionAvailableNodes = [];
+  let predictionInventoryByNodeId = {};
 
   function getCSRFToken() {
     const input = document.querySelector('#risk-csrf-form input[name=csrfmiddlewaretoken]');
@@ -909,13 +971,105 @@
     ));
   }
 
+  function updatePredictionNodeTextarea(nodes) {
+    predictionNodesInput.value = Array.from(new Set((nodes || []).filter(Boolean))).join('\n');
+  }
+
+  function filteredPredictionAvailableNodes() {
+    const term = String(predictionNodeFilterInput?.value || '').trim().toLowerCase();
+    if (!term) return predictionAvailableNodes;
+    return predictionAvailableNodes.filter((node) => String(node || '').toLowerCase().includes(term));
+  }
+
+  function predictionInventoryEntry(nodeId) {
+    return predictionInventoryByNodeId[String(nodeId || '').trim()] || null;
+  }
+
+  function renderPredictionNodePicker() {
+    if (!predictionNodePicker) return;
+    const selectedNodes = new Set(parseNodeList(predictionNodesInput.value));
+    const visibleNodes = filteredPredictionAvailableNodes();
+    if (predictionNodeCount) {
+      predictionNodeCount.textContent = predictionAvailableNodes.length
+        ? `${selectedNodes.size} selected / ${predictionAvailableNodes.length} available`
+        : 'No module nodes loaded';
+    }
+    if (!predictionAvailableNodes.length) {
+      predictionNodePicker.innerHTML = '<div class="text-muted small">No module nodes loaded.</div>';
+      return;
+    }
+    if (!visibleNodes.length) {
+      predictionNodePicker.innerHTML = '<div class="text-muted small">No module nodes match the current filter.</div>';
+      return;
+    }
+    predictionNodePicker.innerHTML = `
+      <div class="risk-node-picker-list">
+        ${visibleNodes.map((nodeId) => {
+            const inventory = predictionInventoryEntry(nodeId);
+            const vulnerabilityCount = Number(inventory?.vulnerability_count || 0);
+            const topVulns = Array.isArray(inventory?.vulnerabilities) ? inventory.vulnerabilities.slice(0, 2) : [];
+            const detail = vulnerabilityCount
+              ? topVulns.map((item) => `${item.id || item.cve_id || 'CVE'} ${formatProbability(item.epss)}`).join(', ')
+              : 'No vulnerability data';
+            return `
+          <label class="risk-node-picker-item ${selectedNodes.has(nodeId) ? 'is-selected' : ''}">
+            <input type="checkbox" value="${escapeHtml(nodeId)}" ${selectedNodes.has(nodeId) ? 'checked' : ''}>
+            <span>
+              <span class="d-block">${escapeHtml(nodeId)}</span>
+              <span class="small text-muted">${escapeHtml(vulnerabilityCount ? `${vulnerabilityCount} finding(s) · ${detail}` : detail)}</span>
+            </span>
+          </label>
+            `;
+          }).join('')}
+      </div>
+    `;
+  }
+
+  async function loadPredictionAvailableNodes() {
+    if (!predictionNodePicker) return;
+    try {
+      const response = await fetch("{% url 'dashboard:risk_assessment_inventory' %}");
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Module node list unavailable.');
+      }
+      predictionAvailableNodes = Array.isArray(data.risk_nodes)
+        ? data.risk_nodes.map((item) => String(item || '').trim()).filter(Boolean).sort()
+        : [];
+      predictionInventoryByNodeId = {};
+      const mappedNodes = Array.isArray(data.mapped_nodes) ? data.mapped_nodes : [];
+      mappedNodes.forEach((item) => {
+        const riskNodeId = String(item.risk_node_id || '').trim();
+        if (riskNodeId) {
+          predictionInventoryByNodeId[riskNodeId] = item;
+        }
+      });
+      renderPredictionNodePicker();
+    } catch (err) {
+      predictionAvailableNodes = [];
+      predictionInventoryByNodeId = {};
+      if (predictionNodeCount) predictionNodeCount.textContent = 'Module node list unavailable';
+      predictionNodePicker.innerHTML = `<div class="text-danger small">${escapeHtml(err.message)}</div>`;
+      addActivity('error', 'Module node list request failed', err.message);
+    }
+  }
+
   function stateProbability(stateMap, state) {
     const raw = stateMap && typeof stateMap === 'object' ? stateMap[state] : undefined;
     return Number.isFinite(Number(raw)) ? Number(raw) : 0;
   }
 
   function formatProbability(value) {
-    return `${(Number(value || 0) * 100).toFixed(1)}%`;
+    const numeric = Number(value || 0);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      return '0.0%';
+    }
+    const percent = numeric * 100;
+    if (numeric < 1 && percent >= 99.99) return `${percent.toFixed(5)}%`;
+    if (percent >= 1) return `${percent.toFixed(1)}%`;
+    if (percent >= 0.01) return `${percent.toFixed(3)}%`;
+    if (percent >= 0.0001) return `${percent.toFixed(5)}%`;
+    return `${percent.toExponential(2)}%`;
   }
 
   function dominantState(stateMap) {
@@ -2510,11 +2664,139 @@
     }).join('');
   }
 
-  async function loadPrediction() {
+  function parseStructuredPredictionPayload() {
+    const raw = (predictionUpdateInput.value || '').trim();
+    if (!raw) return null;
+    let payload;
+    try {
+      payload = JSON.parse(raw);
+    } catch (err) {
+      throw new Error(`Structured update payload is not valid JSON: ${err.message}`);
+    }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new Error('Structured update payload must be a JSON object.');
+    }
+    return payload;
+  }
+
+  function summarizeUpdatePayload(payload) {
+    const summary = {
+      findings: 0,
+      vulnerabilityNodes: 0,
+      hasModelPatch: false,
+      hasTopologyPatch: false,
+      hasModel: false,
+      scannedNodes: 0,
+    };
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return summary;
+    }
+    if (Array.isArray(payload.findings)) {
+      summary.findings = payload.findings.length;
+    }
+    if (payload.vulnerabilities && typeof payload.vulnerabilities === 'object' && !Array.isArray(payload.vulnerabilities)) {
+      summary.vulnerabilityNodes = Object.keys(payload.vulnerabilities).length;
+    }
+    if (Array.isArray(payload.vulnerabilities)) {
+      summary.findings += payload.vulnerabilities.length;
+    }
+    if (payload.model && typeof payload.model === 'object') {
+      summary.hasModel = true;
+    }
+    if (payload.modelPatch && typeof payload.modelPatch === 'object') {
+      summary.hasModelPatch = true;
+    }
+    if ((payload.topology && typeof payload.topology === 'object') || (payload.topologyPatch && typeof payload.topologyPatch === 'object')) {
+      summary.hasTopologyPatch = true;
+    }
+    const cyberData = payload.cyber_data;
+    if (cyberData && typeof cyberData === 'object' && Array.isArray(cyberData.scanned_nodes)) {
+      summary.scannedNodes = cyberData.scanned_nodes.length;
+    } else if (Array.isArray(payload.scanned_nodes)) {
+      summary.scannedNodes = payload.scanned_nodes.length;
+    }
+    return summary;
+  }
+
+  function renderPredictionUpdateSummary(context = null) {
+    if (!predictionUpdateSummary) return;
+    if (!context) {
+      predictionUpdateSummary.innerHTML = 'Run a prediction to see the active request, any applied updates, and returned warnings.';
+      predictionUpdateSummary.classList.add('text-muted');
+      return;
+    }
+    predictionUpdateSummary.classList.remove('text-muted');
+    const parts = [
+      `<div><strong>Query nodes:</strong> ${escapeHtml(context.nodes.length ? context.nodes.join(', ') : 'All model nodes')}</div>`,
+      `<div><strong>Time horizon:</strong> ${escapeHtml(String(context.tValue))}</div>`,
+    ];
+    if (context.includeUpdate) {
+      const updateSummary = summarizeUpdatePayload(context.requestBody);
+      parts.push(`<div><strong>Update payload:</strong> present</div>`);
+      parts.push(`<div><strong>Findings:</strong> ${escapeHtml(String(updateSummary.findings))}</div>`);
+      parts.push(`<div><strong>Vulnerability nodes:</strong> ${escapeHtml(String(updateSummary.vulnerabilityNodes))}</div>`);
+      parts.push(`<div><strong>Scanned nodes:</strong> ${escapeHtml(String(updateSummary.scannedNodes))}</div>`);
+      parts.push(`<div><strong>Full model:</strong> ${escapeHtml(updateSummary.hasModel ? 'yes' : 'no')}</div>`);
+      parts.push(`<div><strong>Model patch:</strong> ${escapeHtml(updateSummary.hasModelPatch ? 'yes' : 'no')}</div>`);
+      parts.push(`<div><strong>Topology patch:</strong> ${escapeHtml(updateSummary.hasTopologyPatch ? 'yes' : 'no')}</div>`);
+    } else {
+      parts.push('<div><strong>Update payload:</strong> none</div>');
+    }
+
+    const updatedNodes = Array.isArray(context.response?.updated_nodes) ? context.response.updated_nodes : [];
+    const warnings = Array.isArray(context.response?.warnings) ? context.response.warnings : [];
+    if (updatedNodes.length) {
+      parts.push(`<div><strong>Updated nodes:</strong> ${escapeHtml(updatedNodes.join(', '))}</div>`);
+    }
+    if (warnings.length) {
+      parts.push(`<div><strong>Warnings:</strong> ${escapeHtml(warnings.join(' | '))}</div>`);
+    }
+    if (context.response?.message) {
+      parts.push(`<div><strong>Service:</strong> ${escapeHtml(context.response.message)}</div>`);
+    }
+    const inventorySummary = context.response?.inventory_summary;
+    if (inventorySummary && typeof inventorySummary === 'object') {
+      parts.push(`<div><strong>Inventory findings:</strong> ${escapeHtml(String(inventorySummary.finding_count || 0))}</div>`);
+      parts.push(`<div><strong>Nodes with findings:</strong> ${escapeHtml(String(inventorySummary.vulnerable_node_count || 0))}</div>`);
+      const evaluatedNodes = Array.isArray(inventorySummary.mapped_nodes)
+        ? inventorySummary.mapped_nodes.filter((item) => context.nodes.length ? context.nodes.includes(item.risk_node_id) : true)
+        : [];
+      if (evaluatedNodes.length) {
+        parts.push('<div><strong>Evaluated vulnerabilities:</strong></div>');
+        parts.push(evaluatedNodes.map((item) => {
+          const vulns = Array.isArray(item.vulnerabilities) ? item.vulnerabilities : [];
+          if (!vulns.length) {
+            return `<div class="small text-muted">${escapeHtml(String(item.risk_node_id || item.name || 'node'))}: no collected vulnerability data</div>`;
+          }
+          const cveText = vulns.map((vuln) => `${vuln.id || vuln.cve_id || 'CVE'} ${formatProbability(vuln.epss)}`).join(', ');
+          return `<div class="small text-muted">${escapeHtml(String(item.risk_node_id || item.name || 'node'))}: ${escapeHtml(cveText)}</div>`;
+        }).join(''));
+      }
+    }
+    predictionUpdateSummary.innerHTML = parts.join('');
+  }
+
+  function buildPredictionRequestPayload({ allowPayloadUpdate = true } = {}) {
     const nodes = parseNodeList(predictionNodesInput.value);
     const tValue = Math.max(1, Number(predictionTInput.value || 4));
-    setInlineStatus(predictionStatus, 'Running module prediction query…');
-    addActivity('prediction', 'Running module prediction query', `${nodes.length} nodes, T=${tValue}`);
+    const payloadValue = (predictionUpdateInput.value || '').trim();
+    const includeUpdate = Boolean(allowPayloadUpdate && payloadValue);
+    const body = includeUpdate ? (parseStructuredPredictionPayload() || {}) : {};
+    body.T = tValue;
+    if (nodes.length) {
+      body.nodes = nodes;
+    }
+    body.return_all = true;
+    body.use_inventory_vulnerabilities = true;
+    return { body, nodes, tValue, includeUpdate };
+  }
+
+  async function loadPrediction(options = {}) {
+    const allowPayloadUpdate = options.allowPayloadUpdate !== false;
+    const { body, nodes, tValue, includeUpdate } = buildPredictionRequestPayload({ allowPayloadUpdate });
+    const activityLabel = includeUpdate ? 'Applying update payload and running prediction' : 'Running module prediction query';
+    setInlineStatus(predictionStatus, includeUpdate ? 'Applying structured update and refreshing prediction…' : 'Running module prediction query…');
+    addActivity('prediction', activityLabel, `${nodes.length} nodes, T=${tValue}`);
     try {
       const response = await fetch("{% url 'dashboard:risk_assessment_probability' %}", {
         method: 'POST',
@@ -2522,20 +2804,33 @@
           'Content-Type': 'application/json',
           'X-CSRFToken': getCSRFToken(),
         },
-        body: JSON.stringify({
-          T: tValue,
-          nodes,
-          return_all: true,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || 'Prediction query failed.');
       }
       renderPrediction(data);
-      setInlineStatus(predictionStatus, `Loaded ${Object.keys(data.results || {}).length} prediction slices for ${nodes.length} module nodes.`);
-      addActivity('prediction', 'Module prediction updated', `${Object.keys(data.results || {}).length} slices`);
+      renderPredictionUpdateSummary({
+        includeUpdate,
+        nodes,
+        tValue,
+        requestBody: body,
+        response: data,
+      });
+      const slices = Object.keys(data.results || {}).length;
+      const updatedNodes = Array.isArray(data.updated_nodes) ? data.updated_nodes : [];
+      const statusMessage = includeUpdate
+        ? (
+            updatedNodes.length
+              ? `Applied update payload to ${updatedNodes.length} node(s) and loaded ${slices} prediction slices.`
+              : `Update payload submitted and ${slices} prediction slices loaded.`
+          )
+        : `Loaded ${slices} prediction slices for ${nodes.length} module nodes.`;
+      setInlineStatus(predictionStatus, statusMessage);
+      addActivity('prediction', includeUpdate ? 'Prediction updated with payload' : 'Module prediction updated', `${slices} slices`);
     } catch (err) {
+      renderPredictionUpdateSummary(null);
       predictionSummary.innerHTML = '';
       predictionResults.innerHTML = `<div class="text-danger">${escapeHtml(err.message)}</div>`;
       setInlineStatus(predictionStatus, err.message, true);
@@ -2659,7 +2954,8 @@
   }
 
   function setDefaultNodeInputs() {
-    const text = hybridFocusNodes.join('\n');
+    const focusNode = hybridFocusNodes.find((item) => item === 'plc-main') || hybridFocusNodes[0] || '';
+    const text = focusNode;
     predictionNodesInput.value = text;
     historyNodesInput.value = text;
   }
@@ -2687,7 +2983,20 @@
     loadPipelineLog();
   });
   predictionRunButton.addEventListener('click', loadPrediction);
-  predictionDefaultsButton.addEventListener('click', setDefaultNodeInputs);
+  predictionNodeFilterInput.addEventListener('input', renderPredictionNodePicker);
+  predictionNodesInput.addEventListener('input', renderPredictionNodePicker);
+  predictionNodePicker.addEventListener('change', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || target.type !== 'checkbox') return;
+    const selected = new Set(parseNodeList(predictionNodesInput.value));
+    if (target.checked) {
+      selected.add(target.value);
+    } else {
+      selected.delete(target.value);
+    }
+    updatePredictionNodeTextarea(Array.from(selected));
+    renderPredictionNodePicker();
+  });
   historyStartButton.addEventListener('click', startHistory);
   historyStopButton.addEventListener('click', stopHistory);
   historyResetButton.addEventListener('click', resetHistory);
@@ -2726,7 +3035,10 @@
   document.getElementById('risk-fault-tree-tab').addEventListener('shown.bs.tab', () => {
     loadFaultTreeSummary(selectedFaultTreeId);
   });
-  document.getElementById('risk-prediction-tab').addEventListener('shown.bs.tab', loadPrediction);
+  document.getElementById('risk-prediction-tab').addEventListener('shown.bs.tab', () => {
+    loadPredictionAvailableNodes();
+    loadPrediction({ allowPayloadUpdate: false });
+  });
   document.getElementById('risk-logs-tab').addEventListener('shown.bs.tab', renderActivityLog);
   document.addEventListener('fullscreenchange', updateSystemFullscreenState);
   window.addEventListener('resize', () => {
@@ -2738,6 +3050,8 @@
   });
 
   setDefaultNodeInputs();
+  loadPredictionAvailableNodes();
+  renderPredictionUpdateSummary(null);
   renderActivityLog();
   fetchStatus();
   loadRepoSummary();

@@ -228,6 +228,48 @@ def test_risk_assessment_service_detection_proxy(user_client, monkeypatch):
     assert mock_post.call_args.kwargs["json"] == payload
 
 
+def test_risk_get_probability_uses_long_timeout(monkeypatch):
+    from dashboard import views as dashboard_views
+
+    captured = {}
+
+    def fake_get(url, timeout, params=None):
+        captured["url"] = url
+        captured["timeout"] = timeout
+        captured["params"] = params
+        return MockResponse({"request": {"T": 20}, "results": {"plc-main": {"Nominal": 1.0}}})
+
+    monkeypatch.setattr(dashboard_views.requests, "get", fake_get)
+
+    response = dashboard_views._risk_get_probability(t_value=20, nodes=["plc-main"])
+
+    assert "plc-main" in response["results"]
+    assert captured["url"].endswith("/get_probability")
+    assert captured["params"] == {"T": 20, "nodes": "plc-main"}
+    assert captured["timeout"] == dashboard_views.RISK_ASSESSMENT_LONG_TIMEOUT
+
+
+def test_risk_post_cyberpen_uses_long_timeout(monkeypatch):
+    from dashboard import views as dashboard_views
+
+    captured = {}
+
+    def fake_post(url, timeout, json=None):
+        captured["url"] = url
+        captured["timeout"] = timeout
+        captured["json"] = json
+        return MockResponse({"status": "ok", "results": {"plc-main": {"Nominal": 1.0}}})
+
+    monkeypatch.setattr(dashboard_views.requests, "post", fake_post)
+
+    response = dashboard_views._risk_post_cyberpen({"nodes": ["plc-main"], "T": 20})
+
+    assert response["status"] == "ok"
+    assert captured["url"].endswith("/post_cyberpen")
+    assert captured["json"] == {"nodes": ["plc-main"], "T": 20}
+    assert captured["timeout"] == dashboard_views.RISK_ASSESSMENT_LONG_TIMEOUT
+
+
 @pytest.mark.django_db
 def test_risk_assessment_service_probability_proxy(user_client, monkeypatch):
     from dashboard import views as dashboard_views
@@ -348,7 +390,9 @@ def test_risk_assessment_probability_proxy_cyber_data(user_client, monkeypatch):
     assert response.json()["updated_nodes"] == ["PLC-1"]
     assert mock_post.call_args.args[0].endswith("/post_cyberpen")
     assert mock_post.call_args.kwargs["json"]["nodes"] == ["PLC-1"]
-    assert mock_post.call_args.kwargs["json"]["vulnerabilities"]["PLC-1"]["CVE-2024-0001"]["epss"] == 0.7
+    assert mock_post.call_args.kwargs["json"]["findings"] == [
+        {"id": "CVE-2024-0001", "epss": 0.7, "asset": "PLC-1", "cve": "CVE-2024-0001"}
+    ]
 
 
 @pytest.mark.django_db
@@ -495,6 +539,59 @@ def test_build_cyber_data_for_risk_nodes_includes_secondary_interface_scan_vulne
     assert mapped[0]["vulnerabilities"][0]["id"] == "CVE-2024-3000"
 
 
+@pytest.mark.django_db
+def test_build_cyber_data_for_risk_nodes_uses_gvmd_and_skips_stale_hybrid_nodes(monkeypatch):
+    from dashboard import risk_assessment as risk_module
+
+    stale = Node.objects.create(name="plc-main", hostname="plc-main", ip_address="10.1.13.10")
+    NodeInterface.objects.create(node=stale, name="eth0", ip="10.0.13.10", mac="aa:bb:cc:dd:ee:01")
+
+    current = Node.objects.create(
+        name="plc-main.iaea.ifan.com",
+        hostname="plc-main.iaea.ifan.com",
+        ip_address="172.31.250.14",
+    )
+    NodeInterface.objects.create(node=current, name="eth0", ip="10.1.1.14", mac="aa:bb:cc:dd:ee:14")
+    NodeInterface.objects.create(node=current, name="eth1", ip="10.1.2.14", mac="aa:bb:cc:dd:ee:15")
+
+    def fake_fetch_gvmd(asset_ips, limit=200):
+        if "10.1.2.14" not in asset_ips:
+            return []
+        return [
+            {
+                "host_ip": "10.1.2.14",
+                "cve_id": "CVE-2024-3999",
+                "severity": "Critical",
+                "cvss_score": 9.8,
+            }
+        ]
+
+    monkeypatch.setattr(risk_module, "fetch_gvmd_findings_for_ips", fake_fetch_gvmd)
+
+    cyber_data, mapped = build_cyber_data_for_risk_nodes(["plc-main"])
+
+    assert mapped == [
+        {
+            "node_id": current.id,
+            "name": "plc-main.iaea.ifan.com",
+            "ip_address": "10.1.1.14",
+            "risk_node_id": "plc-main",
+            "vulnerability_count": 1,
+            "vulnerabilities": [{"id": "CVE-2024-3999", "epss": pytest.approx(0.95), "sources": ["gvmd"]}],
+            "has_vulnerabilities": True,
+        }
+    ]
+    assert cyber_data == {
+        "scanned_nodes": [
+            {
+                "id": "plc-main",
+                "type": "network_node",
+                "vulnerability": [{"id": "CVE-2024-3999", "epss": pytest.approx(0.95), "sources": ["gvmd"]}],
+            }
+        ]
+    }
+
+
 def test_summarize_risk_results_assigns_levels():
     mapped_nodes = [
         {"node_id": 1, "name": "PLC-1", "ip_address": "10.0.0.10", "risk_node_id": "PLC-1"},
@@ -573,7 +670,9 @@ def test_risk_assessment_network_compute_proxy(user_client, monkeypatch):
     posted_payload = mock_post.call_args.kwargs["json"]
     assert mock_post.call_args.args[0].endswith("/post_cyberpen")
     assert posted_payload["nodes"] == ["10.0.0.20", "PLC-1"]
-    assert posted_payload["vulnerabilities"]["PLC-1"]["CVE-2024-0003"]["epss"] == 0.7
+    assert posted_payload["findings"] == [
+        {"id": "CVE-2024-0003", "epss": 0.7, "sources": ["scan"], "asset": "PLC-1", "cve": "CVE-2024-0003"}
+    ]
 
 
 def test_risk_local_model_payload_auto_falls_back_to_latest_prefixed_file(tmp_path, settings):

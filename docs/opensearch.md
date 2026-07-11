@@ -6,7 +6,7 @@ This project can forward SIEM events to an OpenSearch single-node stack for inde
 - OpenSearch: `http://localhost:9200`
 - OpenSearch Dashboards: `http://localhost:5601`
 
-Both are defined in `docker-compose.yml` and `docker-compose.prod.yml`.
+Both are defined in `docker-compose.yml`.
 
 ## Configuration
 Set these values in `.env`:

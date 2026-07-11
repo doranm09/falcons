@@ -2,6 +2,8 @@
 
 A comprehensive Django dashboard plugin for managing Sliver C2 operations, providing a web interface for command and control of red team implants and beacons.
 
+Run commands in this guide from the repository root unless a section says otherwise.
+
 ## 🎯 **Overview**
 
 The Sliver C2 Dashboard Plugin integrates Sliver teamserver with a Django web application, enabling red team operators to:

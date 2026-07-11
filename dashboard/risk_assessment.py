@@ -2,6 +2,7 @@ import ipaddress
 import re
 from typing import Dict, List, Tuple
 
+from .gvmd import fetch_gvmd_findings_for_ips
 from .models import Node, RiskNodeMapping, Vulnerability, ScanVulnerability
 
 
@@ -112,6 +113,22 @@ def _hybrid_record_for_identity(value: str = "") -> dict | None:
     return None
 
 
+def _hybrid_record_ips(record: dict | None) -> set[str]:
+    if not isinstance(record, dict):
+        return set()
+    return {
+        str(ip_text).strip()
+        for ip_text in record.get("ip_addresses", []) or []
+        if str(ip_text or "").strip() and not _is_oob_management_ip(str(ip_text))
+    }
+
+
+def _node_matches_hybrid_record(node: Node, record: dict | None) -> bool:
+    if not record:
+        return False
+    return bool(_hybrid_record_ips(record).intersection(risk_candidate_node_ips(node, include_oob=False)))
+
+
 def _match_risk_node_from_tokens(tokens: list[str], risk_nodes: List[str]) -> str | None:
     risk_set = {str(risk_node) for risk_node in risk_nodes}
     risk_by_normalized = {
@@ -153,17 +170,26 @@ def _resolve_risk_node_id_for_node(
     if not _auto_match_allowed(node):
         return None
 
-    direct_tokens = [str(getattr(node, "name", "") or "").strip(), *risk_candidate_node_ips(node, include_oob=False)]
+    direct_tokens = [
+        str(getattr(node, "name", "") or "").strip(),
+        str(getattr(node, "hostname", "") or "").strip(),
+        *risk_candidate_node_ips(node, include_oob=False),
+    ]
     direct_match = _match_risk_node_from_tokens(direct_tokens, risk_nodes)
     if direct_match:
-        return direct_match
+        hybrid_record = _hybrid_record_for_identity(direct_match)
+        if not hybrid_record or _node_matches_hybrid_record(node, hybrid_record):
+            return direct_match
 
-    hybrid_record = None
-    for token in direct_tokens:
+    hybrid_tokens = [
+        str(getattr(node, "name", "") or "").strip(),
+        str(getattr(node, "hostname", "") or "").strip(),
+        *risk_candidate_node_ips(node, include_oob=True),
+    ]
+    for token in hybrid_tokens:
         hybrid_record = _hybrid_record_for_identity(token)
-        if hybrid_record:
-            break
-    if hybrid_record:
+        if not hybrid_record or not _node_matches_hybrid_record(node, hybrid_record):
+            continue
         hybrid_match = _match_risk_node_from_tokens(_hybrid_record_tokens(hybrid_record), risk_nodes)
         if hybrid_match:
             return hybrid_match
@@ -187,11 +213,7 @@ def _mapping_score_for_risk_node(node: Node, risk_node_id: str, hybrid_record: d
         return (1, "matched node name")
 
     if hybrid_record:
-        record_ips = {
-            str(ip_text).strip()
-            for ip_text in hybrid_record.get("ip_addresses", []) or []
-            if ip_text and not _is_oob_management_ip(str(ip_text))
-        }
+        record_ips = _hybrid_record_ips(hybrid_record)
         if record_ips.intersection(in_band_ips):
             return (2, "matched validated hybrid IP")
         record_tokens = {_normalize_risk_identity(token) for token in _hybrid_record_tokens(hybrid_record)}
@@ -248,13 +270,48 @@ def suggest_risk_node_mappings(risk_nodes: List[str], candidate_nodes: List[Node
     return suggestions
 
 
+def _merge_vulnerability_rows(vulnerabilities: list[dict]) -> list[dict]:
+    vuln_map = {}
+    for vuln in vulnerabilities:
+        cve = str(vuln.get("id") or "").strip()
+        if not cve:
+            continue
+        entry = vuln_map.setdefault(cve, {"id": cve, "epss": 0.0, "sources": set()})
+        entry["epss"] = max(entry["epss"], float(vuln.get("epss") or 0.0))
+        source = vuln.get("source")
+        if source:
+            entry["sources"].add(str(source))
+
+    rows = [
+        {
+            "id": cve,
+            "epss": entry["epss"],
+            "sources": sorted(entry["sources"]),
+        }
+        for cve, entry in vuln_map.items()
+    ]
+    rows.sort(key=lambda value: value["epss"], reverse=True)
+    return rows
+
+
+def _mapped_node_rank(node: Node, risk_node_id: str, vulnerability_count: int) -> tuple[int, int, int, int]:
+    in_band_ips = set(risk_candidate_node_ips(node, include_oob=False))
+    hybrid_matches = len(in_band_ips.intersection(_hybrid_record_ips(_hybrid_record_for_identity(risk_node_id))))
+    return (
+        hybrid_matches,
+        vulnerability_count,
+        len(in_band_ips),
+        int(getattr(node, "id", 0) or 0),
+    )
+
+
 def build_cyber_data_for_risk_nodes(
     risk_nodes: List[str],
     scan_run_id: int | None = None,
 ) -> Tuple[Dict, List[Dict]]:
     """Build cyber.json payload and return a node mapping list."""
-    scanned_nodes = []
-    mapped_nodes = []
+    scanned_nodes: list[dict] = []
+    mapped_nodes: list[dict] = []
 
     risk_set = set(risk_nodes)
     nodes = Node.objects.all()
@@ -273,20 +330,8 @@ def build_cyber_data_for_risk_nodes(
         if mapping.node_id and mapping.node and mapping.node.ip_address:
             mapping_by_ip[mapping.node.ip_address] = mapping
 
-    def resolve_risk_node_id(node: Node) -> str | None:
-        mapping = mapping_by_node_id.get(node.id)
-        if not mapping and node.ip_address:
-            mapping = mapping_by_ip.get(node.ip_address)
-        if mapping:
-            return mapping.risk_node_id
-        if node.name and node.name in risk_set:
-            return node.name
-        if node.ip_address and node.ip_address in risk_set:
-            return node.ip_address
-        return None
-
     def is_mapped(node: Node) -> bool:
-        return resolve_risk_node_id(node) is not None
+        return _resolve_risk_node_id_for_node(node, risk_nodes, mapping_by_node_id, mapping_by_ip) is not None
 
     selected_nodes = []
     selected_by_ip = {}
@@ -306,6 +351,34 @@ def build_cyber_data_for_risk_nodes(
     selected_nodes.extend(selected_by_ip.values())
     selected_nodes.extend(selected_by_name.values())
 
+    scan_candidate_ips_by_node_id = {
+        node.id: risk_candidate_node_ips(node, include_oob=True)
+        for node in selected_nodes
+    }
+    all_candidate_ips = sorted(
+        {
+            ip_text
+            for ip_values in scan_candidate_ips_by_node_id.values()
+            for ip_text in ip_values
+        }
+    )
+    gvmd_findings_by_ip: dict[str, list[dict]] = {}
+    if all_candidate_ips:
+        try:
+            gvmd_findings = fetch_gvmd_findings_for_ips(
+                all_candidate_ips,
+                limit=max(500, len(all_candidate_ips) * 250),
+            )
+        except Exception:
+            gvmd_findings = []
+        for finding in gvmd_findings:
+            host_ip = str(finding.get("host_ip") or "").strip()
+            if host_ip:
+                gvmd_findings_by_ip.setdefault(host_ip, []).append(finding)
+
+    mapped_entries_by_risk_node_id: dict[str, dict] = {}
+    mapped_entry_ranks: dict[str, tuple[int, int, int, int]] = {}
+
     for node in selected_nodes:
         vulnerabilities = []
 
@@ -319,7 +392,7 @@ def build_cyber_data_for_risk_nodes(
             })
 
         # Scan-specific vulnerabilities tied by any known interface IP for the asset.
-        scan_candidate_ips = risk_candidate_node_ips(node, include_oob=True)
+        scan_candidate_ips = scan_candidate_ips_by_node_id.get(node.id, [])
         if scan_candidate_ips:
             scan_vulns = ScanVulnerability.objects.filter(host_ip__in=scan_candidate_ips)
             if scan_run_id is not None:
@@ -331,30 +404,27 @@ def build_cyber_data_for_risk_nodes(
                     "epss": epss,
                     "source": "scan",
                 })
+            for ip_text in scan_candidate_ips:
+                for gvmd_finding in gvmd_findings_by_ip.get(ip_text, []):
+                    cve_id = str(gvmd_finding.get("cve_id") or "").strip()
+                    if not cve_id:
+                        continue
+                    vulnerabilities.append(
+                        {
+                            "id": cve_id,
+                            "epss": epss_from_cvss(gvmd_finding.get("cvss_score"), gvmd_finding.get("severity")),
+                            "source": "gvmd",
+                        }
+                    )
 
-        # Deduplicate by CVE, keep max epss and aggregate evidence source.
-        vuln_map = {}
-        for vuln in vulnerabilities:
-            cve = vuln["id"]
-            entry = vuln_map.setdefault(cve, {"id": cve, "epss": 0.0, "sources": set()})
-            entry["epss"] = max(entry["epss"], vuln["epss"])
-            source = vuln.get("source")
-            if source:
-                entry["sources"].add(str(source))
-
-        vuln_list = [
-            {
-                "id": cve,
-                "epss": entry["epss"],
-                "sources": sorted(entry["sources"]),
-            }
-            for cve, entry in vuln_map.items()
-        ]
-        vuln_list.sort(key=lambda v: v["epss"], reverse=True)
+        vuln_list = _merge_vulnerability_rows(vulnerabilities)
         top_vulns = vuln_list[:10]
 
         node_id = _resolve_risk_node_id_for_node(node, risk_nodes, mapping_by_node_id, mapping_by_ip)
-        mapped_nodes.append({
+        if not node_id:
+            continue
+
+        entry = {
             "node_id": node.id,
             "name": node.name,
             "ip_address": preferred_risk_node_ip(node),
@@ -362,17 +432,22 @@ def build_cyber_data_for_risk_nodes(
             "vulnerability_count": len(vuln_list),
             "vulnerabilities": top_vulns,
             "has_vulnerabilities": bool(vuln_list),
-        })
+        }
+        rank = _mapped_node_rank(node, node_id, len(vuln_list))
+        existing_rank = mapped_entry_ranks.get(node_id)
+        if existing_rank is None or rank > existing_rank:
+            mapped_entry_ranks[node_id] = rank
+            mapped_entries_by_risk_node_id[node_id] = entry
 
-        if not node_id:
-            continue
-
-        scanned_nodes.append({
-            "id": node_id,
+    mapped_nodes = sorted(mapped_entries_by_risk_node_id.values(), key=lambda item: str(item["risk_node_id"]))
+    scanned_nodes = [
+        {
+            "id": item["risk_node_id"],
             "type": "network_node",
-            "vulnerability": top_vulns,
-        })
-
+            "vulnerability": item["vulnerabilities"],
+        }
+        for item in mapped_nodes
+    ]
     return {"scanned_nodes": scanned_nodes}, mapped_nodes
 
 

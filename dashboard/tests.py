@@ -2511,6 +2511,15 @@ class RiskAssessmentRepoIntegrationTests(TestCase):
         self.assertContains(response, "risk-system-layout")
         self.assertContains(response, "risk-system-fullscreen")
         self.assertContains(response, "Upload Repo Model")
+        self.assertContains(response, "risk-prediction-update-payload")
+        self.assertContains(response, "Available Module Nodes")
+        self.assertContains(response, "risk-prediction-node-picker")
+        self.assertContains(response, "Optional Update Payload")
+        self.assertContains(response, "Run Prediction")
+        self.assertContains(response, "Run a prediction to see the active request")
+        self.assertNotContains(response, "Apply Update + Predict")
+        self.assertNotContains(response, "Use Update Example")
+        self.assertIn("csrftoken", response.cookies)
 
     def test_risk_assessment_ics_summary_api_reports_repo_artifacts(self):
         with self._settings_override():
@@ -2633,6 +2642,214 @@ class RiskAssessmentRepoIntegrationTests(TestCase):
             0.99,
         )
         self.assertEqual(detail_payload["conditions"][0]["event_count"], 3)
+
+
+class RiskAssessmentPredictionPayloadTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    @patch("dashboard.views._risk_post_cyberpen")
+    def test_probability_api_accepts_findings_payload(self, mock_post_cyberpen):
+        mock_post_cyberpen.return_value = {
+            "status": "ok",
+            "updated_nodes": ["firewall-0"],
+            "results": {"0": {"firewall-0": {"normal": 0.8, "compromised": 0.2}}},
+        }
+
+        response = self.client.post(
+            reverse("dashboard:risk_assessment_probability"),
+            data=json.dumps(
+                {
+                    "T": 4,
+                    "nodes": ["firewall-0"],
+                    "returnAll": True,
+                    "findings": [
+                        {
+                            "asset": "firewall-0",
+                            "cve": "CVE-TEST-0001",
+                            "cvss": 7.5,
+                        }
+                    ],
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["updated_nodes"], ["firewall-0"])
+
+        mock_post_cyberpen.assert_called_once()
+        forwarded = mock_post_cyberpen.call_args.args[0]
+        self.assertEqual(forwarded["T"], 4)
+        self.assertEqual(forwarded["nodes"], ["firewall-0"])
+        self.assertTrue(forwarded["returnAll"])
+        self.assertEqual(len(forwarded["findings"]), 1)
+        self.assertEqual(forwarded["findings"][0]["asset"], "firewall-0")
+        self.assertEqual(forwarded["findings"][0]["cve"], "CVE-TEST-0001")
+        self.assertEqual(forwarded["findings"][0]["cvss"], 7.5)
+
+    @patch("dashboard.views._risk_post_cyberpen")
+    def test_probability_api_accepts_cyber_data_payload(self, mock_post_cyberpen):
+        mock_post_cyberpen.return_value = {
+            "status": "ok",
+            "updated_nodes": ["plc-main"],
+            "results": {"0": {"plc-main": {"normal": 0.7, "compromised": 0.3}}},
+        }
+
+        response = self.client.post(
+            reverse("dashboard:risk_assessment_probability"),
+            data=json.dumps(
+                {
+                    "T": 3,
+                    "cyber_data": {
+                        "scanned_nodes": [
+                            {
+                                "id": "plc-main",
+                                "vulnerability": [
+                                    {
+                                        "id": "CVE-TEST-0002",
+                                        "cvss": 8.1,
+                                        "source": "scan",
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_post_cyberpen.assert_called_once()
+        forwarded = mock_post_cyberpen.call_args.args[0]
+        self.assertEqual(forwarded["T"], 3)
+        self.assertEqual(forwarded["nodes"], ["plc-main"])
+        self.assertEqual(len(forwarded["findings"]), 1)
+        self.assertEqual(forwarded["findings"][0]["asset"], "plc-main")
+        self.assertEqual(forwarded["findings"][0]["cve"], "CVE-TEST-0002")
+        self.assertEqual(forwarded["findings"][0]["cvss"], 8.1)
+        self.assertEqual(forwarded["findings"][0]["source"], "scan")
+
+    def test_probability_api_rejects_invalid_findings_type(self):
+        response = self.client.post(
+            reverse("dashboard:risk_assessment_probability"),
+            data=json.dumps({"findings": {"asset": "firewall-0"}}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "findings must be a list.")
+
+    @patch("dashboard.views.build_cyber_data_for_risk_nodes")
+    @patch("dashboard.views._risk_get_nodes_payload")
+    def test_inventory_api_returns_module_vulnerabilities(self, mock_get_nodes_payload, mock_build_cyber_data):
+        mock_get_nodes_payload.return_value = {
+            "nodes": {
+                "plc-main": {"states": ["Nominal", "Faulty", "Compromised"]},
+                "historian": {"states": ["Nominal", "Faulty", "Compromised"]},
+            }
+        }
+        mock_build_cyber_data.return_value = (
+            {
+                "scanned_nodes": [
+                    {
+                        "id": "plc-main",
+                        "type": "network_node",
+                        "vulnerability": [{"id": "CVE-TEST-0001", "epss": 0.42}],
+                    }
+                ]
+            },
+            [
+                {
+                    "node_id": 1,
+                    "name": "PLC Main",
+                    "ip_address": "10.1.1.14",
+                    "risk_node_id": "plc-main",
+                    "vulnerability_count": 1,
+                    "vulnerabilities": [{"id": "CVE-TEST-0001", "epss": 0.42, "sources": ["scan"]}],
+                    "has_vulnerabilities": True,
+                },
+                {
+                    "node_id": 2,
+                    "name": "Historian",
+                    "ip_address": "10.3.50.10",
+                    "risk_node_id": "historian",
+                    "vulnerability_count": 0,
+                    "vulnerabilities": [],
+                    "has_vulnerabilities": False,
+                },
+            ],
+        )
+
+        response = self.client.get(reverse("dashboard:risk_assessment_inventory"))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["risk_nodes"], ["historian", "plc-main"])
+        self.assertEqual(payload["finding_count"], 1)
+        self.assertEqual(payload["vulnerable_node_count"], 1)
+        self.assertEqual(payload["mapped_nodes"][0]["risk_node_id"], "plc-main")
+
+    @patch("dashboard.views.build_cyber_data_for_risk_nodes")
+    @patch("dashboard.views._risk_post_cyberpen")
+    def test_probability_api_applies_inventory_vulnerabilities(self, mock_post_cyberpen, mock_build_cyber_data):
+        mock_build_cyber_data.return_value = (
+            {
+                "scanned_nodes": [
+                    {
+                        "id": "plc-main",
+                        "type": "network_node",
+                        "vulnerability": [{"id": "CVE-TEST-0003", "epss": 0.55}],
+                    }
+                ]
+            },
+            [
+                {
+                    "node_id": 1,
+                    "name": "PLC Main",
+                    "ip_address": "10.1.1.14",
+                    "risk_node_id": "plc-main",
+                    "vulnerability_count": 1,
+                    "vulnerabilities": [{"id": "CVE-TEST-0003", "epss": 0.55, "sources": ["scan"]}],
+                    "has_vulnerabilities": True,
+                }
+            ],
+        )
+        mock_post_cyberpen.return_value = {
+            "status": "ok",
+            "updated_nodes": ["plc-main"],
+            "results": {"0": {"plc-main": {"normal": 0.7, "faulty": 0.1, "compromised": 0.2}}},
+        }
+
+        response = self.client.post(
+            reverse("dashboard:risk_assessment_probability"),
+            data=json.dumps(
+                {
+                    "T": 4,
+                    "nodes": ["plc-main"],
+                    "returnAll": True,
+                    "use_inventory_vulnerabilities": True,
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["updated_nodes"], ["plc-main"])
+        self.assertEqual(payload["inventory_summary"]["finding_count"], 1)
+        self.assertEqual(payload["inventory_summary"]["vulnerable_node_count"], 1)
+
+        mock_post_cyberpen.assert_called_once()
+        forwarded = mock_post_cyberpen.call_args.args[0]
+        self.assertEqual(forwarded["T"], 4)
+        self.assertEqual(forwarded["nodes"], ["plc-main"])
+        self.assertTrue(forwarded["returnAll"])
+        self.assertEqual(forwarded["findings"][0]["asset"], "plc-main")
+        self.assertEqual(forwarded["findings"][0]["cve"], "CVE-TEST-0003")
+        self.assertEqual(forwarded["findings"][0]["epss"], 0.55)
 
 
 class AgentVersionTests(TestCase):

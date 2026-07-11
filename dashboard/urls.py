@@ -123,6 +123,7 @@ urlpatterns = [
     path('risk-assessment/ics/fault-tree-detail/', views.risk_assessment_ics_fault_tree_detail_api, name='risk_assessment_ics_fault_tree_detail'),
     path('risk-assessment/status/', views.risk_assessment_status_api, name='risk_assessment_status'),
     path('risk-assessment/nodes/', views.risk_assessment_nodes_api, name='risk_assessment_nodes'),
+    path('risk-assessment/inventory/', views.risk_assessment_inventory_api, name='risk_assessment_inventory'),
     path('risk-assessment/evidence/', views.risk_assessment_evidence_api, name='risk_assessment_evidence'),
     path('risk-assessment/probability/', views.risk_assessment_probability_api, name='risk_assessment_probability'),
     path('risk-assessment/network/compute/', views.risk_assessment_network_compute_api, name='risk_assessment_network_compute'),

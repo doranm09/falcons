@@ -1,4 +1,4 @@
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods
 import os
 
@@ -239,7 +239,11 @@ from .pid_network import (
 from .pid_testbed import build_testbed_from_sim_system
 
 SNIFFER_BASE_URL = 'http://localhost:5050'
-RISK_ASSESSMENT_TIMEOUT = 15
+RISK_ASSESSMENT_TIMEOUT = int(os.environ.get("RISK_ASSESSMENT_TIMEOUT_SEC", "15") or 15)
+RISK_ASSESSMENT_LONG_TIMEOUT = max(
+    RISK_ASSESSMENT_TIMEOUT,
+    int(os.environ.get("RISK_ASSESSMENT_LONG_TIMEOUT_SEC", "60") or 60),
+)
 RISK_ASSESSMENT_PRIMARY_NODE = "PLC-Main"
 RISK_ASSESSMENT_SAMPLE_CVE = "CVE-TEST-0001"
 SIEM_WRITE_ROLES = (SiemUserRole.Role.ADMIN, SiemUserRole.Role.ANALYST)
@@ -848,14 +852,15 @@ def _risk_call(func, path, **kwargs):
     return response
 
 
-def _risk_raw_call(func, path, retry=None, **kwargs):
+def _risk_raw_call(func, path, retry=None, timeout=None, **kwargs):
     if retry is None:
         retry = getattr(func, "__name__", "").lower() in {"get", "head", "options"}
+    request_timeout = RISK_ASSESSMENT_TIMEOUT if timeout is None else timeout
     last_exc = None
     attempts = 2 if retry else 1
     for attempt in range(attempts):
         try:
-            response = func(_risk_api_url(path), timeout=RISK_ASSESSMENT_TIMEOUT, **kwargs)
+            response = func(_risk_api_url(path), timeout=request_timeout, **kwargs)
             return response
         except Exception as exc:
             last_exc = exc
@@ -1280,9 +1285,19 @@ def _risk_get_probability(
         params["nodes"] = ",".join(str(node).strip() for node in nodes if str(node).strip())
     if return_all:
         params["returnAll"] = "true"
-    response = _risk_raw_call(requests.get, "/get_probability", params=params or None)
+    response = _risk_raw_call(
+        requests.get,
+        "/get_probability",
+        params=params or None,
+        timeout=RISK_ASSESSMENT_LONG_TIMEOUT,
+    )
     if _risk_missing_model_response(response) and _risk_upload_local_model_if_available():
-        response = _risk_raw_call(requests.get, "/get_probability", params=params or None)
+        response = _risk_raw_call(
+            requests.get,
+            "/get_probability",
+            params=params or None,
+            timeout=RISK_ASSESSMENT_LONG_TIMEOUT,
+        )
     _risk_raise_for_status(response, "/get_probability")
     return _normalize_risk_results_payload(response.json())
 
@@ -1346,10 +1361,70 @@ def _risk_extract_vulnerability_updates_from_cyber_data(cyber_data: dict) -> dic
     return vulnerability_nodes
 
 
+def _risk_findings_from_cyber_data(cyber_data: dict) -> list[dict]:
+    findings = []
+    for entry in cyber_data.get("scanned_nodes", []) if isinstance(cyber_data, dict) else []:
+        if not isinstance(entry, dict):
+            continue
+        node_id = str(entry.get("id") or entry.get("name") or "").strip()
+        if not node_id:
+            continue
+
+        vulnerabilities = entry.get("vulnerability")
+        if vulnerabilities is None:
+            vulnerabilities = entry.get("vulnerabilities")
+
+        normalized_items = []
+        if isinstance(vulnerabilities, dict):
+            for raw_cve_id, raw_payload in vulnerabilities.items():
+                cve_id = str(raw_cve_id or "").strip()
+                if not cve_id:
+                    continue
+                if isinstance(raw_payload, dict):
+                    item = dict(raw_payload)
+                elif isinstance(raw_payload, (int, float)):
+                    item = {"probability": raw_payload}
+                else:
+                    continue
+                item.setdefault("id", cve_id)
+                normalized_items.append(item)
+        elif isinstance(vulnerabilities, list):
+            normalized_items = [item for item in vulnerabilities if isinstance(item, dict)]
+
+        for vulnerability in normalized_items:
+            cve_id = str(
+                vulnerability.get("id")
+                or vulnerability.get("cve_id")
+                or vulnerability.get("cve")
+                or vulnerability.get("name")
+                or ""
+            ).strip()
+            if not cve_id:
+                continue
+            finding = dict(vulnerability)
+            finding.setdefault("asset", node_id)
+            finding.setdefault("cve", cve_id)
+            findings.append(finding)
+
+    return findings
+
+
 def _risk_post_mutation(path: str, payload: dict) -> dict:
-    response = _risk_raw_call(requests.post, path, json=payload, retry=False)
+    response = _risk_raw_call(
+        requests.post,
+        path,
+        json=payload,
+        retry=False,
+        timeout=RISK_ASSESSMENT_LONG_TIMEOUT,
+    )
     if _risk_missing_model_response(response) and _risk_upload_local_model_if_available():
-        response = _risk_raw_call(requests.post, path, json=payload, retry=False)
+        response = _risk_raw_call(
+            requests.post,
+            path,
+            json=payload,
+            retry=False,
+            timeout=RISK_ASSESSMENT_LONG_TIMEOUT,
+        )
     _risk_raise_for_status(response, path)
     try:
         return response.json()
@@ -1358,14 +1433,71 @@ def _risk_post_mutation(path: str, payload: dict) -> dict:
 
 
 def _risk_post_cyberpen(payload: dict) -> dict:
-    response = _risk_raw_call(requests.post, "/post_cyberpen", json=payload, retry=False)
+    response = _risk_raw_call(
+        requests.post,
+        "/post_cyberpen",
+        json=payload,
+        retry=False,
+        timeout=RISK_ASSESSMENT_LONG_TIMEOUT,
+    )
     if _risk_missing_model_response(response) and _risk_upload_local_model_if_available():
-        response = _risk_raw_call(requests.post, "/post_cyberpen", json=payload, retry=False)
+        response = _risk_raw_call(
+            requests.post,
+            "/post_cyberpen",
+            json=payload,
+            retry=False,
+            timeout=RISK_ASSESSMENT_LONG_TIMEOUT,
+        )
     _risk_raise_for_status(response, "/post_cyberpen")
     try:
         return _normalize_risk_results_payload(response.json())
     except Exception:
         return {}
+
+
+def _risk_build_structured_prediction_payload(
+    base_payload: dict,
+    *,
+    t_value: int | None = None,
+    nodes: list[str] | None = None,
+    return_all: bool = False,
+) -> dict:
+    cyberpen_payload: dict[str, object] = {}
+    if t_value is not None:
+        cyberpen_payload["T"] = t_value
+    if nodes:
+        cyberpen_payload["nodes"] = [str(node).strip() for node in nodes if str(node).strip()]
+    if return_all:
+        cyberpen_payload["returnAll"] = True
+
+    for key in ("model", "modelPatch", "topology", "topologyPatch"):
+        value = base_payload.get(key)
+        if value is not None:
+            cyberpen_payload[key] = value
+
+    vulnerabilities = base_payload.get("vulnerabilities")
+    if vulnerabilities is not None:
+        cyberpen_payload["vulnerabilities"] = vulnerabilities
+
+    findings = []
+    raw_findings = base_payload.get("findings")
+    if isinstance(raw_findings, list):
+        findings.extend(raw_findings)
+
+    cyber_data = base_payload.get("cyber_data")
+    if cyber_data is None and base_payload.get("scanned_nodes") is not None:
+        cyber_data = base_payload
+    if isinstance(cyber_data, dict):
+        findings.extend(_risk_findings_from_cyber_data(cyber_data))
+        if not cyberpen_payload.get("nodes"):
+            derived_nodes = _risk_query_nodes_from_cyber_data(cyber_data)
+            if derived_nodes:
+                cyberpen_payload["nodes"] = derived_nodes
+
+    if findings:
+        cyberpen_payload["findings"] = findings
+
+    return cyberpen_payload
 
 
 def _risk_post_cyberpen_assessment(
@@ -1374,14 +1506,52 @@ def _risk_post_cyberpen_assessment(
     nodes: list[str] | None = None,
     return_all: bool = False,
 ):
-    payload = {"T": t_value if t_value is not None else 3}
-    if nodes:
-        payload["nodes"] = [str(node).strip() for node in nodes if str(node).strip()]
-    if vulnerabilities is not None:
-        payload["vulnerabilities"] = vulnerabilities
-    if return_all:
-        payload["returnAll"] = True
+    payload = _risk_build_structured_prediction_payload(
+        {"vulnerabilities": vulnerabilities},
+        t_value=t_value if t_value is not None else 3,
+        nodes=nodes,
+        return_all=return_all,
+    )
     return _risk_post_cyberpen(payload)
+
+
+def _risk_inventory_for_nodes(
+    nodes: list[str] | None = None,
+    *,
+    scan_run_id: Optional[int] = None,
+) -> dict[str, object]:
+    risk_nodes = [str(node).strip() for node in (nodes or []) if str(node).strip()]
+    if not risk_nodes:
+        risk_nodes = _risk_node_ids_from_payload(_risk_get_nodes_payload())
+
+    cyber_data, mapped_nodes = build_cyber_data_for_risk_nodes(risk_nodes, scan_run_id=scan_run_id)
+    risk_node_set = set(risk_nodes)
+    filtered_mapped_nodes = []
+    for item in mapped_nodes:
+        risk_node_id = str(item.get("risk_node_id") or "").strip()
+        if not risk_node_id:
+            continue
+        if risk_node_set and risk_node_id not in risk_node_set:
+            continue
+        filtered_mapped_nodes.append(item)
+
+    scanned_nodes = cyber_data.get("scanned_nodes", []) if isinstance(cyber_data, dict) else []
+    finding_count = 0
+    for entry in scanned_nodes if isinstance(scanned_nodes, list) else []:
+        vulnerabilities = entry.get("vulnerability") if isinstance(entry, dict) else []
+        if isinstance(vulnerabilities, list):
+            finding_count += len(vulnerabilities)
+
+    vulnerable_nodes = [node for node in filtered_mapped_nodes if node.get("vulnerability_count")]
+    return {
+        "risk_nodes": risk_nodes,
+        "scan_run_id": scan_run_id,
+        "mapped_nodes": filtered_mapped_nodes,
+        "scanned_nodes": scanned_nodes,
+        "mapped_node_count": len(filtered_mapped_nodes),
+        "vulnerable_node_count": len(vulnerable_nodes),
+        "finding_count": finding_count,
+    }
 
 
 def _risk_probability_from_evidence(
@@ -6722,6 +6892,7 @@ def network_topology_api(request):
     })
 
 
+@ensure_csrf_cookie
 def risk_assessment_page(request):
     return render(
         request,
@@ -6737,6 +6908,7 @@ def risk_assessment_page(request):
     )
 
 
+@ensure_csrf_cookie
 def risk_assessment_console_page(request):
     return render(
         request,
@@ -7227,6 +7399,26 @@ def risk_assessment_nodes_api(request):
         return JsonResponse({'error': str(exc)}, status=502)
 
 
+@require_GET
+def risk_assessment_inventory_api(request):
+    nodes_value = request.GET.get("nodes", "")
+    nodes = [node.strip() for node in str(nodes_value).split(",") if node.strip()]
+    scan_run_id = request.GET.get("scan_run_id")
+    if scan_run_id:
+        try:
+            scan_run_id = int(scan_run_id)
+        except ValueError:
+            return JsonResponse({"error": "Invalid scan_run_id."}, status=400)
+    else:
+        scan_run_id = None
+
+    try:
+        payload = _risk_inventory_for_nodes(nodes or None, scan_run_id=scan_run_id)
+        return JsonResponse(payload)
+    except Exception as exc:
+        return JsonResponse({'error': str(exc)}, status=502)
+
+
 @require_http_methods(["POST"])
 def risk_assessment_evidence_api(request):
     try:
@@ -7286,6 +7478,16 @@ def risk_assessment_probability_api(request):
     if nodes is not None and not isinstance(nodes, list):
         return JsonResponse({'error': 'nodes must be a list of node names.'}, status=400)
     return_all = _risk_bool(payload.get("return_all", payload.get("returnAll")))
+    use_inventory_vulnerabilities = _risk_bool(
+        payload.get("use_inventory_vulnerabilities", payload.get("useInventoryVulnerabilities", False))
+    )
+
+    scan_run_id = payload.get("scan_run_id")
+    if scan_run_id is not None:
+        try:
+            scan_run_id = int(scan_run_id)
+        except (TypeError, ValueError):
+            return JsonResponse({'error': 'scan_run_id must be an integer.'}, status=400)
 
     evidence = payload.get("evidence")
     if evidence is not None and not isinstance(evidence, dict):
@@ -7302,8 +7504,12 @@ def risk_assessment_probability_api(request):
         )
 
     vulnerabilities = payload.get("vulnerabilities")
-    if vulnerabilities is not None and not isinstance(vulnerabilities, dict):
-        return JsonResponse({'error': 'vulnerabilities must be an object.'}, status=400)
+    if vulnerabilities is not None and not isinstance(vulnerabilities, (dict, list)):
+        return JsonResponse({'error': 'vulnerabilities must be an object, list, or null.'}, status=400)
+
+    findings = payload.get("findings")
+    if findings is not None and not isinstance(findings, list):
+        return JsonResponse({'error': 'findings must be a list.'}, status=400)
 
     detections = payload.get("detections")
     if detections is not None and not isinstance(detections, dict):
@@ -7319,28 +7525,54 @@ def risk_assessment_probability_api(request):
             status=400,
         )
 
+    model_payload = payload.get("model")
+    if model_payload is not None and not isinstance(model_payload, dict):
+        return JsonResponse({'error': 'model must be an object.'}, status=400)
+
+    for field_name in ("modelPatch", "topology", "topologyPatch"):
+        field_value = payload.get(field_name)
+        if field_value is not None and not isinstance(field_value, dict):
+            return JsonResponse({'error': f'{field_name} must be an object.'}, status=400)
+
     cyber_data = payload.get("cyber_data")
-    if cyber_data is None and payload.get("scanned_nodes") is not None:
+    has_inline_scanned_nodes = payload.get("scanned_nodes") is not None
+    if cyber_data is None and has_inline_scanned_nodes:
         cyber_data = payload
+    if cyber_data is not None and not isinstance(cyber_data, dict):
+        return JsonResponse({'error': 'cyber_data must be an object.'}, status=400)
+
+    has_structured_update = any(
+        payload.get(field_name) is not None
+        for field_name in ("model", "modelPatch", "topology", "topologyPatch", "vulnerabilities", "findings")
+    ) or cyber_data is not None or has_inline_scanned_nodes
 
     try:
-        if isinstance(cyber_data, dict):
-            result = _risk_post_cyberpen_assessment(
-                vulnerabilities=_risk_extract_vulnerability_updates_from_cyber_data(cyber_data),
-                t_value=t_value,
-                nodes=nodes or _risk_query_nodes_from_cyber_data(cyber_data),
-                return_all=return_all,
+        inventory_summary = None
+        inventory_findings = []
+        if use_inventory_vulnerabilities:
+            inventory_summary = _risk_inventory_for_nodes(nodes, scan_run_id=scan_run_id)
+            inventory_findings = _risk_findings_from_cyber_data(
+                {"scanned_nodes": inventory_summary.get("scanned_nodes", [])}
             )
-            return JsonResponse(result)
-        if vulnerabilities is not None:
-            result = _risk_post_cyberpen_assessment(
-                vulnerabilities=vulnerabilities,
+
+        if has_structured_update or inventory_findings:
+            structured_payload = _risk_build_structured_prediction_payload(
+                payload,
                 t_value=t_value,
                 nodes=nodes,
                 return_all=return_all,
             )
+            if inventory_findings:
+                explicit_findings = structured_payload.get("findings")
+                explicit_findings = explicit_findings if isinstance(explicit_findings, list) else []
+                structured_payload["findings"] = [*inventory_findings, *explicit_findings]
+            result = _risk_post_cyberpen(structured_payload)
+            if inventory_summary is not None:
+                result["inventory_summary"] = inventory_summary
             return JsonResponse(result)
         result = _risk_get_probability(t_value=t_value, nodes=nodes, return_all=return_all)
+        if inventory_summary is not None:
+            result["inventory_summary"] = inventory_summary
         return JsonResponse(result)
     except ValueError as exc:
         return JsonResponse({'error': str(exc)}, status=400)
@@ -7365,9 +7597,11 @@ def risk_assessment_network_compute_api(request):
 
         cyber_data, mapped_nodes = build_cyber_data_for_risk_nodes(risk_nodes, scan_run_id=scan_run_id)
 
-        result_payload = _risk_post_cyberpen_assessment(
-            vulnerabilities=_risk_extract_vulnerability_updates_from_cyber_data(cyber_data),
-            nodes=risk_nodes,
+        result_payload = _risk_post_cyberpen(
+            _risk_build_structured_prediction_payload(
+                {"cyber_data": cyber_data},
+                nodes=risk_nodes,
+            )
         )
         results = result_payload.get("results", {})
 

@@ -286,6 +286,10 @@ services:
       - gvmd
       - ospd-openvas
 
+networks:
+  greenbone_net:
+    name: cyber_pen_test_greenbone_shared
+
 volumes:
   gpg_data_vol:
   scap_data_vol:
@@ -296,6 +300,7 @@ volumes:
   vt_data_vol:
   notus_data_vol:
   psql_socket_vol:
+    name: cyber_pen_test_gvmd_psql_socket
   gvmd_socket_vol:
   ospd_openvas_socket_vol:
   redis_socket_vol:

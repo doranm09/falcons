@@ -138,6 +138,100 @@ from .pid_testbed import build_testbed_from_sim_system
 SNIFFER_BASE_URL = 'http://localhost:5050'
 RISK_ASSESSMENT_TIMEOUT = 15
 SIEM_WRITE_ROLES = (SiemUserRole.Role.ADMIN, SiemUserRole.Role.ANALYST)
+
+
+def _sbom_severity_rank(value: str) -> int:
+    ranks = {
+        "critical": 5,
+        "high": 4,
+        "medium": 3,
+        "low": 2,
+        "negligible": 1,
+        "unknown": 0,
+        "": 0,
+    }
+    return ranks.get(str(value or "").strip().lower(), 0)
+
+
+def _sort_sbom_vulnerability_rows(rows):
+    return sorted(
+        rows,
+        key=lambda row: (
+            -_sbom_severity_rank(row.get("severity", "")),
+            -(float(row.get("score") or 0) if str(row.get("score") or "").strip() else 0),
+            str(row.get("cve_id") or ""),
+        ),
+    )
+
+
+def _build_sbom_vulnerability_tabs(vulnerability_rows, report, scanner_tools):
+    tabs = [
+        {
+            "slug": "all",
+            "label": "All Findings",
+            "rows": _sort_sbom_vulnerability_rows(vulnerability_rows),
+            "count": len(vulnerability_rows),
+            "status": "ok" if vulnerability_rows else "",
+            "error": "",
+        }
+    ]
+    if not report:
+        return tabs
+
+    scan_metadata = report.scan_metadata if isinstance(report.scan_metadata, dict) else {}
+    runs = scan_metadata.get("scanner_runs") if isinstance(scan_metadata.get("scanner_runs"), list) else []
+    findings_by_scanner = (
+        scan_metadata.get("findings_by_scanner")
+        if isinstance(scan_metadata.get("findings_by_scanner"), dict)
+        else {}
+    )
+    run_by_name = {
+        str(run.get("scanner") or "").strip().lower(): run
+        for run in runs
+        if isinstance(run, dict) and str(run.get("scanner") or "").strip()
+    }
+
+    for scanner in ("grype", "trivy"):
+        run = run_by_name.get(scanner, {})
+        rows = findings_by_scanner.get(scanner)
+        normalized_rows = _sort_sbom_vulnerability_rows(rows if isinstance(rows, list) else [])
+        if not normalized_rows and not run and scanner not in scanner_tools:
+            continue
+        tabs.append(
+            {
+                "slug": scanner,
+                "label": scanner.title(),
+                "rows": normalized_rows,
+                "count": len(normalized_rows),
+                "status": str(run.get("status") or ("not run" if not normalized_rows else "ok")),
+                "error": str(run.get("error") or ""),
+            }
+        )
+    return tabs
+
+
+def _build_agent_sbom_vulnerability_context(node, sbom_reports):
+    latest_report = sbom_reports[0] if sbom_reports else None
+    vulnerability_rows = []
+    source_label = ""
+
+    if latest_report:
+        vulnerability_rows = extract_vulnerability_table_rows(latest_report.document)
+        source_label = "latest SBOM report"
+
+    if not vulnerability_rows and node:
+        vulnerability_rows = extract_vulnerability_table_rows_from_models(
+            node.vulnerability_set.all()
+        )
+        if vulnerability_rows:
+            source_label = "persisted vulnerability catalog"
+
+    vulnerability_rows = _sort_sbom_vulnerability_rows(vulnerability_rows)
+    return {
+        "rows": vulnerability_rows,
+        "total_rows": len(vulnerability_rows),
+        "source_label": source_label,
+    }
 SIEM_ADMIN_ROLES = (SiemUserRole.Role.ADMIN,)
 GPWR_DEFAULT_HOST = os.environ.get("GPWR_HOST", "128.61.144.101")
 GPWR_DEFAULT_PORT = int(os.environ.get("GPWR_PORT", "8082"))
@@ -446,6 +540,7 @@ def agent_scan_results(request):
             agent_node = Node.objects.create(
                 agent_id=agent_id,
                 name=agent.hostname or f"agent-{agent_id}",
+                hostname=agent.hostname or "",
                 ip_address=agent.ip_address,
                 status="online",
                 description=f"Scanner agent {agent_id}",
@@ -535,17 +630,358 @@ def shortest_paths(request, start_node_id=None):
 
 def history(request):
     from .models import ScanVulnerability
-    runs = ScanRun.objects.all().order_by('-timestamp')
 
-    run_data = []
-    for run in runs:
-        vulns = ScanVulnerability.objects.filter(scan_run=run)
-        run_data.append({
-            "run": run,
-            "vuln_count": vulns.count(),
-        })
+    scans = list(ScanRun.objects.all().order_by("-timestamp"))
+    scan_networks = []
+    for scan in scans:
+        try:
+            network = ip_network(str(scan.cidr or "").strip(), strict=False)
+        except ValueError:
+            continue
+        scan_networks.append((scan, network))
 
-    return render(request, 'dashboard/history.html', {'runs': run_data})
+    latest_scan_for_ip_cache = {}
+    agent_hostname_by_ip = {
+        str(agent.ip_address): str(agent.hostname or "").strip()
+        for agent in AgentStatus.objects.exclude(ip_address__isnull=True).exclude(hostname="")
+    }
+    nodes = list(
+        Node.objects.exclude(ip_address__isnull=True)
+        .select_related("scan_run")
+        .prefetch_related("vulnerability_set")
+        .order_by("-id")
+    )
+    best_hostname_by_ip = {}
+    for node in nodes:
+        ip_text = str(node.ip_address or "")
+        if not ip_text:
+            continue
+        hostname = str(node.hostname or "").strip()
+        if not hostname:
+            candidate = str(node.name or "").strip()
+            if candidate and candidate != ip_text:
+                hostname = candidate
+        if not hostname:
+            hostname = str(agent_hostname_by_ip.get(ip_text) or "").strip()
+        if ip_text not in best_hostname_by_ip or (not best_hostname_by_ip[ip_text] and hostname):
+            best_hostname_by_ip[ip_text] = hostname
+
+    def _lookup_latest_scan_for_ip(ip_text):
+        cached = latest_scan_for_ip_cache.get(ip_text, False)
+        if cached is not False:
+            return cached
+        try:
+            ip_value = ipaddress.ip_address(str(ip_text or "").strip())
+        except ValueError:
+            latest_scan_for_ip_cache[ip_text] = None
+            return None
+        for scan, network in scan_networks:
+            if ip_value in network:
+                latest_scan_for_ip_cache[ip_text] = scan
+                return scan
+        latest_scan_for_ip_cache[ip_text] = None
+        return None
+
+    def _merge_inventory_row(inventory, *, host_ip, cve_id, source_type, scan=None, hostname="", name="", package="",
+                             installed_version="", fixed_version="", cvss_score=None, severity="",
+                             description="", link_url="", references="", source_url=""):
+        key = (str(host_ip or ""), str(cve_id or ""))
+        row = inventory.setdefault(
+            key,
+            {
+                "host_ip": str(host_ip or ""),
+                "hostname": "",
+                "cve_id": str(cve_id or ""),
+                "names": set(),
+                "packages": set(),
+                "installed_versions": set(),
+                "fixed_versions": set(),
+                "source_types": set(),
+                "scan_ids": set(),
+                "first_seen": None,
+                "latest_seen": None,
+                "latest_scan_id": None,
+                "latest_scan_type": "",
+                "latest_scan_cidr": "",
+                "report_url": "",
+                "cvss_score": None,
+                "severity": "",
+                "description": "",
+                "link_url": "",
+                "references": "",
+                "source_url": "",
+            },
+        )
+
+        normalized_hostname = str(hostname or "").strip()
+        if normalized_hostname and normalized_hostname != row["host_ip"] and not row["hostname"]:
+            row["hostname"] = normalized_hostname
+        if name:
+            row["names"].add(str(name))
+        if package:
+            row["packages"].add(str(package))
+        if installed_version:
+            row["installed_versions"].add(str(installed_version))
+        if fixed_version:
+            row["fixed_versions"].add(str(fixed_version))
+        if source_type:
+            row["source_types"].add(str(source_type))
+        if references and not row["references"]:
+            row["references"] = str(references)
+        if source_url and not row["source_url"]:
+            row["source_url"] = str(source_url)
+        if link_url and not row["link_url"]:
+            row["link_url"] = str(link_url)
+        if description and len(str(description)) > len(row["description"]):
+            row["description"] = str(description)
+
+        current_score = row["cvss_score"]
+        try:
+            incoming_score = float(cvss_score)
+        except (TypeError, ValueError):
+            incoming_score = None
+        if incoming_score is not None and (current_score is None or incoming_score > float(current_score)):
+            row["cvss_score"] = incoming_score
+
+        incoming_severity = str(severity or "")
+        if _sbom_severity_rank(incoming_severity) > _sbom_severity_rank(row["severity"]):
+            row["severity"] = incoming_severity
+
+        if not scan:
+            return
+
+        row["scan_ids"].add(scan.id)
+        if row["first_seen"] is None or scan.timestamp < row["first_seen"]:
+            row["first_seen"] = scan.timestamp
+        if row["latest_seen"] is None or scan.timestamp > row["latest_seen"]:
+            row["latest_seen"] = scan.timestamp
+            row["latest_scan_id"] = scan.id
+            row["latest_scan_type"] = scan.scan_type
+            row["latest_scan_cidr"] = scan.cidr
+            row["report_url"] = reverse("dashboard:vuln-detail", args=[scan.id])
+
+    inventory = {}
+
+    scan_vulns = (
+        ScanVulnerability.objects.select_related("scan_run")
+        .all()
+        .order_by("-scan_run__timestamp", "-cvss_score", "host_ip", "cve_id")
+    )
+    for vuln in scan_vulns:
+        _merge_inventory_row(
+            inventory,
+            host_ip=vuln.host_ip,
+            hostname=best_hostname_by_ip.get(str(vuln.host_ip), ""),
+            cve_id=vuln.cve_id,
+            source_type="Network Scan",
+            scan=vuln.scan_run,
+            name=vuln.name,
+            cvss_score=vuln.cvss_score,
+            severity=vuln.severity,
+            description=vuln.description,
+            link_url=f"https://nvd.nist.gov/vuln/detail/{vuln.cve_id}" if str(vuln.cve_id or "").startswith("CVE-") else "",
+        )
+
+    for node in nodes:
+        ip_text = str(node.ip_address or "")
+        if not ip_text:
+            continue
+        node_scan = node.scan_run or _lookup_latest_scan_for_ip(ip_text)
+        node_hostname = str(node.hostname or "").strip() or best_hostname_by_ip.get(ip_text, "")
+        for vuln in node.vulnerability_set.all():
+            references = str(vuln.references or "")
+            source_url = str(vuln.source or "")
+            if str(vuln.cve_id or "").startswith("CVE-"):
+                link_url = f"https://nvd.nist.gov/vuln/detail/{vuln.cve_id}"
+            elif references:
+                link_url = references.split(",")[0].strip()
+            else:
+                link_url = source_url
+            _merge_inventory_row(
+                inventory,
+                host_ip=ip_text,
+                hostname=node_hostname,
+                cve_id=vuln.cve_id,
+                source_type="SBOM",
+                scan=node_scan,
+                name=vuln.package or vuln.cve_id,
+                package=vuln.package,
+                installed_version=vuln.installed_version,
+                fixed_version=vuln.fixed_version,
+                cvss_score=vuln.score,
+                severity=vuln.severity,
+                description=vuln.description,
+                link_url=link_url,
+                references=references,
+                source_url=source_url,
+            )
+
+    source_order = {"Network Scan": 0, "SBOM": 1}
+    rows = []
+    host_groups = {}
+    represented_scan_ids = set()
+    network_backed_rows = 0
+    sbom_backed_rows = 0
+    unique_hosts = set()
+    named_hosts = set()
+    critical_rows = 0
+    high_rows = 0
+    exploitable_rows = 0
+    latest_seen = None
+    for row in inventory.values():
+        sources = sorted(row["source_types"], key=lambda value: (source_order.get(value, 99), value))
+        if "Network Scan" in row["source_types"]:
+            network_backed_rows += 1
+        if "SBOM" in row["source_types"]:
+            sbom_backed_rows += 1
+        if row["host_ip"]:
+            unique_hosts.add(row["host_ip"])
+        if row["hostname"]:
+            named_hosts.add(row["hostname"])
+        if str(row.get("severity") or "").lower() == "critical":
+            critical_rows += 1
+        elif str(row.get("severity") or "").lower() == "high":
+            high_rows += 1
+        try:
+            if float(row.get("cvss_score") or 0) >= 7.0:
+                exploitable_rows += 1
+        except (TypeError, ValueError):
+            pass
+        represented_scan_ids.update(row["scan_ids"])
+        if row.get("latest_seen") and (latest_seen is None or row["latest_seen"] > latest_seen):
+            latest_seen = row["latest_seen"]
+        row["sources"] = sources
+        row["name"] = ", ".join(sorted(row["names"])) if row["names"] else (row["cve_id"] or "-")
+        row["package"] = ", ".join(sorted(row["packages"])) if row["packages"] else "-"
+        row["installed_version"] = ", ".join(sorted(row["installed_versions"])) if row["installed_versions"] else "-"
+        row["fixed_version"] = ", ".join(sorted(row["fixed_versions"])) if row["fixed_versions"] else "-"
+        row["scan_count"] = len(row["scan_ids"])
+        rows.append(row)
+
+        host_key = row["host_ip"] or "unknown-host"
+        host_group = host_groups.setdefault(
+            host_key,
+            {
+                "host_ip": row["host_ip"],
+                "hostname": row["hostname"],
+                "finding_count": 0,
+                "critical_count": 0,
+                "high_count": 0,
+                "sbom_count": 0,
+                "network_count": 0,
+                "latest_seen": None,
+                "latest_scan_type": "",
+                "latest_scan_cidr": "",
+                "report_url": "",
+                "sources": set(),
+                "packages": set(),
+                "artifact_links": {},
+                "findings": [],
+            },
+        )
+        host_group["finding_count"] += 1
+        if row["hostname"] and not host_group["hostname"]:
+            host_group["hostname"] = row["hostname"]
+        if "SBOM" in row["source_types"]:
+            host_group["sbom_count"] += 1
+        if "Network Scan" in row["source_types"]:
+            host_group["network_count"] += 1
+        host_group["sources"].update(row["sources"])
+        if row["package"] and row["package"] != "-":
+            host_group["packages"].update(part.strip() for part in row["package"].split(",") if part.strip())
+        severity_name = str(row.get("severity") or "").lower()
+        if severity_name == "critical":
+            host_group["critical_count"] += 1
+        elif severity_name == "high":
+            host_group["high_count"] += 1
+        if row.get("latest_seen") and (host_group["latest_seen"] is None or row["latest_seen"] > host_group["latest_seen"]):
+            host_group["latest_seen"] = row["latest_seen"]
+            host_group["latest_scan_type"] = row.get("latest_scan_type", "")
+            host_group["latest_scan_cidr"] = row.get("latest_scan_cidr", "")
+            host_group["report_url"] = row.get("report_url", "")
+        if row.get("report_url"):
+            host_group["artifact_links"][f"report:{row['report_url']}"] = {
+                "label": f"Scan report {row.get('latest_scan_type', '').upper()} {row.get('latest_scan_cidr', '')}".strip(),
+                "url": row["report_url"],
+                "kind": "Report",
+            }
+        if row.get("link_url"):
+            host_group["artifact_links"][f"artifact:{row['link_url']}"] = {
+                "label": row.get("cve_id") or row.get("name") or row["link_url"],
+                "url": row["link_url"],
+                "kind": "Reference",
+            }
+        host_group["findings"].append(
+            {
+                "cve_id": row.get("cve_id", ""),
+                "severity": row.get("severity", ""),
+                "cvss_score": row.get("cvss_score"),
+                "source_labels": list(row.get("sources", [])),
+                "report_url": row.get("report_url", ""),
+                "link_url": row.get("link_url", ""),
+                "name": row.get("name", ""),
+            }
+        )
+
+    rows.sort(
+        key=lambda row: (
+            -_sbom_severity_rank(row.get("severity", "")),
+            -(float(row.get("cvss_score") or 0) if row.get("cvss_score") is not None else 0),
+            -(row.get("latest_seen").timestamp() if row.get("latest_seen") else 0),
+            str(row.get("host_ip") or ""),
+            str(row.get("cve_id") or ""),
+        )
+    )
+
+    host_cards = []
+    for host_group in host_groups.values():
+        host_group["sources"] = sorted(host_group["sources"], key=lambda value: (source_order.get(value, 99), value))
+        host_group["packages"] = sorted(host_group["packages"])[:6]
+        host_group["artifacts"] = list(host_group["artifact_links"].values())[:6]
+        host_group["findings"].sort(
+            key=lambda finding: (
+                -_sbom_severity_rank(finding.get("severity", "")),
+                -(float(finding.get("cvss_score") or 0) if finding.get("cvss_score") is not None else 0),
+                str(finding.get("cve_id") or ""),
+            )
+        )
+        host_group["top_findings"] = host_group["findings"][:4]
+        host_cards.append(host_group)
+
+    host_cards.sort(
+        key=lambda group: (
+            -group["critical_count"],
+            -group["high_count"],
+            -group["finding_count"],
+            -(group["latest_seen"].timestamp() if group["latest_seen"] else 0),
+            str(group["host_ip"] or ""),
+        )
+    )
+
+    return render(
+        request,
+        "dashboard/history.html",
+        {
+            "inventory": rows,
+            "host_cards": host_cards,
+            "summary": {
+                "total_entries": len(rows),
+                "unique_hosts": len(unique_hosts),
+                "named_hosts": len(named_hosts),
+                "critical_rows": critical_rows,
+                "high_rows": high_rows,
+                "exploitable_rows": exploitable_rows,
+                "network_backed_rows": network_backed_rows,
+                "sbom_backed_rows": sbom_backed_rows,
+                "represented_scans": len(represented_scan_ids),
+                "latest_seen": latest_seen,
+            },
+        },
+    )
+
+
+def history_redirect(request):
+    return redirect("dashboard:vulnerabilities")
 
 def graph_data(request):
     scan_run_id = request.GET.get("scan_run_id")
@@ -982,6 +1418,7 @@ def agent_report(request):
         agent_id=agent_id,
         defaults={
             "name": hostname,
+            "hostname": hostname or "",
             "ip_address": ip,
             "description": f"Reported from agent {agent_id}",
             "status": "online",
@@ -1026,7 +1463,6 @@ def agent_cyber_report(request):
     try:
         node = Node.objects.get(agent_id=agent_id)
         node.update_cyber_data(cyber_data)
-        scan_sbom_vulnerabilities_task.delay(agent_id=agent_id)
         return JsonResponse({"status": "cyber_data_updated"})
     except Node.DoesNotExist:
         return JsonResponse({"error": "Node not found"}, status=404)
@@ -1108,6 +1544,10 @@ def sbom_ingest(request):
                     "description": vuln.get("description") or f"SBOM reported {cve_id}",
                     "severity": vuln.get("severity") or "",
                     "score": vuln.get("score"),
+                    "package": vuln.get("package") or "",
+                    "installed_version": vuln.get("installed_version") or "",
+                    "fixed_version": vuln.get("fixed_version") or "",
+                    "source": vuln.get("source") or "",
                     "published": now(),
                     "last_modified": now(),
                     "references": vuln.get("references") or "",
@@ -1124,12 +1564,24 @@ def sbom_ingest(request):
                 if vuln.get("score") is not None and vuln_obj.score != vuln.get("score"):
                     vuln_obj.score = vuln.get("score")
                     updated = True
+                if vuln.get("package") and vuln_obj.package != vuln.get("package"):
+                    vuln_obj.package = vuln.get("package")
+                    updated = True
+                if vuln.get("installed_version") and vuln_obj.installed_version != vuln.get("installed_version"):
+                    vuln_obj.installed_version = vuln.get("installed_version")
+                    updated = True
+                if vuln.get("fixed_version") and vuln_obj.fixed_version != vuln.get("fixed_version"):
+                    vuln_obj.fixed_version = vuln.get("fixed_version")
+                    updated = True
+                if vuln.get("source") and vuln_obj.source != vuln.get("source"):
+                    vuln_obj.source = vuln.get("source")
+                    updated = True
                 if vuln.get("references") and vuln_obj.references != vuln.get("references"):
                     vuln_obj.references = vuln.get("references")
                     updated = True
                 if updated:
                     vuln_obj.last_modified = now()
-                    vuln_obj.save(update_fields=["description", "severity", "score", "references", "last_modified"])
+                    vuln_obj.save(update_fields=["description", "severity", "score", "package", "installed_version", "fixed_version", "source", "references", "last_modified"])
             vuln_obj.nodes.add(node)
 
     return JsonResponse({
@@ -1875,13 +2327,14 @@ def siem_windows_ingest(request):
 def agent_sbom_export(request, agent_id):
     fmt = (request.GET.get("format") or "table").lower()
     report = SbomReport.objects.filter(agent_id=agent_id).order_by("-created_at").first()
-    node = None
+    node = report.node if report else None
     fallback_packages = []
-    if not report:
+    if not node:
         try:
             node = Node.objects.get(agent_id=agent_id)
         except Node.DoesNotExist:
             node = None
+    if not report:
         if not node or not node.installed_libraries:
             return JsonResponse({"error": "SBOM not found"}, status=404)
         fallback_packages = list(node.installed_libraries or [])
@@ -1891,6 +2344,10 @@ def agent_sbom_export(request, agent_id):
         if report:
             rows = extract_sbom_table_rows(report.document)
             vulnerability_rows = extract_vulnerability_table_rows(report.document)
+            if not vulnerability_rows and node:
+                vulnerability_rows = extract_vulnerability_table_rows_from_models(
+                    node.vulnerability_set.all()
+                )
             source_label = "SBOM report"
             os_summary = report.os_summary
             collected_at = report.created_at
@@ -1904,6 +2361,8 @@ def agent_sbom_export(request, agent_id):
             os_summary = node.os_info if node else ""
             collected_at = node.last_heartbeat if node else None
             format_name = "cyber"
+        vulnerability_rows = _sort_sbom_vulnerability_rows(vulnerability_rows)
+        vulnerability_tabs = _build_sbom_vulnerability_tabs(vulnerability_rows, report, scanner_tools)
         return render(request, "dashboard/agent_sbom_table.html", {
             "report": report,
             "agent_id": agent_id,
@@ -1917,6 +2376,7 @@ def agent_sbom_export(request, agent_id):
             "total_rows": len(rows),
             "vulnerability_rows": vulnerability_rows,
             "vulnerability_total_rows": len(vulnerability_rows),
+            "vulnerability_tabs": vulnerability_tabs,
         })
 
     if fmt == "csv":
@@ -2313,7 +2773,8 @@ def agent_details(request, agent_id):
     # Get command history for this agent
     commands = AgentCommand.objects.filter(agent_id=agent_id).order_by('-created')[:20]
     results = CommandResult.objects.filter(agent_id=agent_id).order_by('-timestamp')[:20]
-    sbom_reports = SbomReport.objects.filter(agent_id=agent_id).order_by('-created_at')[:5]
+    sbom_reports = list(SbomReport.objects.filter(agent_id=agent_id).order_by('-created_at')[:5])
+    sbom_vulnerability_context = _build_agent_sbom_vulnerability_context(node, sbom_reports)
 
     # Sliver artifacts for quick deployment (if available)
     try:
@@ -2330,6 +2791,9 @@ def agent_details(request, agent_id):
         'commands': commands,
         'results': results,
         'sbom_reports': sbom_reports,
+        'sbom_vulnerability_rows': sbom_vulnerability_context["rows"],
+        'sbom_vulnerability_total_rows': sbom_vulnerability_context["total_rows"],
+        'sbom_vulnerability_source': sbom_vulnerability_context["source_label"],
         'sliver_artifacts': sliver_artifacts,
     })
 
@@ -2400,7 +2864,8 @@ def agent_analysis(request, agent_id):
     # ====================
     total_commands = AgentCommand.objects.filter(agent_id=agent_id).count()
     total_command_results = CommandResult.objects.filter(agent_id=agent_id).count()
-    sbom_reports = SbomReport.objects.filter(agent_id=agent_id).order_by('-created_at')[:5]
+    sbom_reports = list(SbomReport.objects.filter(agent_id=agent_id).order_by('-created_at')[:5])
+    sbom_vulnerability_context = _build_agent_sbom_vulnerability_context(node, sbom_reports)
 
     # Command success/error analysis
     command_action_counts = defaultdict(int)
@@ -2538,6 +3003,9 @@ def agent_analysis(request, agent_id):
             'recent_commands': recent_commands[:10],  # Last 10 commands
         },
         'sbom_reports': sbom_reports,
+        'sbom_vulnerability_rows': sbom_vulnerability_context["rows"],
+        'sbom_vulnerability_total_rows': sbom_vulnerability_context["total_rows"],
+        'sbom_vulnerability_source': sbom_vulnerability_context["source_label"],
         'network_analysis': {
             'metadata_records': network_metadata,
             'connection_stats': connection_stats,
@@ -2549,12 +3017,144 @@ def agent_analysis(request, agent_id):
     })
 
 
+def _build_consolidated_scan_vulnerabilities(scan):
+    from .models import ScanVulnerability
+
+    entries = []
+    counts = {"network_scan": 0, "sbom": 0}
+
+    def _entry_sort_key(entry):
+        score = entry.get("cvss_score")
+        try:
+            numeric_score = float(score)
+        except (TypeError, ValueError):
+            numeric_score = -1.0
+        return (
+            -_sbom_severity_rank(entry.get("severity", "")),
+            -numeric_score,
+            str(entry.get("host_ip") or ""),
+            str(entry.get("cve_id") or ""),
+        )
+
+    def _link_for_entry(cve_id, references, source_url):
+        if cve_id and str(cve_id).startswith("CVE-"):
+            return f"https://nvd.nist.gov/vuln/detail/{cve_id}"
+        if references:
+            return str(references).split(",")[0].strip()
+        if source_url:
+            return source_url
+        return ""
+
+    scan_vulns = list(ScanVulnerability.objects.filter(scan_run=scan).order_by("-cvss_score", "-timestamp", "host_ip", "cve_id"))
+    scan_host_ips = {str(vuln.host_ip) for vuln in scan_vulns if vuln.host_ip}
+    seen_keys = set()
+
+    network = None
+    try:
+        network = ip_network(str(scan.cidr or "").strip(), strict=False)
+    except ValueError:
+        network = None
+
+    candidate_nodes = []
+    for node in Node.objects.exclude(ip_address__isnull=True).prefetch_related("vulnerability_set").order_by("-id"):
+        ip_text = str(node.ip_address or "")
+        if not ip_text:
+            continue
+        in_scope = bool(node.scan_run_id == scan.id or ip_text in scan_host_ips)
+        if not in_scope and network is not None:
+            try:
+                in_scope = ipaddress.ip_address(ip_text) in network
+            except ValueError:
+                in_scope = False
+        if in_scope:
+            candidate_nodes.append(node)
+
+    latest_node_by_ip = {}
+    for node in candidate_nodes:
+        ip_text = str(node.ip_address or "")
+        if ip_text and ip_text not in latest_node_by_ip:
+            latest_node_by_ip[ip_text] = node
+
+    agent_hostname_by_ip = {
+        str(agent.ip_address): str(agent.hostname or "").strip()
+        for agent in AgentStatus.objects.exclude(ip_address__isnull=True).exclude(hostname="")
+    }
+
+    def _hostname_for_ip(ip_text):
+        node = latest_node_by_ip.get(str(ip_text or ""))
+        if node:
+            hostname = str(getattr(node, "hostname", "") or "").strip()
+            if hostname:
+                return hostname
+            candidate = str(node.name or "").strip()
+            if candidate and candidate != str(ip_text or "").strip():
+                return candidate
+        return str(agent_hostname_by_ip.get(str(ip_text or ""), "") or "").strip()
+
+    for vuln in scan_vulns:
+        key = ("network_scan", str(vuln.host_ip), str(vuln.cve_id))
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        counts["network_scan"] += 1
+        entries.append(
+            {
+                "host_ip": str(vuln.host_ip),
+                "hostname": _hostname_for_ip(vuln.host_ip),
+                "source_type": "Network Scan",
+                "cve_id": str(vuln.cve_id),
+                "name": str(vuln.name or ""),
+                "package": "",
+                "installed_version": "",
+                "fixed_version": "",
+                "cvss_score": vuln.cvss_score,
+                "severity": str(vuln.severity or ""),
+                "description": str(vuln.description or ""),
+                "references": "",
+                "source_url": "",
+                "link_url": _link_for_entry(vuln.cve_id, "", ""),
+            }
+        )
+
+    for ip_text, node in latest_node_by_ip.items():
+        for vuln in node.vulnerability_set.all():
+            key = ("sbom", ip_text, str(vuln.cve_id))
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            counts["sbom"] += 1
+            references = str(vuln.references or "")
+            source_url = str(vuln.source or "")
+            entries.append(
+                {
+                    "host_ip": ip_text,
+                    "hostname": _hostname_for_ip(ip_text),
+                    "source_type": "SBOM",
+                    "cve_id": str(vuln.cve_id or ""),
+                    "name": str(vuln.package or vuln.cve_id or ""),
+                    "package": str(vuln.package or ""),
+                    "installed_version": str(vuln.installed_version or ""),
+                    "fixed_version": str(vuln.fixed_version or ""),
+                    "cvss_score": vuln.score,
+                    "severity": str(vuln.severity or ""),
+                    "description": str(vuln.description or ""),
+                    "references": references,
+                    "source_url": source_url,
+                    "link_url": _link_for_entry(vuln.cve_id, references, source_url),
+                }
+            )
+
+    entries.sort(key=_entry_sort_key)
+    return entries, counts
+
+
 def vulnerability_detail(request, scan_id):
-    scan = ScanRun.objects.get(id=scan_id)
-    vulns = scan.vulnerabilities.all().order_by("-severity")
+    scan = get_object_or_404(ScanRun, id=scan_id)
+    vulns, source_counts = _build_consolidated_scan_vulnerabilities(scan)
     return render(request, "dashboard/vulnerabilities.html", {
         "scan": scan,
-        "vulnerabilities": vulns
+        "vulnerabilities": vulns,
+        "source_counts": source_counts,
     })
 
 @csrf_exempt

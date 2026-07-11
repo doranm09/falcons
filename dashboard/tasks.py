@@ -23,9 +23,10 @@ import shutil
 import tempfile
 import os
 from datetime import datetime
+from pathlib import Path
 from django.utils.dateparse import parse_datetime
 from host_agent.sbom.os_sbom import generate_cyclonedx_sbom
-from .sbom import extract_package_dicts_from_sbom, extract_vulnerabilities_from_sbom
+from .sbom import extract_package_dicts_from_sbom, extract_vulnerabilities_from_sbom, infer_grype_distro
 
 logger = logging.getLogger(__name__)
 
@@ -56,13 +57,14 @@ def _safe_update_state(task, state, meta):
         logger.debug("Skipping task state update without active task id")
 
 
-def _run_scanner(cmd, timeout_seconds):
+def _run_scanner(cmd, timeout_seconds, env=None):
     try:
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
+            env=env,
         )
     except FileNotFoundError:
         return None, f"{cmd[0]} not installed"
@@ -80,6 +82,28 @@ def _run_scanner(cmd, timeout_seconds):
         return json.loads(output), ""
     except json.JSONDecodeError as exc:
         return None, f"{cmd[0]} returned invalid JSON: {exc}"
+
+
+def _trivy_cache_dir() -> Path:
+    return Path(os.environ.get("TRIVY_CACHE_DIR", "~/.cache/trivy")).expanduser()
+
+
+def _grype_db_cache_dir() -> Path:
+    return Path(os.environ.get("GRYPE_DB_CACHE_DIR", "~/.cache/grype/db")).expanduser()
+
+
+def _trivy_db_present() -> bool:
+    cache_dir = _trivy_cache_dir()
+    candidates = (
+        cache_dir / "db" / "metadata.json",
+        cache_dir / "db" / "trivy.db",
+    )
+    return any(path.exists() for path in candidates)
+
+
+def _grype_db_present() -> bool:
+    cache_dir = _grype_db_cache_dir()
+    return any(cache_dir.rglob("vulnerability.db")) if cache_dir.exists() else False
 
 
 def _persist_scanner_vulnerabilities(node, vulnerabilities):
@@ -113,6 +137,10 @@ def _persist_scanner_vulnerabilities(node, vulnerabilities):
                 "description": vuln.get("description") or f"SBOM reported {cve_id}",
                 "severity": vuln.get("severity") or "",
                 "score": vuln.get("score"),
+                "package": vuln.get("package") or "",
+                "installed_version": vuln.get("installed_version") or "",
+                "fixed_version": vuln.get("fixed_version") or "",
+                "source": vuln.get("source") or "",
                 "published": now(),
                 "last_modified": now(),
                 "references": vuln.get("references") or "",
@@ -128,42 +156,73 @@ def _persist_scanner_vulnerabilities(node, vulnerabilities):
         if vuln.get("score") is not None and vuln_obj.score != vuln.get("score"):
             vuln_obj.score = vuln.get("score")
             updated = True
+        if vuln.get("package") and vuln_obj.package != vuln.get("package"):
+            vuln_obj.package = vuln.get("package")
+            updated = True
+        if vuln.get("installed_version") and vuln_obj.installed_version != vuln.get("installed_version"):
+            vuln_obj.installed_version = vuln.get("installed_version")
+            updated = True
+        if vuln.get("fixed_version") and vuln_obj.fixed_version != vuln.get("fixed_version"):
+            vuln_obj.fixed_version = vuln.get("fixed_version")
+            updated = True
+        if vuln.get("source") and vuln_obj.source != vuln.get("source"):
+            vuln_obj.source = vuln.get("source")
+            updated = True
         if vuln.get("references") and vuln_obj.references != vuln.get("references"):
             vuln_obj.references = vuln.get("references")
             updated = True
         if updated:
             vuln_obj.last_modified = now()
-            vuln_obj.save(update_fields=["description", "severity", "score", "references", "last_modified"])
+            vuln_obj.save(update_fields=["description", "severity", "score", "package", "installed_version", "fixed_version", "source", "references", "last_modified"])
         node.vulnerability_set.add(vuln_obj)
         persisted += 1
 
     return persisted
 
 
+def _store_sbom_scan_metadata(report, scanner_results, findings_by_scanner):
+    if not report:
+        return
+    report.scan_metadata = {
+        "updated_at": now().isoformat(),
+        "scanner_runs": list(scanner_results or []),
+        "findings_by_scanner": {
+            str(scanner): list(rows or [])
+            for scanner, rows in (findings_by_scanner or {}).items()
+        },
+    }
+    report.save(update_fields=["scan_metadata"])
+
+
 @shared_task(bind=True)
 def scan_sbom_vulnerabilities_task(self, agent_id=None, report_id=None):
     """
-    Run Trivy and/or Grype on the server side against SBOM or cyber package data.
+    Run Trivy and/or Grype on the server side against a stored SBOM report.
     """
-    node = Node.objects.filter(agent_id=agent_id).first() if agent_id else None
     report = SbomReport.objects.filter(id=report_id).first() if report_id else None
+    node = Node.objects.filter(agent_id=agent_id).first() if agent_id else None
 
-    if report:
-        source_payload = report.document
-    elif node:
-        source_payload = node.installed_libraries or []
-    else:
-        return {"status": "noop", "reason": "no agent or report found"}
+    if not report:
+        return {"status": "noop", "reason": "stored sbom report required"}
 
+    source_payload = report.document
     packages = extract_package_dicts_from_sbom(source_payload)
     if not packages:
         return {"status": "noop", "reason": "no packages to scan"}
 
-    sbom_json = generate_cyclonedx_sbom(packages)
+    if (
+        isinstance(source_payload, dict)
+        and str(report.bom_format or source_payload.get("bomFormat") or "").strip().lower() == "cyclonedx"
+    ):
+        sbom_json = source_payload
+    else:
+        sbom_json = generate_cyclonedx_sbom(packages)
     timeout_seconds = int(os.environ.get("SBOM_SCANNER_TIMEOUT_SECONDS", "180") or 180)
     scanner_order = [name.strip() for name in os.environ.get("SBOM_SCANNERS", "trivy,grype").split(",") if name.strip()]
+    distro_hint = infer_grype_distro(source_payload, report.os_summary)
     findings = []
     scanner_results = []
+    findings_by_scanner = {}
 
     with tempfile.TemporaryDirectory(prefix="cyber-sbom-scan-") as tempdir:
         sbom_path = os.path.join(tempdir, "sbom.json")
@@ -177,9 +236,20 @@ def scan_sbom_vulnerabilities_task(self, agent_id=None, report_id=None):
                 continue
 
             if scanner == "trivy":
-                parsed, error = _run_scanner([binary, "sbom", "--format", "json", sbom_path], timeout_seconds)
+                command = [binary, "sbom", "--format", "json", "--quiet", "--no-progress"]
+                if _trivy_db_present():
+                    command.extend(["--skip-db-update", "--skip-java-db-update"])
+                command.append(sbom_path)
+                parsed, error = _run_scanner(command, timeout_seconds)
             elif scanner == "grype":
-                parsed, error = _run_scanner([binary, f"sbom:{sbom_path}", "-o", "json"], timeout_seconds)
+                env = os.environ.copy()
+                if _grype_db_present():
+                    env["GRYPE_DB_AUTO_UPDATE"] = "false"
+                command = [binary]
+                if distro_hint:
+                    command.extend(["--distro", distro_hint])
+                command.extend([f"sbom:{sbom_path}", "-o", "json"])
+                parsed, error = _run_scanner(command, timeout_seconds, env=env)
             else:
                 scanner_results.append({"scanner": scanner, "status": "unsupported"})
                 continue
@@ -190,8 +260,10 @@ def scan_sbom_vulnerabilities_task(self, agent_id=None, report_id=None):
 
             scanner_findings = extract_vulnerabilities_from_sbom(parsed)
             findings.extend(scanner_findings)
+            findings_by_scanner[scanner] = list(scanner_findings)
             scanner_results.append({"scanner": scanner, "status": "ok", "findings": len(scanner_findings)})
 
+    _store_sbom_scan_metadata(report, scanner_results, findings_by_scanner)
     persisted = _persist_scanner_vulnerabilities(node, findings)
     return {
         "status": "ok",
@@ -241,7 +313,8 @@ def scan_network_task(self, cidr, scan_id=None, progress_callback=None):
             node = Node.objects.create(
                 scan_run=scan,
                 ip_address=str(ip),
-                name=str(ip)
+                name=str(ip),
+                hostname="",
             )
             found_nodes.append((node, latency))
 
@@ -385,7 +458,7 @@ def nmap_discovery_task(self, cidr, scan_id=None, progress_callback=None):
             raise RuntimeError(tail or "nmap failed")
 
         for ip in found_ips:
-            Node.objects.create(scan_run=scan, ip_address=ip, name=ip)
+            Node.objects.create(scan_run=scan, ip_address=ip, name=ip, hostname="")
 
         final_progress = {
             "current": total_hosts,

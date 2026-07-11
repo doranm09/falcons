@@ -45,7 +45,9 @@ services:
       DEVICE_ROLE: Layer4 database
       SERVICE_PORTS: "5432"
       DEVICE_DESC: Business network database server
-      STATIC_ROUTES: "10.2.50.0/24 via 10.4.50.254;10.3.50.0/24 via 10.4.50.254;10.1.13.0/24 via 10.2.50.253;10.2.23.0/24 via 10.2.50.253"
+      # Layer 4 reaches every lower layer through firewall-2 on the shared
+      # l4_net segment.
+      STATIC_ROUTES: "10.2.50.0/24 via 10.4.50.254;10.3.50.0/24 via 10.4.50.254;10.1.13.0/24 via 10.4.50.254;10.2.23.0/24 via 10.4.50.254"
       AGENT_SERVER_URL: "http://host.docker.internal:8000"
       AGENT_API_TOKEN: "${AGENT_API_TOKEN:-iaea-demo-agent-token}"
     extra_hosts:
@@ -71,7 +73,9 @@ services:
       DEVICE_ROLE: Layer4 metasploit host
       SERVICE_PORTS: "4444"
       DEVICE_DESC: Metasploit exploitation host for Layer 4 testing
-      STATIC_ROUTES: "10.2.50.0/24 via 10.4.50.254;10.3.50.0/24 via 10.4.50.254;10.1.13.0/24 via 10.2.50.253;10.2.23.0/24 via 10.2.50.253"
+      # Layer 4 reaches every lower layer through firewall-2 on the shared
+      # l4_net segment.
+      STATIC_ROUTES: "10.2.50.0/24 via 10.4.50.254;10.3.50.0/24 via 10.4.50.254;10.1.13.0/24 via 10.4.50.254;10.2.23.0/24 via 10.4.50.254"
       AGENT_SERVER_URL: "http://host.docker.internal:8000"
       AGENT_API_TOKEN: "${AGENT_API_TOKEN:-iaea-demo-agent-token}"
     extra_hosts:
@@ -161,7 +165,9 @@ services:
       DEVICE_ROLE: Layer4 historical archive
       SERVICE_PORTS: ""
       DEVICE_DESC: OPC-driven historian writing live PLC state into InfluxDB
-      STATIC_ROUTES: "10.2.50.0/24 via 10.4.50.254;10.3.50.0/24 via 10.4.50.254;10.1.13.0/24 via 10.2.50.253;10.2.23.0/24 via 10.2.50.253"
+      # Historian sits on Layer 2, so it follows the same route model as the
+      # HMI and engineering workstation.
+      STATIC_ROUTES: "10.3.50.0/24 via 10.2.50.254;10.4.50.0/24 via 10.2.50.254;10.1.13.0/24 via 10.2.50.253;10.2.23.0/24 via 10.2.50.253"
       INFLUX_URL: "http://historian-db:8086"
       INFLUX_TOKEN: iaea-historian-token
       INFLUX_ORG: iaea

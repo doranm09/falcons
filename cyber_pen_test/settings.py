@@ -62,6 +62,7 @@ ALLOWED_HOSTS = [
     # Add additional specific IPs as needed:
     # '192.168.1.100',
     # '10.0.0.50',
+    '192.168.236.128',
 ]
 
 

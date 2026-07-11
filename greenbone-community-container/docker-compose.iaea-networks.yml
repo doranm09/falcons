@@ -1,27 +1,24 @@
 services:
   ospd-openvas:
     networks:
-      l4_net: {}
-      l3_net: {}
-      l2_net: {}
-      l1_main: {}
-      l1_backup: {}
-      p13_net: {}
-      p23_net: {}
-      mgmt13_net: {}
-      mgmt23_net: {}
-
-  openvasd:
-    networks:
-      l4_net: {}
-      l3_net: {}
-      l2_net: {}
-      l1_main: {}
-      l1_backup: {}
-      p13_net: {}
-      p23_net: {}
-      mgmt13_net: {}
-      mgmt23_net: {}
+      l4_net:
+        ipv4_address: 10.4.50.250
+      l3_net:
+        ipv4_address: 10.3.50.250
+      l2_net:
+        ipv4_address: 10.2.50.250
+      l1_main:
+        ipv4_address: 10.1.13.250
+      l1_backup:
+        ipv4_address: 10.2.23.250
+      p13_net:
+        ipv4_address: 10.3.13.250
+      p23_net:
+        ipv4_address: 10.4.23.250
+      mgmt13_net:
+        ipv4_address: 10.0.13.250
+      mgmt23_net:
+        ipv4_address: 10.0.23.250
 
 networks:
   l4_net:

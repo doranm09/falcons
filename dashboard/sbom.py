@@ -1,7 +1,7 @@
 import ast
-import ast
 import hashlib
 import json
+import re
 from typing import Any, Dict, List, Optional
 
 
@@ -324,10 +324,10 @@ def extract_vulnerability_table_rows_from_models(vulnerabilities: Any) -> List[D
                 "cve_id": str(getattr(vuln, "cve_id", "") or ""),
                 "severity": str(getattr(vuln, "severity", "") or ""),
                 "score": "" if getattr(vuln, "score", None) is None else str(getattr(vuln, "score")),
-                "package": "",
-                "installed_version": "",
-                "fixed_version": "",
-                "source": "",
+                "package": str(getattr(vuln, "package", "") or ""),
+                "installed_version": str(getattr(vuln, "installed_version", "") or ""),
+                "fixed_version": str(getattr(vuln, "fixed_version", "") or ""),
+                "source": str(getattr(vuln, "source", "") or ""),
                 "description": str(getattr(vuln, "description", "") or ""),
                 "references": str(getattr(vuln, "references", "") or ""),
             }
@@ -361,6 +361,33 @@ def extract_os_summary_from_sbom(payload: Any) -> str:
     return ""
 
 
+def infer_grype_distro(payload: Any, os_summary: str = "") -> str:
+    candidates = [str(os_summary or "").strip(), extract_os_summary_from_sbom(payload)]
+    distro_aliases = {
+        "debian": ("debian",),
+        "ubuntu": ("ubuntu",),
+        "alpine": ("alpine",),
+        "rocky": ("rocky", "rocky linux"),
+        "alma": ("alma", "alma linux", "almalinux"),
+        "rhel": ("rhel", "red hat enterprise linux", "red hat"),
+        "centos": ("centos",),
+        "amzn": ("amazon linux", "amzn"),
+    }
+
+    for raw_text in candidates:
+        text = str(raw_text or "").strip().lower()
+        if not text:
+            continue
+        version_match = re.search(r"\b(\d+(?:\.\d+)?)\b", text)
+        if not version_match:
+            continue
+        version = version_match.group(1)
+        for grype_name, aliases in distro_aliases.items():
+            if any(alias in text for alias in aliases):
+                return f"{grype_name}:{version}"
+    return ""
+
+
 def detect_sbom_format(payload: Any) -> Dict[str, str]:
     if not isinstance(payload, dict):
         return {"format": "raw", "bom_format": "", "spec_version": ""}
@@ -389,6 +416,16 @@ def _normalize_cve_id(value: Optional[str]) -> str:
 def _extract_score(value: Any) -> Optional[float]:
     if value is None or value == "":
         return None
+    if isinstance(value, dict):
+        return _extract_score(
+            value.get("baseScore")
+            or value.get("score")
+            or value.get("metrics")
+            or value.get("cvss")
+        )
+    if isinstance(value, list):
+        scores = [score for score in (_extract_score(entry) for entry in value) if score is not None]
+        return max(scores) if scores else None
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -412,7 +449,42 @@ def _extract_refs(item: Dict[str, Any]) -> str:
             refs.extend(str(entry) for entry in val if entry)
         elif val:
             refs.append(str(val))
+    urls = item.get("urls")
+    if isinstance(urls, list):
+        refs.extend(str(entry) for entry in urls if entry)
+    elif urls:
+        refs.append(str(urls))
     return ", ".join(sorted(set(refs)))
+
+
+def _extract_fixed_versions(item: Dict[str, Any]) -> str:
+    direct_value = (
+        item.get("fixed_version")
+        or item.get("FixedVersion")
+        or item.get("fix_version")
+        or item.get("Fixed")
+    )
+    if direct_value:
+        return str(direct_value).strip()
+
+    fix = item.get("fix")
+    if isinstance(fix, dict):
+        versions = fix.get("versions")
+        if isinstance(versions, list):
+            normalized = [str(version).strip() for version in versions if str(version).strip()]
+            if normalized:
+                return ", ".join(normalized)
+
+    related = item.get("relatedVulnerabilities")
+    if isinstance(related, list):
+        for related_item in related:
+            if not isinstance(related_item, dict):
+                continue
+            nested_fix = _extract_fixed_versions(related_item)
+            if nested_fix:
+                return nested_fix
+
+    return ""
 
 
 def _normalize_vulnerability_item(item: Any) -> Optional[Dict[str, Any]]:
@@ -453,6 +525,7 @@ def _normalize_vulnerability_item(item: Any) -> Optional[Dict[str, Any]]:
         or item.get("score")
         or item.get("cvss")
         or item.get("CVSS")
+        or item.get("relatedVulnerabilities")
     )
     severity = _extract_severity(
         item.get("severity")
@@ -490,14 +563,14 @@ def _normalize_vulnerability_item(item: Any) -> Optional[Dict[str, Any]]:
             or (artifact.get("version") if artifact else "")
             or ""
         ).strip(),
-        "fixed_version": str(
-            item.get("fixed_version")
-            or item.get("FixedVersion")
-            or item.get("fix_version")
-            or item.get("Fixed")
+        "fixed_version": _extract_fixed_versions(item),
+        "source": str(
+            item.get("source")
+            or item.get("dataSource")
+            or item.get("datasource")
+            or item.get("namespace")
             or ""
         ).strip(),
-        "source": str(item.get("source") or item.get("dataSource") or item.get("datasource") or "").strip(),
     }
 
 

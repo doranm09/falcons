@@ -122,20 +122,92 @@
       <span class="text-muted small">{{ vulnerability_total_rows }} rows</span>
     </div>
     <div class="card-body">
-      {% if vulnerability_rows %}
+      {% if vulnerability_tabs|length > 1 %}
+        <ul class="nav nav-tabs mb-3" id="sbom-vulnerability-tabs" role="tablist">
+          {% for tab in vulnerability_tabs %}
+          <li class="nav-item" role="presentation">
+            <button
+              class="nav-link{% if forloop.first %} active{% endif %}"
+              id="sbom-vulnerability-tab-{{ tab.slug }}"
+              data-bs-toggle="tab"
+              data-bs-target="#sbom-vulnerability-pane-{{ tab.slug }}"
+              type="button"
+              role="tab"
+              aria-controls="sbom-vulnerability-pane-{{ tab.slug }}"
+              aria-selected="{% if forloop.first %}true{% else %}false{% endif %}"
+            >
+              {{ tab.label }}
+              <span class="badge text-bg-light ms-1">{{ tab.count }}</span>
+            </button>
+          </li>
+          {% endfor %}
+        </ul>
+        <div class="tab-content">
+          {% for tab in vulnerability_tabs %}
+          <div
+            class="tab-pane fade{% if forloop.first %} show active{% endif %}"
+            id="sbom-vulnerability-pane-{{ tab.slug }}"
+            role="tabpanel"
+            aria-labelledby="sbom-vulnerability-tab-{{ tab.slug }}"
+            tabindex="0"
+          >
+            {% if tab.rows %}
+              <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle sortable-vulnerability-table">
+                  <thead>
+                    <tr>
+                      <th><button type="button" class="btn btn-link p-0 text-decoration-none table-sort" data-sort-index="0" data-sort-type="text">CVE</button></th>
+                      <th><button type="button" class="btn btn-link p-0 text-decoration-none table-sort" data-sort-index="1" data-sort-type="text">Package</button></th>
+                      <th><button type="button" class="btn btn-link p-0 text-decoration-none table-sort" data-sort-index="2" data-sort-type="text">Installed</button></th>
+                      <th><button type="button" class="btn btn-link p-0 text-decoration-none table-sort" data-sort-index="3" data-sort-type="text">Fixed</button></th>
+                      <th><button type="button" class="btn btn-link p-0 text-decoration-none table-sort" data-sort-index="4" data-sort-type="severity">Severity</button></th>
+                      <th><button type="button" class="btn btn-link p-0 text-decoration-none table-sort" data-sort-index="5" data-sort-type="number">Score</button></th>
+                      <th><button type="button" class="btn btn-link p-0 text-decoration-none table-sort" data-sort-index="6" data-sort-type="text">Source</button></th>
+                      <th><button type="button" class="btn btn-link p-0 text-decoration-none table-sort" data-sort-index="7" data-sort-type="text">Description</button></th>
+                      <th><button type="button" class="btn btn-link p-0 text-decoration-none table-sort" data-sort-index="8" data-sort-type="text">References</button></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in tab.rows %}
+                    <tr>
+                      <td><strong>{{ row.cve_id }}</strong></td>
+                      <td>{{ row.package|default:"-" }}</td>
+                      <td><code>{{ row.installed_version|default:"-" }}</code></td>
+                      <td><code>{{ row.fixed_version|default:"-" }}</code></td>
+                      <td>{{ row.severity|default:"-" }}</td>
+                      <td><code>{{ row.score|default:"-" }}</code></td>
+                      <td class="small">{{ row.source|default:"-" }}</td>
+                      <td class="small">{{ row.description|default:"-" }}</td>
+                      <td class="small">{{ row.references|default:"-" }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}
+              <div class="text-muted">
+                No vulnerability findings were found in {{ tab.label|lower }}.
+                {% if tab.status %} Status: {{ tab.status }}.{% endif %}
+                {% if tab.error %} {{ tab.error }}{% endif %}
+              </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      {% elif vulnerability_rows %}
         <div class="table-responsive">
-          <table class="table table-sm table-hover align-middle">
+          <table class="table table-sm table-hover align-middle sortable-vulnerability-table">
             <thead>
               <tr>
-                <th>CVE</th>
-                <th>Package</th>
-                <th>Installed</th>
-                <th>Fixed</th>
-                <th>Severity</th>
-                <th>Score</th>
-                <th>Source</th>
-                <th>Description</th>
-                <th>References</th>
+                <th><button type="button" class="btn btn-link p-0 text-decoration-none table-sort" data-sort-index="0" data-sort-type="text">CVE</button></th>
+                <th><button type="button" class="btn btn-link p-0 text-decoration-none table-sort" data-sort-index="1" data-sort-type="text">Package</button></th>
+                <th><button type="button" class="btn btn-link p-0 text-decoration-none table-sort" data-sort-index="2" data-sort-type="text">Installed</button></th>
+                <th><button type="button" class="btn btn-link p-0 text-decoration-none table-sort" data-sort-index="3" data-sort-type="text">Fixed</button></th>
+                <th><button type="button" class="btn btn-link p-0 text-decoration-none table-sort" data-sort-index="4" data-sort-type="severity">Severity</button></th>
+                <th><button type="button" class="btn btn-link p-0 text-decoration-none table-sort" data-sort-index="5" data-sort-type="number">Score</button></th>
+                <th><button type="button" class="btn btn-link p-0 text-decoration-none table-sort" data-sort-index="6" data-sort-type="text">Source</button></th>
+                <th><button type="button" class="btn btn-link p-0 text-decoration-none table-sort" data-sort-index="7" data-sort-type="text">Description</button></th>
+                <th><button type="button" class="btn btn-link p-0 text-decoration-none table-sort" data-sort-index="8" data-sort-type="text">References</button></th>
               </tr>
             </thead>
             <tbody>
@@ -161,4 +233,63 @@
     </div>
   </div>
 </div>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const severityRank = {
+    critical: 5,
+    high: 4,
+    medium: 3,
+    low: 2,
+    negligible: 1,
+    none: 0,
+    unknown: 0,
+    "-": 0,
+    "": 0,
+  };
+
+  function getSortValue(cell, type) {
+    const raw = (cell.textContent || "").trim();
+    if (type === "number") {
+      const parsed = Number.parseFloat(raw);
+      return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
+    }
+    if (type === "severity") {
+      return severityRank[raw.toLowerCase()] ?? 0;
+    }
+    return raw.toLowerCase();
+  }
+
+  document.querySelectorAll(".sortable-vulnerability-table").forEach((table) => {
+    const tbody = table.querySelector("tbody");
+    if (!tbody) {
+      return;
+    }
+    table.querySelectorAll(".table-sort").forEach((button) => {
+      button.addEventListener("click", function () {
+        const columnIndex = Number.parseInt(button.dataset.sortIndex || "0", 10);
+        const sortType = button.dataset.sortType || "text";
+        const currentDirection = button.dataset.sortDirection === "asc" ? "asc" : "desc";
+        const nextDirection = currentDirection === "asc" ? "desc" : "asc";
+        const rows = Array.from(tbody.querySelectorAll("tr"));
+        rows.sort((rowA, rowB) => {
+          const valueA = getSortValue(rowA.children[columnIndex], sortType);
+          const valueB = getSortValue(rowB.children[columnIndex], sortType);
+          if (valueA < valueB) {
+            return nextDirection === "asc" ? -1 : 1;
+          }
+          if (valueA > valueB) {
+            return nextDirection === "asc" ? 1 : -1;
+          }
+          return 0;
+        });
+        tbody.replaceChildren(...rows);
+        table.querySelectorAll(".table-sort").forEach((otherButton) => {
+          otherButton.dataset.sortDirection = "";
+        });
+        button.dataset.sortDirection = nextDirection;
+      });
+    });
+  });
+});
+</script>
 {% endblock %}

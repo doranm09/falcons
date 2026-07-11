@@ -345,6 +345,10 @@ docker compose \
   up -d
 ```
 This gives the scanner containers direct access to the `iaea_rcs_demo` subnets so you can scan every layer in the lab.
+The override uses a split control/data-plane model: only `ospd-openvas` joins the
+lab networks, and it does so with fixed `.250` addresses chosen to avoid the
+testbed's statically assigned device IPs. `openvasd` stays on the internal
+Greenbone network because it does not need direct access to the lab bridges.
 
 ### Configure the Dashboard
 Set these in `.env` (defaults are shown):

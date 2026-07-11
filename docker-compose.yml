@@ -38,6 +38,8 @@ services:
       GVM_PASS: ${GVM_PASS:-admin}
       GVM_SOCKET_PATH: ${GVM_SOCKET_PATH:-/opt/gvm-run/gvmd.sock}
       RISK_ASSESSMENT_API_URL: ${RISK_ASSESSMENT_API_URL:-http://risk-assessment:7890}
+      TRIVY_CACHE_DIR: /tmp/cyber-sbom-cache/trivy
+      GRYPE_DB_CACHE_DIR: /tmp/cyber-sbom-cache/grype/db
     depends_on:
       db:
         condition: service_healthy
@@ -90,6 +92,8 @@ services:
       GVM_PASS: ${GVM_PASS:-admin}
       GVM_SOCKET_PATH: ${GVM_SOCKET_PATH:-/opt/gvm-run/gvmd.sock}
       RISK_ASSESSMENT_API_URL: ${RISK_ASSESSMENT_API_URL:-http://risk-assessment:7890}
+      TRIVY_CACHE_DIR: /tmp/cyber-sbom-cache/trivy
+      GRYPE_DB_CACHE_DIR: /tmp/cyber-sbom-cache/grype/db
     depends_on:
       db:
         condition: service_healthy

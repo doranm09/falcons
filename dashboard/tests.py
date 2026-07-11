@@ -10,6 +10,7 @@ from django.core.exceptions import ValidationError
 from unittest.mock import patch, MagicMock
 from decimal import Decimal
 import ipaddress
+from datetime import timedelta
 from .models import *
 from .tasks import scan_network_task, launch_openvas_scan_task, poll_openvas_results
 from .utils import dijkstra, list_interfaces
@@ -941,6 +942,12 @@ class VulnerabilityTests(TestCase):
             cidr="192.168.1.0/24",
             scan_type="openvas"
         )
+        self.node = Node.objects.create(
+            scan_run=self.scan,
+            ip_address="192.168.1.1",
+            name="scan-node",
+            hostname="scan-host",
+        )
         self.vuln = ScanVulnerability.objects.create(
             scan_run=self.scan,
             host_ip="192.168.1.1",
@@ -956,6 +963,38 @@ class VulnerabilityTests(TestCase):
         response = self.client.get(reverse('dashboard:vuln-detail', args=[self.scan.id]))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'dashboard/vulnerabilities.html')
+        self.assertContains(response, "scan-host")
+
+    def test_vulnerability_detail_view_includes_sbom_vulnerabilities_in_scan_cidr(self):
+        node = Node.objects.create(
+            name="agent-host",
+            hostname="agent-host",
+            ip_address="192.168.1.25",
+            agent_id="agent-sbom-report",
+        )
+        sbom_vuln = Vulnerability.objects.create(
+            cve_id="CVE-2024-SBOM",
+            description="SBOM derived vulnerability",
+            severity="High",
+            score=7.5,
+            package="openssl",
+            installed_version="3.0.13",
+            fixed_version="3.0.14",
+            source="https://security-tracker.debian.org/tracker/CVE-2024-SBOM",
+            published=timezone.now(),
+            last_modified=timezone.now(),
+        )
+        sbom_vuln.nodes.add(node)
+
+        response = self.client.get(reverse('dashboard:vuln-detail', args=[self.scan.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "CVE-2024-SBOM")
+        self.assertContains(response, "SBOM")
+        self.assertContains(response, "openssl")
+        self.assertContains(response, "3.0.13")
+        self.assertContains(response, "3.0.14")
+        self.assertContains(response, "agent-host")
 
     @patch('dashboard.tasks.launch_openvas_scan_task.delay')
     def test_start_openvas_scan(self, mock_task):
@@ -1125,12 +1164,78 @@ class HistoryViewTests(TestCase):
             published=timezone.now(),
             last_modified=timezone.now()
         )
+        self.scan_finding = ScanVulnerability.objects.create(
+            scan_run=self.scan,
+            host_ip="192.168.1.10",
+            cve_id="CVE-2024-HISTORY",
+            name="Inventory finding",
+            severity="High",
+            cvss_score=8.1,
+            description="History inventory finding",
+        )
+        self.history_node = Node.objects.create(
+            scan_run=self.scan,
+            ip_address="192.168.1.10",
+            name="inventory-node",
+            hostname="inventory-host",
+        )
 
     def test_history_view(self):
         """Test scan history view."""
-        response = self.client.get(reverse('dashboard:history'))
+        response = self.client.get(reverse('dashboard:vulnerabilities'))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'dashboard/history.html')
+        self.assertContains(response, "Vulnerability Inventory")
+        self.assertContains(response, "Global Inventory")
+        self.assertContains(response, "Exposure")
+        self.assertContains(response, "Host Drilldown")
+        self.assertContains(response, "Traceable Artifacts")
+        self.assertContains(response, "CVE-2024-HISTORY")
+        self.assertContains(response, "inventory-host")
+        self.assertContains(response, reverse('dashboard:vuln-detail', args=[self.scan.id]))
+
+    def test_history_view_consolidates_duplicate_findings_and_keeps_latest_report(self):
+        later_scan = ScanRun.objects.create(
+            cidr="192.168.1.0/24",
+            status="COMPLETE",
+            scan_type="openvas",
+            timestamp=timezone.now() + timedelta(minutes=5),
+        )
+        ScanVulnerability.objects.create(
+            scan_run=later_scan,
+            host_ip="192.168.1.10",
+            cve_id="CVE-2024-HISTORY",
+            name="Inventory finding",
+            severity="Critical",
+            cvss_score=9.4,
+            description="Repeated in a later scan",
+        )
+
+        response = self.client.get(reverse('dashboard:vulnerabilities'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "CVE-2024-HISTORY")
+        self.assertContains(response, "2 scans")
+        self.assertContains(response, "1 findings")
+        self.assertContains(response, reverse('dashboard:vuln-detail', args=[later_scan.id]))
+
+    def test_history_view_includes_sbom_backed_inventory_rows(self):
+        node = Node.objects.create(
+            name="sbom-node",
+            hostname="sbom-host",
+            ip_address="192.168.1.25",
+            scan_run=self.scan,
+            agent_id="agent-history-sbom",
+        )
+        self.vuln.nodes.add(node)
+
+        response = self.client.get(reverse('dashboard:vulnerabilities'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "SBOM")
+        self.assertContains(response, "CVE-2023-TEST")
+        self.assertContains(response, "sbom-host")
+        self.assertContains(response, reverse('dashboard:vuln-detail', args=[self.scan.id]))
 
     def test_scan_history_api(self):
         """Test scan history API."""
@@ -1355,7 +1460,18 @@ class AgentAnalysisSbomTests(TestCase):
                         "version": "2.12.5",
                         "type": "library",
                     }
-                ]
+                ],
+                "vulnerabilities": [
+                    {
+                        "id": "CVE-2026-1111",
+                        "severity": "Critical",
+                        "cvssScore": 9.8,
+                        "description": "libxml2 test finding",
+                        "name": "libxml2",
+                        "version": "2.12.5",
+                        "fixed_version": "2.12.6",
+                    }
+                ],
             },
             package_count=1,
             os_summary="Ubuntu 24.04",
@@ -1369,6 +1485,57 @@ class AgentAnalysisSbomTests(TestCase):
         self.assertContains(response, "Table View")
         self.assertContains(response, "JSON")
         self.assertContains(response, "Ubuntu 24.04")
+        self.assertContains(response, "SBOM Vulnerabilities")
+        self.assertContains(response, "CVE-2026-1111")
+        self.assertContains(response, "libxml2 test finding")
+
+
+class AgentDetailsSbomVulnerabilityTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.agent = AgentStatus.objects.create(
+            agent_id="agent-details-sbom-001",
+            hostname="details-host",
+            ip_address="192.168.1.61",
+            status="online",
+        )
+        self.node = Node.objects.create(
+            agent_id=self.agent.agent_id,
+            name="details-node",
+            ip_address="192.168.1.61",
+        )
+        SbomReport.objects.create(
+            node=self.node,
+            agent_id=self.agent.agent_id,
+            format="cyclonedx",
+            bom_format="CycloneDX",
+            spec_version="1.5",
+            document={
+                "components": [
+                    {"name": "openssl", "version": "3.0.13", "type": "library"}
+                ]
+            },
+            package_count=1,
+            os_summary="Ubuntu 24.04",
+        )
+        self.vuln = Vulnerability.objects.create(
+            cve_id="CVE-2026-2222",
+            description="Persisted fallback finding",
+            severity="High",
+            score=8.4,
+            published=timezone.now(),
+            last_modified=timezone.now(),
+            references="https://example.test/CVE-2026-2222",
+        )
+        self.vuln.nodes.add(self.node)
+
+    def test_agent_details_includes_persisted_sbom_vulnerabilities(self):
+        response = self.client.get(reverse("dashboard:agent_details", args=[self.agent.agent_id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "dashboard/agent_details.html")
+        self.assertContains(response, "SBOM Vulnerabilities")
+        self.assertContains(response, "CVE-2026-2222")
+        self.assertContains(response, "Persisted fallback finding")
 
 
 class ShortestPathsTests(TestCase):

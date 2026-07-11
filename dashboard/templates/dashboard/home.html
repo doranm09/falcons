@@ -149,7 +149,7 @@
             <button class="btn btn-outline-dark" onclick="window.open('http://127.0.0.1:9001', '_blank')">
               <i class="bi bi-code-square"></i> Code Analysis
             </button>
-            <button class="btn btn-outline-success" onclick="window.location.href='/dashboard/history/'">
+            <button class="btn btn-outline-success" onclick="window.location.href='{% url 'dashboard:vulnerabilities' %}'">
               <i class="bi bi-shield-check"></i> Vulnerability Report
             </button>
           </div>

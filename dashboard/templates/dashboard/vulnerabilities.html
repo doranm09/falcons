@@ -11,7 +11,13 @@
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
       <h5 class="mb-0">Findings</h5>
-      <span class="text-muted small">{{ vulnerabilities|length }} entries</span>
+      <div class="text-muted small d-flex gap-3 flex-wrap">
+        <span>{{ vulnerabilities|length }} entries</span>
+        {% if source_counts %}
+        <span>network scan: {{ source_counts.network_scan|default:0 }}</span>
+        <span>sbom: {{ source_counts.sbom|default:0 }}</span>
+        {% endif %}
+      </div>
     </div>
     <div class="card-body">
       <div class="table-responsive">
@@ -19,9 +25,14 @@
           <thead>
             <tr>
               <th>Host</th>
+              <th>Hostname</th>
+              <th>Source</th>
               <th>CVE</th>
               <th>Link</th>
               <th>Name</th>
+              <th>Package</th>
+              <th>Installed</th>
+              <th>Fixed</th>
               <th>CVSS</th>
               <th>Severity</th>
               <th>Description</th>
@@ -31,13 +42,19 @@
             {% for v in vulnerabilities %}
               <tr>
                 <td>{{ v.host_ip }}</td>
+                <td>{{ v.hostname|default:"-" }}</td>
+                <td>
+                  <span class="badge bg-{% if v.source_type == 'SBOM' %}info{% else %}secondary{% endif %}">
+                    {{ v.source_type }}
+                  </span>
+                </td>
                 <td><code>{{ v.cve_id }}</code></td>
                 <td class="small">
-                  {% if v.cve_id|slice:":4" == "CVE-" %}
-                    <a class="text-break" href="https://nvd.nist.gov/vuln/detail/{{ v.cve_id }}" target="_blank" rel="noopener">
-                      https://nvd.nist.gov/vuln/detail/{{ v.cve_id }}
+                  {% if v.link_url %}
+                    <a class="text-break" href="{{ v.link_url }}" target="_blank" rel="noopener">
+                      {{ v.link_url }}
                     </a>
-                  {% elif scan.openvas_task_id %}
+                  {% elif scan.openvas_task_id and v.source_type != "SBOM" %}
                     <a class="text-break" href="http://127.0.0.1:9392" target="_blank" rel="noopener">
                       OpenVAS UI (task {{ scan.openvas_task_id }})
                     </a>
@@ -46,6 +63,9 @@
                   {% endif %}
                 </td>
                 <td>{{ v.name }}</td>
+                <td>{{ v.package|default:"-" }}</td>
+                <td><code>{{ v.installed_version|default:"-" }}</code></td>
+                <td><code>{{ v.fixed_version|default:"-" }}</code></td>
                 <td>{{ v.cvss_score|default:"-" }}</td>
                 <td>
                   <span class="badge bg-{% if v.severity == 'Critical' or v.severity == 'High' %}danger{% elif v.severity == 'Medium' %}warning{% else %}secondary{% endif %}">
@@ -63,7 +83,7 @@
               </tr>
             {% empty %}
               <tr>
-                <td colspan="7" class="text-center text-muted">No vulnerabilities recorded for this scan.</td>
+                <td colspan="12" class="text-center text-muted">No vulnerabilities recorded for this scan.</td>
               </tr>
             {% endfor %}
           </tbody>

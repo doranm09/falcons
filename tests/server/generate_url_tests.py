@@ -133,7 +133,7 @@ class TestComprehensiveURLCoverage:
     @pytest.mark.django_db
     def test_history_view(self, client):
         """Test history: GET /history/"""
-        response = client.get(reverse('dashboard:history'))
+        response = client.get(reverse('dashboard:vulnerabilities'))
         assert response.status_code == 200
         assert 'dashboard/history.html' in [t.name for t in response.templates]
 

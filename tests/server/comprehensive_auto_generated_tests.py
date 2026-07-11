@@ -105,7 +105,7 @@ class TestHistoryEndpoint:
 
     def test_history_view(self, client):
         """Test history history view."""
-        response = client.get(reverse("dashboard:history"))
+        response = client.get(reverse("dashboard:vulnerabilities"))
         assert response.status_code in [200, 302]
         if response.status_code == 200:
             assert "dashboard/history.html" in [t.name for t in response.templates]

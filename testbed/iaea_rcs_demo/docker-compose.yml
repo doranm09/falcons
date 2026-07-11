@@ -1,0 +1,627 @@
+x-endpoint: &endpoint
+  build:
+    context: ./services/sim-endpoint
+  restart: unless-stopped
+  cap_drop: ["ALL"]
+  cap_add: ["NET_ADMIN", "NET_BIND_SERVICE"]
+  read_only: true
+  tmpfs:
+    - /tmp
+
+x-firewall: &firewall
+  build:
+    context: ./firewall
+  restart: unless-stopped
+  cap_add: ["NET_ADMIN", "NET_RAW"]
+  sysctls:
+    net.ipv4.ip_forward: '1'
+
+x-openplc: &openplc
+  build:
+    context: ./services/openplc-v3
+  restart: unless-stopped
+  cap_add: ["NET_ADMIN", "NET_BIND_SERVICE", "SYS_NICE", "SYS_RESOURCE"]
+  tmpfs:
+    - /tmp
+
+x-actuator-modbus-env: &actuator_modbus_env
+  MODBUS_PORT: "502"
+  MODBUS_PROFILE: actuator
+  MODBUS_CONTROLLER_MAP: "1|10.1.13.10|200;2|10.2.23.10|100"
+  MODBUS_OWNER_LEASE_SEC: "2.0"
+  MODBUS_COMMAND_MIN: "0"
+  MODBUS_COMMAND_MAX: "100"
+
+services:
+  # ---------------------- Layer 4 ----------------------
+  workstation:
+    <<: *endpoint
+    container_name: workstation
+    environment:
+      DEVICE_NAME: Workstation
+      DEVICE_ROLE: Layer4 workstation
+      SERVICE_PORTS: "80,443"
+      DEVICE_DESC: Business network workstation
+      STATIC_ROUTES: "10.2.50.0/24 via 10.4.50.254;10.3.50.0/24 via 10.4.50.254;10.1.13.0/24 via 10.2.50.253;10.2.23.0/24 via 10.2.50.253"
+    networks:
+      l4_net:
+        ipv4_address: 10.4.50.10
+    ports:
+      - "8080:80"
+      - "8443:443"
+
+  database:
+    <<: *endpoint
+    container_name: database
+    environment:
+      DEVICE_NAME: Database
+      DEVICE_ROLE: Layer4 database
+      SERVICE_PORTS: "5432"
+      DEVICE_DESC: Business network database server
+      STATIC_ROUTES: "10.2.50.0/24 via 10.4.50.254;10.3.50.0/24 via 10.4.50.254;10.1.13.0/24 via 10.2.50.253;10.2.23.0/24 via 10.2.50.253"
+    networks:
+      l4_net:
+        ipv4_address: 10.4.50.20
+    ports:
+      - "15432:5432"
+
+  metasploit:
+    image: metasploitframework/metasploit-framework:latest
+    container_name: metasploit
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    cap_add: ["NET_ADMIN"]
+    networks:
+      l4_net:
+        ipv4_address: 10.4.50.50
+    ports:
+      - "4444:4444"
+    command:
+      - ./msfrpcd
+      - -U
+      - msfadmin
+      - -P
+      - msfadmin
+      - -S
+      - -f
+      - -a
+      - 0.0.0.0
+      - -p
+      - "4444"
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: iaea
+      POSTGRES_PASSWORD: iaea-demo-password
+      POSTGRES_DB: iaea_rcs
+    networks:
+      l4_net:
+        ipv4_address: 10.4.50.41
+    ports:
+      - "25432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iaea"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  historian-db:
+    image: influxdb:2.7
+    container_name: historian-db
+    restart: unless-stopped
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: iaea-demo-password
+      DOCKER_INFLUXDB_INIT_ORG: iaea
+      DOCKER_INFLUXDB_INIT_BUCKET: iaea_rcs
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: iaea-historian-token
+    ports:
+      - "8086:8086"
+    networks:
+      l4_net:
+        ipv4_address: 10.4.50.30
+      l2_net:
+        ipv4_address: 10.2.50.32
+
+  historian:
+    <<: *endpoint
+    build:
+      context: ./services/historian
+    restart: unless-stopped
+    container_name: historian
+    environment:
+      DEVICE_NAME: Layer4 Historian
+      DEVICE_ROLE: Layer4 historical archive
+      SERVICE_PORTS: ""
+      DEVICE_DESC: OPC-driven historian writing live PLC state into InfluxDB
+      STATIC_ROUTES: "10.2.50.0/24 via 10.4.50.254;10.3.50.0/24 via 10.4.50.254;10.1.13.0/24 via 10.2.50.253;10.2.23.0/24 via 10.2.50.253"
+      INFLUX_URL: "http://historian-db:8086"
+      INFLUX_TOKEN: iaea-historian-token
+      INFLUX_ORG: iaea
+      INFLUX_BUCKET: iaea_rcs
+      HISTORIAN_POLL_INTERVAL: "6"
+    depends_on:
+      - historian-db
+    networks:
+      l2_net:
+        ipv4_address: 10.2.50.31
+
+  # ---------------------- Firewalls ----------------------
+  firewall-2:
+    <<: *firewall
+    container_name: firewall-2
+    environment:
+      FIREWALL_NAME: firewall-2
+      ALLOW_TCP: "10.4.50.10|10.3.50.10|443,4840;10.4.50.10|10.4.50.20|5432;10.4.50.10|10.4.50.41|5432;10.4.50.31|10.3.50.10|443,4840;10.4.50.31|10.4.50.20|5432;10.4.50.31|10.4.50.41|5432"
+      STATIC_ROUTES: "10.2.50.0/24 via 10.3.50.253"
+    networks:
+      l3_net:
+        ipv4_address: 10.3.50.254
+      l4_net:
+        ipv4_address: 10.4.50.254
+
+  firewall-1:
+    <<: *firewall
+    container_name: firewall-1
+    environment:
+      FIREWALL_NAME: firewall-1
+      ALLOW_TCP: "10.2.50.10|10.3.50.10|443,4840;10.2.50.20|10.3.50.10|443,4840"
+      STATIC_ROUTES: "10.4.50.0/24 via 10.3.50.254"
+    networks:
+      l2_net:
+        ipv4_address: 10.2.50.254
+      l3_net:
+        ipv4_address: 10.3.50.253
+
+  firewall-0:
+    <<: *firewall
+    container_name: firewall-0
+    environment:
+      FIREWALL_NAME: firewall-0
+      ALLOW_TCP: "10.2.50.10|10.1.13.10|502,44818,4840;10.2.50.10|10.2.23.10|502,44818,4840;10.2.50.20|10.1.13.10|502,44818,4840;10.2.50.20|10.2.23.10|502,44818,4840;10.2.50.31|10.1.13.10|4840;10.2.50.31|10.2.23.10|4840;10.2.50.40|10.1.13.10|4840;10.2.50.40|10.2.23.10|4840"
+    networks:
+      l2_net:
+        ipv4_address: 10.2.50.253
+      l1_main:
+        ipv4_address: 10.1.13.253
+      l1_backup:
+        ipv4_address: 10.2.23.253
+
+  firewall-main-cell:
+    <<: *firewall
+    container_name: firewall-main-cell
+    environment:
+      FIREWALL_NAME: firewall-main-cell
+      ALLOW_BIDIR_TCP: "10.1.13.10|10.3.13.11|502;10.1.13.10|10.3.13.12|502;10.1.13.10|10.3.13.13|502;10.1.13.10|10.3.13.1|502;10.1.13.10|10.3.13.2|502;10.1.13.10|10.3.13.3|502;10.1.13.10|10.3.13.5|502"
+    networks:
+      l1_main:
+        ipv4_address: 10.1.13.252
+      p13_net:
+        ipv4_address: 10.3.13.253
+
+  firewall-backup-cell:
+    <<: *firewall
+    container_name: firewall-backup-cell
+    environment:
+      FIREWALL_NAME: firewall-backup-cell
+      ALLOW_BIDIR_TCP: "10.2.23.10|10.4.23.12|502;10.2.23.10|10.4.23.13|502;10.2.23.10|10.4.23.14|502;10.2.23.10|10.4.23.1|502;10.2.23.10|10.4.23.2|502;10.2.23.10|10.4.23.3|502;10.2.23.10|10.4.23.5|502"
+    networks:
+      l1_backup:
+        ipv4_address: 10.2.23.252
+      p23_net:
+        ipv4_address: 10.4.23.253
+
+  # ---------------------- Layer 2 ----------------------
+  hmi:
+    build:
+      context: ./services/hmi
+    restart: unless-stopped
+    cap_drop: ["ALL"]
+    cap_add: ["NET_ADMIN", "NET_BIND_SERVICE"]
+    read_only: true
+    tmpfs:
+      - /tmp
+    container_name: hmi
+    environment:
+      DEVICE_NAME: HMI
+      DEVICE_ROLE: Layer2 HMI
+      SERVICE_PORTS: "80,443"
+      DEVICE_DESC: Human machine interface
+      PLC_MAIN_OPC_ENDPOINT: "opc.tcp://10.1.13.10:4840/main"
+      PLC_MAIN_OPC_NAMESPACE: "urn:iaea-rcs-demo:main"
+      PLC_BACKUP_OPC_ENDPOINT: "opc.tcp://10.2.23.10:4840/backup"
+      PLC_BACKUP_OPC_NAMESPACE: "urn:iaea-rcs-demo:backup"
+      # Layer 2 reaches Layer 3 and Layer 4 through firewall-1, and reaches
+      # the PLC subnets through firewall-0 on the shared Layer 2 segment.
+      STATIC_ROUTES: "10.3.50.0/24 via 10.2.50.254;10.4.50.0/24 via 10.2.50.254;10.1.13.0/24 via 10.2.50.253;10.2.23.0/24 via 10.2.50.253"
+    networks:
+      l2_net:
+        ipv4_address: 10.2.50.10
+    ports:
+      - "8081:80"
+      - "8445:443"
+
+  ignition:
+    build:
+      context: ./services/ignition
+      args:
+        IGNITION_VERSION: 8.1.39
+    restart: unless-stopped
+    cap_add: ["NET_ADMIN"]
+    container_name: ignition
+    environment:
+      ACCEPT_IGNITION_EULA: "Y"
+      GATEWAY_ADMIN_USERNAME: "${IGNITION_GATEWAY_ADMIN_USERNAME:-admin}"
+      GATEWAY_ADMIN_PASSWORD: "${IGNITION_GATEWAY_ADMIN_PASSWORD:-iaea-demo-password}"
+      IGNITION_EDITION: "${IGNITION_EDITION:-standard}"
+      TZ: "${TZ:-America/New_York}"
+      # Same Layer 2 routing model as the HMI and engineering workstation:
+      # historian/database via firewall-1 and PLC access via firewall-0.
+      STATIC_ROUTES: "10.3.50.0/24 via 10.2.50.254;10.4.50.0/24 via 10.2.50.254;10.1.13.0/24 via 10.2.50.253;10.2.23.0/24 via 10.2.50.253"
+    command: >
+      -n iaea-rcs-ignition
+      -m 1024
+      --
+      wrapper.java.initmemory=512
+    networks:
+      l2_net:
+        ipv4_address: 10.2.50.40
+    ports:
+      - "9088:8088"
+      - "9043:8043"
+    volumes:
+      - ignition_data:/usr/local/bin/ignition/data
+
+  engineer-ws:
+    build:
+      context: ./services/eng-ws
+    restart: unless-stopped
+    cap_add: ["NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"]
+    tty: true
+    stdin_open: true
+    container_name: engineer-ws
+    environment:
+      DEVICE_NAME: Engineer-Workstation
+      DEVICE_ROLE: Layer2 engineering workstation
+      SERVICE_PORTS: "80,443"
+      DEVICE_DESC: Engineering workstation for PLC management and portable Ignition Designer access
+      ENGINEER_WS_NOVNC_PORT: "6080"
+      ENGINEER_WS_VNC_PORT: "5900"
+      ENGINEER_WS_VNC_PASSWORD: "${ENGINEER_WS_VNC_PASSWORD:-engwsdemo}"
+      IGNITION_GATEWAY_URL: "http://ignition:8088"
+      # Same routing model as the HMI: historian/database via firewall-1 and
+      # PLC access via firewall-0.
+      STATIC_ROUTES: "10.3.50.0/24 via 10.2.50.254;10.4.50.0/24 via 10.2.50.254;10.1.13.0/24 via 10.2.50.253;10.2.23.0/24 via 10.2.50.253"
+    networks:
+      l2_net:
+        ipv4_address: 10.2.50.20
+    volumes:
+      - eng_ws_home:/home/engineer
+    ports:
+      - "8082:80"
+      - "8446:443"
+      - "6080:6080"
+
+  l2-jump:
+    <<: *endpoint
+    container_name: l2-jump
+    environment:
+      DEVICE_NAME: Layer2-Jumpbox
+      DEVICE_ROLE: Layer2 utility node
+      SERVICE_PORTS: "22,443"
+      DEVICE_DESC: Jumpbox for testing and packet capture
+      STATIC_ROUTES: "10.3.50.0/24 via 10.2.50.254;10.4.50.0/24 via 10.2.50.254"
+    networks:
+      l2_net:
+        ipv4_address: 10.2.50.30
+    ports:
+      - "2222:22"
+      - "8447:443"
+
+  # ---------------------- Layer 1 ----------------------
+  plc-main:
+    <<: *openplc
+    container_name: plc-main
+    environment:
+      DEVICE_NAME: PLC-Main
+      DEVICE_ROLE: Layer1 controller
+      DEVICE_DESC: Primary PLC
+      COMPAT_HTTP_PORT: "44818"
+      PLC_PROGRAM_TEMPLATE: /opt/openplc-lab/programs/rcs_main_cell_polling.st
+      PLC_PROGRAM_FILE: rcs_main_cell_polling.st
+      PLC_PROGRAM_NAME: RCS Main Cell Polling
+      PLC_PROGRAM_DESCRIPTION: Poll PT-455, PT-456, and PT-457 and drive Layer 0 actuators over Modbus/TCP
+      PLC_MODBUS_PROFILE: /opt/openplc-lab/profiles/plc-main-modbus.json
+      PLC_OPC_PROFILE: main
+      PLC_OPC_NAMESPACE: urn:iaea-rcs-demo:main
+      PLC_OPC_ENDPOINT_PATH: main
+      PLC_OPC_SERVER_NAME: PLC Main OPC Bridge
+      PLC_START_RUN_MODE: "true"
+      PLC_ENIP_PORT: disabled
+      # Traffic back to Layer 2 returns through firewall-0 on l1_main.
+      # Traffic into the main process cell goes through firewall-main-cell,
+      # which is the p13_net next hop visible from the PLC.
+      STATIC_ROUTES: "10.2.50.0/24 via 10.1.13.253;10.3.13.0/24 via 10.1.13.252"
+    volumes:
+      - plc_main_data:/docker_persistent
+    networks:
+      l1_main:
+        ipv4_address: 10.1.13.10
+      mgmt13_net:
+        ipv4_address: 10.0.13.10
+    ports:
+      - "18080:8080"
+
+  plc-backup:
+    <<: *openplc
+    container_name: plc-backup
+    environment:
+      DEVICE_NAME: PLC-Backup
+      DEVICE_ROLE: Layer1 controller
+      DEVICE_DESC: Backup PLC
+      COMPAT_HTTP_PORT: "44818"
+      PLC_PROGRAM_TEMPLATE: /opt/openplc-lab/programs/rcs_backup_cell_polling.st
+      PLC_PROGRAM_FILE: rcs_backup_cell_polling.st
+      PLC_PROGRAM_NAME: RCS Backup Cell Polling
+      PLC_PROGRAM_DESCRIPTION: Poll PT-456, PT-457, and PT-458 and drive Layer 0 actuators over Modbus/TCP
+      PLC_MODBUS_PROFILE: /opt/openplc-lab/profiles/plc-backup-modbus.json
+      PLC_OPC_PROFILE: backup
+      PLC_OPC_NAMESPACE: urn:iaea-rcs-demo:backup
+      PLC_OPC_ENDPOINT_PATH: backup
+      PLC_OPC_SERVER_NAME: PLC Backup OPC Bridge
+      PLC_START_RUN_MODE: "true"
+      PLC_ENIP_PORT: disabled
+      # Traffic back to Layer 2 returns through firewall-0 on l1_backup.
+      # Traffic into the backup process cell goes through firewall-backup-cell,
+      # which is the p23_net next hop visible from the PLC.
+      STATIC_ROUTES: "10.2.50.0/24 via 10.2.23.253;10.4.23.0/24 via 10.2.23.252"
+    volumes:
+      - plc_backup_data:/docker_persistent
+    networks:
+      l1_backup:
+        ipv4_address: 10.2.23.10
+      mgmt23_net:
+        ipv4_address: 10.0.23.10
+    ports:
+      - "18081:8080"
+
+  # ---------------------- Layer 0 ----------------------
+  pt-455:
+    <<: *endpoint
+    container_name: pt-455
+    environment:
+      DEVICE_NAME: PT-455
+      DEVICE_ROLE: Pressure Transmitter
+      SERVICE_PORTS: "502"
+      MODBUS_PORT: "502"
+      MODBUS_PROFILE: pressure_transmitter
+      MODBUS_BASE_VALUE: "4550"
+      MODBUS_AMPLITUDE: "35"
+      MODBUS_PERIOD_SEC: "60"
+      MODBUS_PHASE_DEG: "0"
+      MODBUS_STATUS_VALUE: "1"
+      # Single-homed main-cell device: the only remote PLC subnet is l1_main,
+      # reached through firewall-main-cell on the local p13_net segment.
+      STATIC_ROUTES: "10.1.13.0/24 via 10.3.13.253"
+    networks:
+      p13_net:
+        ipv4_address: 10.3.13.11
+
+  pt-456:
+    <<: *endpoint
+    container_name: pt-456
+    environment:
+      DEVICE_NAME: PT-456
+      DEVICE_ROLE: Pressure Transmitter
+      SERVICE_PORTS: "502"
+      MODBUS_PORT: "502"
+      MODBUS_PROFILE: pressure_transmitter
+      MODBUS_BASE_VALUE: "4560"
+      MODBUS_AMPLITUDE: "30"
+      MODBUS_PERIOD_SEC: "75"
+      MODBUS_PHASE_DEG: "90"
+      MODBUS_STATUS_VALUE: "1"
+      # pt-456 is dual-homed into both process cells. Each PLC subnet is remote,
+      # so the next hop must be the cell firewall on the directly attached
+      # process network: l1_main via firewall-main-cell on p13_net, and
+      # l1_backup via firewall-backup-cell on p23_net.
+      STATIC_ROUTES: "10.1.13.0/24 via 10.3.13.253;10.2.23.0/24 via 10.4.23.253"
+    networks:
+      p13_net:
+        ipv4_address: 10.3.13.12
+      p23_net:
+        ipv4_address: 10.4.23.12
+
+  pt-457:
+    <<: *endpoint
+    container_name: pt-457
+    environment:
+      DEVICE_NAME: PT-457
+      DEVICE_ROLE: Pressure Transmitter
+      SERVICE_PORTS: "502"
+      MODBUS_PORT: "502"
+      MODBUS_PROFILE: pressure_transmitter
+      MODBUS_BASE_VALUE: "4570"
+      MODBUS_AMPLITUDE: "25"
+      MODBUS_PERIOD_SEC: "90"
+      MODBUS_PHASE_DEG: "180"
+      MODBUS_STATUS_VALUE: "1"
+      # Same dual-homed routing model as pt-456: each PLC subnet is reached
+      # through the firewall on the corresponding local process segment.
+      STATIC_ROUTES: "10.1.13.0/24 via 10.3.13.253;10.2.23.0/24 via 10.4.23.253"
+    networks:
+      p13_net:
+        ipv4_address: 10.3.13.13
+      p23_net:
+        ipv4_address: 10.4.23.13
+
+  pt-458:
+    <<: *endpoint
+    container_name: pt-458
+    environment:
+      DEVICE_NAME: PT-458
+      DEVICE_ROLE: Pressure Transmitter
+      SERVICE_PORTS: "502"
+      MODBUS_PORT: "502"
+      MODBUS_PROFILE: pressure_transmitter
+      MODBUS_BASE_VALUE: "4580"
+      MODBUS_AMPLITUDE: "20"
+      MODBUS_PERIOD_SEC: "105"
+      MODBUS_PHASE_DEG: "270"
+      MODBUS_STATUS_VALUE: "1"
+      # Single-homed backup-cell device: the only remote PLC subnet is
+      # l1_backup, reached through firewall-backup-cell on p23_net.
+      STATIC_ROUTES: "10.2.23.0/24 via 10.4.23.253"
+    networks:
+      p23_net:
+        ipv4_address: 10.4.23.14
+
+  vc-hv455a:
+    <<: *endpoint
+    container_name: vc-hv455a
+    environment:
+      <<: *actuator_modbus_env
+      DEVICE_NAME: VC-HV455A
+      DEVICE_ROLE: Control Valve
+      SERVICE_PORTS: "502"
+      # Dual-homed process device: use the firewall attached to the local
+      # process segment as the next hop for each remote PLC subnet.
+      STATIC_ROUTES: "10.1.13.0/24 via 10.3.13.253;10.2.23.0/24 via 10.4.23.253"
+    networks:
+      p13_net:
+        ipv4_address: 10.3.13.1
+      p23_net:
+        ipv4_address: 10.4.23.1
+
+  vc-pv455b:
+    <<: *endpoint
+    container_name: vc-pv455b
+    environment:
+      <<: *actuator_modbus_env
+      DEVICE_NAME: VC-PV455B
+      DEVICE_ROLE: Control Valve
+      SERVICE_PORTS: "502"
+      # Dual-homed process device: l1_main is behind firewall-main-cell and
+      # l1_backup is behind firewall-backup-cell.
+      STATIC_ROUTES: "10.1.13.0/24 via 10.3.13.253;10.2.23.0/24 via 10.4.23.253"
+    networks:
+      p13_net:
+        ipv4_address: 10.3.13.2
+      p23_net:
+        ipv4_address: 10.4.23.2
+
+  vc-pv455c:
+    <<: *endpoint
+    container_name: vc-pv455c
+    environment:
+      <<: *actuator_modbus_env
+      DEVICE_NAME: VC-PV455C
+      DEVICE_ROLE: Control Valve
+      SERVICE_PORTS: "502"
+      # Dual-homed process device: route each PLC subnet through the firewall
+      # that sits on the same directly attached process network.
+      STATIC_ROUTES: "10.1.13.0/24 via 10.3.13.253;10.2.23.0/24 via 10.4.23.253"
+    networks:
+      p13_net:
+        ipv4_address: 10.3.13.3
+      p23_net:
+        ipv4_address: 10.4.23.3
+
+  heat-ctrl:
+    <<: *endpoint
+    container_name: heat-ctrl
+    environment:
+      <<: *actuator_modbus_env
+      DEVICE_NAME: Heat-Ctrl
+      DEVICE_ROLE: Heater Controller
+      SERVICE_PORTS: "502"
+      # Dual-homed process device: next hops point to the Layer 1/0 firewalls,
+      # not the PLCs, because the PLC subnets are remote from both cell nets.
+      STATIC_ROUTES: "10.1.13.0/24 via 10.3.13.253;10.2.23.0/24 via 10.4.23.253"
+    networks:
+      p13_net:
+        ipv4_address: 10.3.13.5
+      p23_net:
+        ipv4_address: 10.4.23.5
+
+networks:
+  l4_net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br_rcs_l4
+    ipam:
+      config: [{ subnet: 10.4.50.0/24 }]
+
+  l3_net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br_rcs_l3
+    ipam:
+      config: [{ subnet: 10.3.50.0/24 }]
+
+  l2_net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br_rcs_l2
+    ipam:
+      config: [{ subnet: 10.2.50.0/24 }]
+
+  l1_main:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: br_rcs_l1m
+    ipam:
+      config: [{ subnet: 10.1.13.0/24, gateway: 10.1.13.254 }]
+
+  l1_backup:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: br_rcs_l1b
+    ipam:
+      config: [{ subnet: 10.2.23.0/24, gateway: 10.2.23.254 }]
+
+  p13_net:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: br_rcs_p13
+    ipam:
+      config: [{ subnet: 10.3.13.0/24, gateway: 10.3.13.254 }]
+
+  p23_net:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: br_rcs_p23
+    ipam:
+      config: [{ subnet: 10.4.23.0/24, gateway: 10.4.23.254 }]
+
+  mgmt13_net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br_rcs_m13
+    ipam:
+      config: [{ subnet: 10.0.13.0/24, gateway: 10.0.13.254 }]
+
+  mgmt23_net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br_rcs_m23
+    ipam:
+      config: [{ subnet: 10.0.23.0/24, gateway: 10.0.23.254 }]
+
+volumes:
+  plc_main_data:
+  plc_backup_data:
+  ignition_data:
+  eng_ws_home:
+  postgres_data:

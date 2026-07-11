@@ -5,6 +5,9 @@ This feature provides a minimal SIEM event store with ingestion and search APIs.
 **Endpoints**
 - `POST /dashboard/siem/ingest/` Ingest one event or a list of events.
 - `POST /dashboard/siem/pipeline/ingest/` Ingest raw pipeline events (auto-mapped to ECS subset).
+- `POST /dashboard/siem/sensors/suricata/eve/` Ingest Suricata EVE batches with sensor metadata.
+- `POST /dashboard/siem/sensors/zeek/logs/` Ingest Zeek log batches with sensor metadata.
+- `GET /dashboard/siem/sensors/health/` Return live/stale sensor state for the SOC views.
 - `GET /dashboard/siem/events/` Search events by time range and filters.
 - `GET /dashboard/siem/events/explorer/` UI for searching and pivoting on events.
 - `GET /dashboard/siem/adapters/agent/<agent_id>/` Adapter preview for agent heartbeat events.
@@ -29,7 +32,8 @@ This feature provides a minimal SIEM event store with ingestion and search APIs.
 
 **Authentication**
 - SIEM ingest endpoints require `X-SIEM-Token: <token>` or `Authorization: Bearer <token>`.
-- Set `SIEM_INGEST_TOKEN` (or `SIEM_INGEST_TOKEN_FILE`) and keep `SIEM_INGEST_TOKEN_REQUIRED=1` (default). For dev, set `SIEM_INGEST_TOKEN_REQUIRED=0`.
+- Set `SIEM_INGEST_TOKEN` (or `SIEM_INGEST_TOKEN_FILE`) and keep `SIEM_INGEST_TOKEN_REQUIRED=1` (default). When enforcement is enabled and no SIEM token is configured, ingest now fails closed with `401`.
+- `SIEM_SENSOR_TOKEN` is accepted as a compatibility alias for sensor-plane senders, but the preferred canonical secret is `SIEM_INGEST_TOKEN`. Keep them identical when both are set.
 - `SIEM_MAX_INGEST_BATCH` controls the maximum number of events per request (default 500).
 
 **Ingest Example**
@@ -73,9 +77,11 @@ curl -X POST http://localhost:8000/dashboard/siem/pipeline/ingest/ \
 - Zeek-like payloads with `id_orig_h` or `uid` map to `zeek.conn` or `zeek.event`.
 - Agent-like payloads with `agent_id` map to `agent.telemetry`.
 - Scan-like payloads with `scan_type` or `cidr` map to `scan.run`.
+- Network metadata is normalized onto canonical fields including `event.module`, `event.dataset`, `observer_name`, `source_ip`, `source_port`, `destination_ip`, `destination_port`, and `network_community_id`.
 
 **OpenSearch Forwarding**
 When `OPENSEARCH_ENABLED=1`, ingested events are also indexed into OpenSearch using the `_bulk` API.
+The OpenSearch document shape keeps `event_source` as the producer name and reserves ECS-style `source.*` and `destination.*` for endpoint data.
 See `docs/opensearch.md` for setup and dashboards instructions.
 
 **Threat Intel Enrichment**
@@ -93,6 +99,11 @@ See `docs/siem_syslog_windows.md` for payload examples.
 curl "http://localhost:8000/dashboard/siem/events/?event_type=suricata.alert&start=2026-02-06T12:00:00Z&end=2026-02-06T13:00:00Z"
 ```
 
+**Network Filter Example**
+```bash
+curl "http://localhost:8000/dashboard/siem/events/?source_ip_in=10.2.50.20,10.1.1.10&destination_port_in=44818,502&exclude_stats=1"
+```
+
 **Aggregation Example**
 ```bash
 curl "http://localhost:8000/dashboard/siem/events/?agg=source,event_type&agg_size=10"
@@ -101,12 +112,17 @@ curl "http://localhost:8000/dashboard/siem/events/?agg=source,event_type&agg_siz
 **Multi-Value Filters**
 - `event_type_in=suricata.alert,zeek.conn`
 - `source_in=suricata,zeek`
+- `event_module_in=agent,zeek,suricata`
+- `event_dataset_in=agent.network_connection,zeek.conn,suricata.flow`
+- `source_ip_in=10.2.50.20,10.1.1.10`
+- `destination_port_in=502,44818`
 
 **UI Usage**
 - Navigate to `SIEM > Event Explorer` in the sidebar.
-- Use filters and quick ranges to search events.
+- Use filters and quick ranges to search events. IP, module, dataset, observer, and port filters accept comma-separated values.
 - Click `View` to inspect the raw payload.
 - Click `Pivot` to jump to the related node and scan details (if found).
+- Use the workflow chips for common OT views such as Modbus, OPC, engineering workstation to PLC, and channel-to-field traffic.
 - Navigate to `SIEM > Alert Queue` to review detections and toggle rules.
 
 **Adapter Preview Example**

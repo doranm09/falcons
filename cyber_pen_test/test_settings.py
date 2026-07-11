@@ -154,6 +154,7 @@ SIEM_MAX_INGEST_BATCH = int(os.environ.get("SIEM_MAX_INGEST_BATCH", "500"))
 # OpenSearch (disabled in tests by default)
 OPENSEARCH_ENABLED = os.environ.get("OPENSEARCH_ENABLED", "0") == "1"
 OPENSEARCH_URL = os.environ.get("OPENSEARCH_URL", "http://opensearch:9200")
+OPENSEARCH_DASHBOARDS_URL = os.environ.get("OPENSEARCH_DASHBOARDS_URL", "http://127.0.0.1:5601")
 OPENSEARCH_INDEX_PREFIX = os.environ.get("OPENSEARCH_INDEX_PREFIX", "siem-events")
 OPENSEARCH_USER = os.environ.get("OPENSEARCH_USER", "")
 OPENSEARCH_PASS = os.environ.get("OPENSEARCH_PASS", "")

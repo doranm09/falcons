@@ -55,16 +55,55 @@ def _coerce_ip(value: Any) -> Optional[str]:
         raise SiemNormalizeError("Invalid asset_ip")
 
 
+def _coerce_optional_ip(value: Any, field: str) -> Optional[str]:
+    value = _pick_first(value)
+    if value in (None, ""):
+        return None
+    try:
+        return str(ipaddress.ip_address(str(value)))
+    except ValueError:
+        raise SiemNormalizeError(f"Invalid {field}")
+
+
+def _coerce_optional_port(value: Any, field: str) -> Optional[int]:
+    value = _pick_first(value)
+    if value in (None, ""):
+        return None
+    try:
+        port = int(value)
+    except (TypeError, ValueError):
+        raise SiemNormalizeError(f"Invalid {field}")
+    if port < 0 or port > 65535:
+        raise SiemNormalizeError(f"Invalid {field}")
+    return port
+
+
+def _coerce_str(value: Any, max_length: int) -> str:
+    if value in (None, ""):
+        return ""
+    return str(value)[:max_length]
+
+
 def normalize_siem_event(payload: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(payload, dict):
         raise SiemNormalizeError("Event payload must be an object")
 
+    raw_obj = payload.get("raw") if isinstance(payload.get("raw"), dict) else payload
     event_obj = payload.get("event") if isinstance(payload.get("event"), dict) else {}
+    if not event_obj and isinstance(raw_obj.get("event"), dict):
+        event_obj = raw_obj["event"]
     host_obj = payload.get("host") if isinstance(payload.get("host"), dict) else {}
+    if not host_obj and isinstance(raw_obj.get("host"), dict):
+        host_obj = raw_obj["host"]
+    observer_obj = raw_obj.get("observer") if isinstance(raw_obj.get("observer"), dict) else {}
+    source_obj = raw_obj.get("source") if isinstance(raw_obj.get("source"), dict) else {}
+    destination_obj = raw_obj.get("destination") if isinstance(raw_obj.get("destination"), dict) else {}
+    network_obj = raw_obj.get("network") if isinstance(raw_obj.get("network"), dict) else {}
 
     timestamp = _parse_timestamp(
         payload.get("timestamp")
         or payload.get("@timestamp")
+        or raw_obj.get("@timestamp")
         or event_obj.get("created")
         or event_obj.get("start")
     )
@@ -104,9 +143,79 @@ def normalize_siem_event(payload: Dict[str, Any]) -> Dict[str, Any]:
     asset_ip = _coerce_ip(
         payload.get("asset_ip")
         or host_obj.get("ip")
+        or raw_obj.get("asset_ip")
         or payload.get("src_ip")
         or payload.get("source_ip")
+        or raw_obj.get("src_ip")
+        or raw_obj.get("source_ip")
+        or raw_obj.get("id_orig_h")
+        or raw_obj.get("id.orig_h")
         or payload.get("ip")
+    )
+
+    event_module = _coerce_str(
+        payload.get("event_module")
+        or event_obj.get("module")
+        or raw_obj.get("event_module"),
+        100,
+    )
+    event_dataset = _coerce_str(
+        payload.get("event_dataset")
+        or event_obj.get("dataset")
+        or raw_obj.get("event_dataset"),
+        150,
+    )
+    observer_name = _coerce_str(
+        payload.get("observer_name")
+        or observer_obj.get("name")
+        or raw_obj.get("observer_name"),
+        255,
+    )
+    source_ip = _coerce_optional_ip(
+        payload.get("source_ip")
+        or payload.get("src_ip")
+        or source_obj.get("ip")
+        or raw_obj.get("src_ip")
+        or raw_obj.get("source_ip")
+        or raw_obj.get("id_orig_h")
+        or raw_obj.get("id.orig_h"),
+        "source_ip",
+    )
+    source_port = _coerce_optional_port(
+        payload.get("source_port")
+        or payload.get("src_port")
+        or source_obj.get("port")
+        or raw_obj.get("src_port")
+        or raw_obj.get("source_port")
+        or raw_obj.get("id_orig_p")
+        or raw_obj.get("id.orig_p"),
+        "source_port",
+    )
+    destination_ip = _coerce_optional_ip(
+        payload.get("destination_ip")
+        or payload.get("dest_ip")
+        or destination_obj.get("ip")
+        or raw_obj.get("dest_ip")
+        or raw_obj.get("destination_ip")
+        or raw_obj.get("id_resp_h")
+        or raw_obj.get("id.resp_h"),
+        "destination_ip",
+    )
+    destination_port = _coerce_optional_port(
+        payload.get("destination_port")
+        or payload.get("dest_port")
+        or destination_obj.get("port")
+        or raw_obj.get("dest_port")
+        or raw_obj.get("destination_port")
+        or raw_obj.get("id_resp_p")
+        or raw_obj.get("id.resp_p"),
+        "destination_port",
+    )
+    network_community_id = _coerce_str(
+        payload.get("network_community_id")
+        or network_obj.get("community_id")
+        or raw_obj.get("network_community_id"),
+        128,
     )
 
     summary = (
@@ -120,9 +229,17 @@ def normalize_siem_event(payload: Dict[str, Any]) -> Dict[str, Any]:
         "timestamp": timestamp,
         "source": str(source)[:100],
         "event_type": str(event_type)[:120],
+        "event_module": event_module,
+        "event_dataset": event_dataset,
+        "observer_name": observer_name,
         "severity": severity,
         "asset_id": str(asset_id)[:128] if asset_id else None,
         "asset_ip": asset_ip,
+        "source_ip": source_ip,
+        "source_port": source_port,
+        "destination_ip": destination_ip,
+        "destination_port": destination_port,
+        "network_community_id": network_community_id,
         "summary": str(summary)[:512],
         "raw": payload,
     }

@@ -1,6 +1,6 @@
 {
   "policy": {
-    "policy_id": "siem-events-policy",
+    "policy_id": "__SIEM_POLICY_ID__",
     "description": "Retention policy for SIEM events",
     "default_state": "hot",
     "states": [
@@ -26,7 +26,7 @@
     ],
     "ism_template": [
       {
-        "index_patterns": ["siem-events-*"],
+        "index_patterns": ["__OPENSEARCH_INDEX_PREFIX__-*"],
         "priority": 100
       }
     ]

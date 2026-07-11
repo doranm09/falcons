@@ -55,6 +55,7 @@ This project is a full-stack Django platform that simulates and secures networke
 - Threat intel ingestion (MISP-like) and IOC enrichment in alerts
 - Host agent telemetry with osquery + file integrity monitoring (FIM)
 - Syslog and Windows Event Log ingestion endpoints
+- Security Onion-style architecture reference: `docs/security_onion_soc_architecture.md`
 
 ### 6. Digital Twin Generation (MiniMega)
 - Generate MiniMega launch scripts and manifests from scans

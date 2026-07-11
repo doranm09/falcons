@@ -8,9 +8,12 @@
       <h2 class="mb-1">SIEM Alert Queue</h2>
       <p class="text-muted mb-0">Latest detections from Sigma and Suricata rules.</p>
     </div>
-    <div class="btn-group" role="group">
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-dark" href="{{ opensearch.dashboards_url }}" target="_blank">Open Dashboards</a>
+      <div class="btn-group" role="group">
       <a class="btn btn-outline-primary {% if status == 'open' %}active{% endif %}" href="{% url 'dashboard:siem_alerts_page' %}?status=open">Open</a>
       <a class="btn btn-outline-primary {% if status == 'closed' %}active{% endif %}" href="{% url 'dashboard:siem_alerts_page' %}?status=closed">Closed</a>
+      </div>
     </div>
   </div>
 
@@ -31,7 +34,8 @@
             </tr>
           </thead>
           <tbody>
-            {% for alert in alerts %}
+            {% for row in alert_rows %}
+              {% with alert=row.alert %}
               <tr>
                 <td>{{ alert.rule_name }}</td>
                 <td>{{ alert.rule_type }}</td>
@@ -41,12 +45,16 @@
                 <td><span class="badge bg-secondary">{{ alert.count }}</span></td>
                 <td>{{ alert.last_seen|date:"Y-m-d H:i:s" }}</td>
                 <td>
-                  <form method="post" action="{% url 'dashboard:siem_case_promote_alert' alert.id %}">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-sm btn-outline-primary">Create Case</button>
-                  </form>
+                  <div class="d-flex gap-2">
+                    <a class="btn btn-sm btn-outline-secondary" href="{{ row.explorer_url }}">Open Events</a>
+                    <form method="post" action="{% url 'dashboard:siem_case_promote_alert' alert.id %}">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-primary">Create Case</button>
+                    </form>
+                  </div>
                 </td>
               </tr>
+              {% endwith %}
             {% empty %}
               <tr><td colspan="8" class="text-muted text-center">No alerts yet.</td></tr>
             {% endfor %}

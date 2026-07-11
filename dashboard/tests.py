@@ -2146,6 +2146,48 @@ class NetworkTopologyTests(TestCase):
         self.assertNotIn('10.1.1.249', labels)
         self.assertNotIn('10.1.1.1', labels)
 
+    def test_network_topology_api_suppresses_passive_sensor_management_self_loops(self):
+        """Test that passive sensor heartbeats to the dashboard do not render as self-loop edges."""
+        span_agent = AgentStatus.objects.create(
+            agent_id="span-l1b",
+            hostname="span-l1b",
+            ip_address="172.31.250.251",
+            interfaces=[
+                {"name": "eth0", "ip": "172.31.250.251", "mac": "00:11:22:33:44:61"},
+                {"name": "eth1", "ip": "10.1.2.250", "mac": "00:11:22:33:44:62"},
+            ],
+            status="online",
+        )
+        metadata = NetworkMetadata.objects.create(agent=span_agent, total_connections=2, total_interfaces=2)
+        NetworkConnection.objects.create(
+            metadata=metadata,
+            agent=span_agent,
+            protocol="TCP",
+            local_address="172.31.250.251",
+            local_port=38598,
+            remote_address="172.17.0.1",
+            remote_port=8000,
+            status="OBSERVED",
+            process_name="passive-sniffer",
+        )
+        NetworkConnection.objects.create(
+            metadata=metadata,
+            agent=span_agent,
+            protocol="TCP",
+            local_address="172.17.0.1",
+            local_port=8000,
+            remote_address="172.31.250.251",
+            remote_port=38598,
+            status="OBSERVED",
+            process_name="passive-sniffer",
+        )
+
+        response = self.client.get(reverse('dashboard:network_topology_api'))
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        self.assertFalse(any(edge['from'] == 'span-l1b' and edge['to'] == 'span-l1b' for edge in data['edges']))
+
     def test_network_topology_api_suppresses_openvas_scan_noise(self):
         """Test that OpenVAS-marked connections do not create inferred Purdue assets."""
         scanner_agent = AgentStatus.objects.create(
@@ -2342,6 +2384,284 @@ class AgentVersionTests(TestCase):
             self.assertEqual(data['agent_name'], 'TestAgent')
             self.assertEqual(len(data['agents']), 1)
             self.assertEqual(data['agents'][0]['agent_version'], '1.2.3')
+
+
+@override_settings(SIEM_SENSOR_HEALTH_LOOKBACK_SEC=60)
+class SiemViewIntegrationTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.now = timezone.now()
+        self.event = SiemEvent.objects.create(
+            timestamp=self.now,
+            source="suricata",
+            event_type="suricata.alert",
+            event_module="suricata",
+            event_dataset="suricata.alert",
+            observer_name="sensor-a",
+            severity=8,
+            asset_id="agent-1",
+            asset_ip="10.10.10.10",
+            summary="Suricata alert fired",
+            raw={
+                "event": {"module": "suricata", "dataset": "suricata.alert"},
+                "observer": {"name": "sensor-a"},
+            },
+        )
+        self.other_event = SiemEvent.objects.create(
+            timestamp=self.now - timedelta(minutes=5),
+            source="zeek",
+            event_type="zeek.conn",
+            event_module="zeek",
+            event_dataset="zeek.conn",
+            observer_name="sensor-b",
+            severity=3,
+            asset_id="agent-2",
+            asset_ip="10.10.10.11",
+            summary="Zeek connection event",
+            raw={
+                "event": {"module": "zeek", "dataset": "zeek.conn"},
+                "observer": {"name": "sensor-b"},
+            },
+        )
+        self.alert = Alert.objects.create(
+            rule_name="Suricata Alerts",
+            rule_type="suricata",
+            event_type="suricata.alert",
+            source="suricata",
+            severity=8,
+            asset_ip="10.10.10.10",
+            asset_id="agent-1",
+            summary="Suricata alert fired",
+            dedup_key="suricata.alert:agent-1",
+        )
+        self.case = Case.objects.create(title="Network investigation", priority=Case.Priority.HIGH)
+        self.case.alerts.add(self.alert)
+        self.hunt = Hunt.objects.create(name="Suspicious Suricata Hunt", description="Track sensor alerts")
+        self.hunt_search = HuntSearch.objects.create(
+            hunt=self.hunt,
+            name="Suricata Dataset Search",
+            query_params={"event_module": "suricata", "event_dataset": "suricata.alert", "asset_ip": "10.10.10.10"},
+        )
+        SiemSensorStatus.objects.create(
+            sensor_id="sensor-a",
+            sensor_type="suricata",
+            hostname="sensor-a",
+            status="online",
+            last_seen=self.now,
+            event_count=5,
+            interface_names=["mirror0"],
+        )
+        SiemSensorStatus.objects.create(
+            sensor_id="sensor-b",
+            sensor_type="zeek",
+            hostname="sensor-b",
+            status="online",
+            last_seen=self.now - timedelta(minutes=10),
+            event_count=2,
+            interface_names=["mirror1"],
+        )
+
+    def test_siem_soc_overview_renders_summary_cards(self):
+        with patch(
+            "dashboard.views.get_opensearch_overview",
+            return_value={
+                "enabled": True,
+                "configured": True,
+                "url": "http://opensearch:9200",
+                "dashboards_url": "http://127.0.0.1:5601",
+                "index_prefix": "siem-events",
+                "status": "ok",
+                "cluster_status": "yellow",
+                "node_count": 1,
+                "active_primary_shards": 3,
+                "unassigned_shards": 1,
+                "indices": [
+                    {
+                        "index": "siem-events-2026.04.16",
+                        "health": "yellow",
+                        "status": "open",
+                        "docs_count": 2,
+                        "store_size": "12kb",
+                    }
+                ],
+                "index_count": 1,
+                "document_count": 2,
+                "error": "",
+            },
+        ):
+            response = self.client.get(reverse("dashboard:siem_soc_overview"))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "dashboard/siem_overview.html")
+        self.assertContains(response, "SOC Overview")
+        self.assertContains(response, "sensor-a")
+        self.assertContains(response, "Suricata Alerts")
+        self.assertContains(response, reverse("dashboard:siem_event_explorer"))
+        self.assertContains(response, "OpenSearch")
+        self.assertContains(response, "siem-events-2026.04.16")
+        self.assertContains(response, "http://127.0.0.1:5601")
+
+    def test_siem_soc_overview_prefers_network_events_over_stats_noise(self):
+        newer_noise = SiemEvent.objects.create(
+            timestamp=self.now + timedelta(minutes=5),
+            source="suricata",
+            event_type="suricata.stats",
+            event_module="suricata",
+            event_dataset="suricata.stats",
+            asset_id="suricata-sensor",
+            summary="",
+            raw={},
+        )
+        network_event = SiemEvent.objects.create(
+            timestamp=self.now + timedelta(minutes=4),
+            source="agent",
+            event_type="agent.network_connection",
+            event_module="agent",
+            event_dataset="agent.network_connection",
+            observer_name="historian",
+            asset_id="historian",
+            asset_ip="10.3.50.10",
+            source_ip="10.3.50.10",
+            destination_ip="10.4.50.20",
+            summary="TCP ESTABLISHED python 10.3.50.10:43000 -> 10.4.50.20:5432",
+            raw={},
+        )
+
+        with patch("dashboard.views.get_opensearch_overview", return_value={"enabled": False, "dashboards_url": "", "index_prefix": "siem-events", "status": "disabled", "cluster_status": "", "node_count": 0, "index_count": 0, "document_count": 0, "indices": [], "error": "", "url": ""}):
+            response = self.client.get(reverse("dashboard:siem_soc_overview"))
+
+        self.assertEqual(response.status_code, 200)
+        recent_events = list(response.context["recent_events"])
+        self.assertTrue(recent_events)
+        self.assertEqual(recent_events[0].id, network_event.id)
+        self.assertNotIn(newer_noise.id, [event.id for event in recent_events])
+        self.assertContains(response, "10.3.50.10")
+        self.assertContains(response, "agent.network_connection")
+
+    def test_siem_sensor_health_page_marks_stale_sensors(self):
+        response = self.client.get(reverse("dashboard:siem_sensor_health_page"))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "dashboard/siem_sensor_health.html")
+        self.assertContains(response, "sensor-a")
+        self.assertContains(response, "sensor-b")
+        self.assertContains(response, "stale")
+
+    def test_siem_event_search_filters_by_module_dataset_and_observer(self):
+        response = self.client.get(
+            reverse("dashboard:siem_event_search"),
+            {"event_module": "suricata", "event_dataset": "suricata.alert", "observer_name": "sensor-a"},
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["results"][0]["id"], self.event.id)
+
+    def test_siem_event_explorer_shows_module_and_dataset_focus(self):
+        with patch(
+            "dashboard.views.get_opensearch_overview",
+            return_value={
+                "enabled": True,
+                "configured": True,
+                "url": "http://opensearch:9200",
+                "dashboards_url": "http://127.0.0.1:5601",
+                "index_prefix": "siem-events",
+                "status": "ok",
+                "cluster_status": "yellow",
+                "node_count": 1,
+                "active_primary_shards": 0,
+                "unassigned_shards": 0,
+                "indices": [],
+                "index_count": 0,
+                "document_count": 0,
+                "error": "",
+            },
+        ):
+            response = self.client.get(reverse("dashboard:siem_event_explorer"))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "dashboard/siem_events.html")
+        self.assertContains(response, "Top Modules")
+        self.assertContains(response, "Top Datasets")
+        self.assertContains(response, "siem-event-module")
+        self.assertContains(response, reverse("dashboard:siem_sensor_health_page"))
+        self.assertContains(response, "Open Dashboards")
+
+    def test_siem_alert_and_case_pages_link_back_to_explorer(self):
+        with patch(
+            "dashboard.views.get_opensearch_overview",
+            return_value={
+                "enabled": True,
+                "configured": True,
+                "url": "http://opensearch:9200",
+                "dashboards_url": "http://127.0.0.1:5601",
+                "index_prefix": "siem-events",
+                "status": "ok",
+                "cluster_status": "yellow",
+                "node_count": 1,
+                "active_primary_shards": 0,
+                "unassigned_shards": 0,
+                "indices": [],
+                "index_count": 0,
+                "document_count": 0,
+                "error": "",
+            },
+        ):
+            alerts_response = self.client.get(reverse("dashboard:siem_alerts_page"))
+        self.assertEqual(alerts_response.status_code, 200)
+        self.assertContains(alerts_response, "Open Events")
+        self.assertContains(alerts_response, "event_module=suricata")
+        self.assertContains(alerts_response, "Open Dashboards")
+
+        with patch(
+            "dashboard.views.get_opensearch_overview",
+            return_value={
+                "enabled": True,
+                "configured": True,
+                "url": "http://opensearch:9200",
+                "dashboards_url": "http://127.0.0.1:5601",
+                "index_prefix": "siem-events",
+                "status": "ok",
+                "cluster_status": "yellow",
+                "node_count": 1,
+                "active_primary_shards": 0,
+                "unassigned_shards": 0,
+                "indices": [],
+                "index_count": 0,
+                "document_count": 0,
+                "error": "",
+            },
+        ):
+            case_response = self.client.get(reverse("dashboard:siem_case_detail", args=[self.case.id]))
+        self.assertEqual(case_response.status_code, 200)
+        self.assertContains(case_response, "Open related events")
+        self.assertContains(case_response, "asset_ip=10.10.10.10")
+        self.assertContains(case_response, "Open Dashboards")
+
+    def test_siem_hunt_detail_exposes_explorer_url_and_new_fields(self):
+        with patch(
+            "dashboard.views.get_opensearch_overview",
+            return_value={
+                "enabled": True,
+                "configured": True,
+                "url": "http://opensearch:9200",
+                "dashboards_url": "http://127.0.0.1:5601",
+                "index_prefix": "siem-events",
+                "status": "ok",
+                "cluster_status": "yellow",
+                "node_count": 1,
+                "active_primary_shards": 0,
+                "unassigned_shards": 0,
+                "indices": [],
+                "index_count": 0,
+                "document_count": 0,
+                "error": "",
+            },
+        ):
+            response = self.client.get(reverse("dashboard:siem_hunt_detail", args=[self.hunt.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "dashboard/siem_hunt_detail.html")
+        self.assertContains(response, "Open in Explorer")
+        self.assertContains(response, "event_module")
+        self.assertContains(response, "event_dataset")
+        self.assertContains(response, "Open Dashboards")
 
 
 class PIDTestbedTests(TestCase):

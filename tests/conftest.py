@@ -19,6 +19,7 @@ def setup_isolated_media_root(tmp_path):
 @pytest.fixture(autouse=True)
 def setup_siem_tokens(settings):
     settings.SIEM_INGEST_TOKEN = "test-siem-token"
+    settings.SIEM_SENSOR_TOKEN = "test-siem-token"
     settings.SIEM_INGEST_TOKEN_REQUIRED = True
     settings.AGENT_API_TOKEN = "test-agent-token"
     settings.AGENT_API_TOKEN_REQUIRED = True

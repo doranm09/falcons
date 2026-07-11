@@ -155,9 +155,17 @@ class SiemEvent(models.Model):
     ingested_at = models.DateTimeField(auto_now_add=True, db_index=True)
     source = models.CharField(max_length=100, db_index=True)
     event_type = models.CharField(max_length=120, db_index=True)
+    event_module = models.CharField(max_length=100, blank=True, db_index=True)
+    event_dataset = models.CharField(max_length=150, blank=True, db_index=True)
+    observer_name = models.CharField(max_length=255, blank=True, db_index=True)
     severity = models.IntegerField(null=True, blank=True, db_index=True)
     asset_id = models.CharField(max_length=128, null=True, blank=True, db_index=True)
     asset_ip = models.GenericIPAddressField(null=True, blank=True, db_index=True)
+    source_ip = models.GenericIPAddressField(null=True, blank=True, db_index=True)
+    source_port = models.PositiveIntegerField(null=True, blank=True, db_index=True)
+    destination_ip = models.GenericIPAddressField(null=True, blank=True, db_index=True)
+    destination_port = models.PositiveIntegerField(null=True, blank=True, db_index=True)
+    network_community_id = models.CharField(max_length=128, blank=True, db_index=True)
     summary = models.CharField(max_length=512, blank=True)
     raw = models.JSONField()
 
@@ -165,11 +173,37 @@ class SiemEvent(models.Model):
         indexes = [
             models.Index(fields=["timestamp", "event_type"]),
             models.Index(fields=["source", "timestamp"]),
+            models.Index(fields=["event_module", "event_dataset"]),
+            models.Index(fields=["network_community_id"]),
         ]
         ordering = ["-timestamp"]
 
     def __str__(self):
         return f"{self.event_type} @ {self.timestamp:%Y-%m-%d %H:%M:%S}"
+
+
+class SiemSensorStatus(models.Model):
+    sensor_id = models.CharField(max_length=128, unique=True)
+    sensor_type = models.CharField(max_length=32, db_index=True)
+    hostname = models.CharField(max_length=255, blank=True)
+    status = models.CharField(max_length=16, default="online", db_index=True)
+    last_seen = models.DateTimeField(default=timezone.now, db_index=True)
+    event_count = models.PositiveIntegerField(default=0)
+    interface_names = models.JSONField(default=list, blank=True)
+    last_error = models.CharField(max_length=255, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["sensor_type", "status"]),
+            models.Index(fields=["last_seen"]),
+        ]
+        ordering = ["sensor_type", "sensor_id"]
+
+    def __str__(self):
+        return f"{self.sensor_type}:{self.sensor_id} ({self.status})"
 
 
 class AlertRule(models.Model):

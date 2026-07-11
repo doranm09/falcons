@@ -28,6 +28,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_HOST: db
+      SIEM_INGEST_TOKEN: ${SIEM_INGEST_TOKEN:-iaea-demo-siem-token}
+      SIEM_SENSOR_TOKEN: ${SIEM_SENSOR_TOKEN:-iaea-demo-siem-token}
       DJANGO_SETTINGS_MODULE: cyber_pen_test.settings
       PYTHONPATH: /code
       GVM_HOST: ${GVM_HOST:-openvas}
@@ -81,6 +83,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_HOST: db
+      SIEM_INGEST_TOKEN: ${SIEM_INGEST_TOKEN:-iaea-demo-siem-token}
+      SIEM_SENSOR_TOKEN: ${SIEM_SENSOR_TOKEN:-iaea-demo-siem-token}
       DJANGO_SETTINGS_MODULE: cyber_pen_test.settings
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
       PYTHONPATH: /code
@@ -183,15 +187,21 @@ services:
     networks: [appnet]
     environment:
       OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
+      OPENSEARCH_INDEX_PREFIX: ${OPENSEARCH_INDEX_PREFIX:-siem-events}
       OPENSEARCH_USER: ${OPENSEARCH_USER:-}
       OPENSEARCH_PASS: ${OPENSEARCH_PASS:-}
     volumes:
       - ./configs/opensearch:/configs:ro
     command: >-
       sh -c "
+      PREFIX=\"$${OPENSEARCH_INDEX_PREFIX:-siem-events}\";
+      POLICY_ID=\"$${PREFIX}-policy\";
+      TEMPLATE_NAME=\"$${PREFIX}-template\";
       AUTH=\"\"; if [ -n \"$${OPENSEARCH_USER}\" ]; then AUTH=\"-u $${OPENSEARCH_USER}:$${OPENSEARCH_PASS}\"; fi;
-      curl -fsS $$AUTH -H 'Content-Type: application/json' -X PUT \"$${OPENSEARCH_URL}/_plugins/_ism/policies/siem-events-policy\" -d @/configs/siem_ism_policy.json;
-      curl -fsS $$AUTH -H 'Content-Type: application/json' -X PUT \"$${OPENSEARCH_URL}/_index_template/siem-events-template\" -d @/configs/siem_index_template.json;
+      sed \"s/__OPENSEARCH_INDEX_PREFIX__/$${PREFIX}/g; s/__SIEM_POLICY_ID__/$${POLICY_ID}/g\" /configs/siem_ism_policy.json > /tmp/siem_ism_policy.json;
+      sed \"s/__OPENSEARCH_INDEX_PREFIX__/$${PREFIX}/g; s/__SIEM_POLICY_ID__/$${POLICY_ID}/g\" /configs/siem_index_template.json > /tmp/siem_index_template.json;
+      curl -fsS $$AUTH -H 'Content-Type: application/json' -X PUT \"$${OPENSEARCH_URL}/_plugins/_ism/policies/$${POLICY_ID}\" -d @/tmp/siem_ism_policy.json;
+      curl -fsS $$AUTH -H 'Content-Type: application/json' -X PUT \"$${OPENSEARCH_URL}/_index_template/$${TEMPLATE_NAME}\" -d @/tmp/siem_index_template.json;
       "
 
 networks:

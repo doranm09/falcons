@@ -10,6 +10,7 @@ This project supports production-hardening with token-based ingest, agent API to
 
 Environment variables:
 - `SIEM_INGEST_TOKEN` (or `SIEM_INGEST_TOKEN_FILE`)
+- `SIEM_SENSOR_TOKEN` (or `SIEM_SENSOR_TOKEN_FILE`) for sensor-plane compatibility if you cannot move every sender at once
 - `AGENT_API_TOKEN` (or `AGENT_API_TOKEN_FILE`)
 - `SIEM_INGEST_TOKEN_REQUIRED=1` (default)
 - `AGENT_API_TOKEN_REQUIRED=1` (default)
@@ -17,6 +18,7 @@ Environment variables:
 ## Secret Files
 You can load secrets from files to integrate with Docker secrets or a vault sidecar:
 - `SIEM_INGEST_TOKEN_FILE=/run/secrets/siem_ingest_token`
+- `SIEM_SENSOR_TOKEN_FILE=/run/secrets/siem_sensor_token`
 - `AGENT_API_TOKEN_FILE=/run/secrets/agent_api_token`
 - `DJANGO_SECRET_KEY_FILE=/run/secrets/django_secret_key`
 - `OPENSEARCH_PASS_FILE=/run/secrets/opensearch_pass`
@@ -40,3 +42,7 @@ export SIEM_INGEST_TOKEN=your-siem-token
 ```
 
 The host agent will include these headers automatically when posting to the server.
+
+Operational rule:
+- if `SIEM_INGEST_TOKEN_REQUIRED=1`, configure at least one SIEM token. The server no longer falls back to anonymous ingest when the token is missing.
+- if you use both `SIEM_INGEST_TOKEN` and `SIEM_SENSOR_TOKEN`, keep them the same unless you intentionally want multiple accepted SIEM secrets during a migration.

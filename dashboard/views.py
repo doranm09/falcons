@@ -15,6 +15,7 @@ from .models import (
     ScanRun,
     ScanVulnerability,
     SiemEvent,
+    SiemSensorStatus,
     Vulnerability,
     AlertRule,
     Alert,
@@ -74,17 +75,23 @@ from django.views.decorators.http import require_http_methods
 import json
 import os
 import shutil
-from collections import defaultdict
+from collections import Counter, defaultdict
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from ipaddress import ip_network
 from pathlib import Path
 import time
 from datetime import timedelta
 from functools import wraps
+from urllib.parse import urlencode
 from typing import Optional
-from .siem import normalize_siem_event, parse_siem_search_params, SiemNormalizeError, SiemQueryError
+from .siem import (
+    normalize_siem_event,
+    parse_siem_search_params,
+    SiemNormalizeError,
+    SiemQueryError,
+)
 from .siem_adapters import (
     adapt_agent_status,
     adapt_scan_run,
@@ -92,7 +99,9 @@ from .siem_adapters import (
     adapt_vulnerability,
 )
 from .siem_pipeline import transform_pipeline_events, SiemPipelineError
-from .opensearch_client import bulk_index_events, OpensearchError
+from .siem_suricata import transform_suricata_events
+from .siem_zeek import transform_zeek_events
+from .opensearch_client import bulk_index_events, get_opensearch_overview, OpensearchError
 from .siem_query import parse_search_request, search_siem_events
 from .siem_pivot import resolve_siem_pivot
 from .siem_alerting import process_alerts_for_events
@@ -500,6 +509,23 @@ def _is_topology_noise_flow(
         return True
 
     return False
+
+
+def _is_topology_management_flow(
+    *,
+    local_host: str = "",
+    remote_host: str = "",
+    local_port: int | None = None,
+    remote_port: int | None = None,
+    process_name: str = "",
+) -> bool:
+    process_name = str(process_name or "").strip().lower()
+    if process_name != "passive-sniffer":
+        return False
+    ports = {port for port in (local_port, remote_port) if port is not None}
+    if 8000 not in ports:
+        return False
+    return _is_likely_docker_gateway(local_host) or _is_likely_docker_gateway(remote_host)
 
 
 def _promote_static_l0_from_passive_observation(conn, *, iaea_testbed_active: bool) -> list[str]:
@@ -2192,18 +2218,23 @@ def sbom_ingest(request):
 
 
 def _check_siem_token(request) -> bool:
-    token = getattr(settings, "SIEM_INGEST_TOKEN", "")
+    configured_tokens = []
+    for token in (
+        getattr(settings, "SIEM_INGEST_TOKEN", ""),
+        getattr(settings, "SIEM_SENSOR_TOKEN", ""),
+    ):
+        token = str(token or "").strip()
+        if token and token not in configured_tokens:
+            configured_tokens.append(token)
     required = getattr(settings, "SIEM_INGEST_TOKEN_REQUIRED", True)
     if not required:
         return True
-    # OT lab mode: when token enforcement is enabled but no token is configured,
-    # allow ingest to prevent silent outage of telemetry pipelines.
-    if not token:
-        return True
+    if not configured_tokens:
+        return False
     header = request.headers.get("X-SIEM-Token") or request.headers.get("Authorization", "")
     if header.startswith("Bearer "):
         header = header.split(" ", 1)[1].strip()
-    return header == token
+    return header in configured_tokens
 
 
 def _check_agent_token(request) -> bool:
@@ -2234,9 +2265,17 @@ def _persist_normalized_events(normalized):
             "timestamp": item.get("timestamp"),
             "source": item.get("source"),
             "event_type": item.get("event_type"),
+            "event_module": item.get("event_module", ""),
+            "event_dataset": item.get("event_dataset", ""),
+            "observer_name": item.get("observer_name", ""),
             "severity": item.get("severity"),
             "asset_id": item.get("asset_id"),
             "asset_ip": item.get("asset_ip"),
+            "source_ip": item.get("source_ip"),
+            "source_port": item.get("source_port"),
+            "destination_ip": item.get("destination_ip"),
+            "destination_port": item.get("destination_port"),
+            "network_community_id": item.get("network_community_id", ""),
             "summary": item.get("summary"),
             "raw": item.get("raw"),
         }
@@ -2254,6 +2293,80 @@ def _persist_normalized_events(normalized):
     except OpensearchError as exc:
         payload["opensearch_error"] = str(exc)
     return payload
+
+
+def _normalized_ip_text(value: str | None) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        return str(ipaddress.ip_address(text))
+    except ValueError:
+        return ""
+
+
+def _is_agent_management_chatter(local_ip: str, remote_ip: str, local_port: int | None, remote_port: int | None) -> bool:
+    management_ips = {"127.0.0.1", "172.17.0.1"}
+    if remote_port == 8000 and (local_ip in management_ips or remote_ip in management_ips):
+        return True
+    if local_port == 8000 and (local_ip in management_ips or remote_ip in management_ips):
+        return True
+    return False
+
+
+def _normalize_agent_connection_event(agent, primary_ip: str, conn_data: dict) -> dict | None:
+    if not isinstance(conn_data, dict):
+        return None
+
+    local_address, local_port = _parse_endpoint_address(conn_data.get("local_address"))
+    remote_address, remote_port = _parse_endpoint_address(conn_data.get("remote_address"))
+    local_ip = _normalized_ip_text(local_address)
+    remote_ip = _normalized_ip_text(remote_address)
+    status = str(conn_data.get("status", "") or "").strip().upper()
+    protocol = str(conn_data.get("protocol", "TCP") or "TCP").strip().upper()
+    process = conn_data.get("process") if isinstance(conn_data.get("process"), dict) else {}
+    process_name = str(process.get("name", "") or "").strip()
+    observation_type = str(conn_data.get("observation_type", "") or "").strip().lower()
+
+    if status == "LISTEN":
+        return None
+    if not local_ip or not remote_ip:
+        return None
+    if process_name == "passive-sniffer" or observation_type == "passive":
+        return None
+    if _is_agent_management_chatter(local_ip, remote_ip, local_port, remote_port):
+        return None
+
+    asset_ip = _normalized_ip_text(primary_ip) or local_ip
+    hostname = str(agent.hostname or agent.agent_id or "").strip()
+    process_label = process_name or "unknown-process"
+    summary = f"{protocol} {status or 'OBSERVED'} {process_label} {local_ip}:{local_port or '-'} -> {remote_ip}:{remote_port or '-'}"
+    return normalize_siem_event(
+        {
+            "timestamp": timezone.now().isoformat(),
+            "source": "agent",
+            "event_type": "agent.network_connection",
+            "event_module": "agent",
+            "event_dataset": "agent.network_connection",
+            "observer_name": hostname,
+            "asset_id": agent.agent_id,
+            "asset_ip": asset_ip,
+            "source_ip": local_ip,
+            "destination_ip": remote_ip,
+            "summary": summary,
+            "raw": {
+                "event": {"module": "agent", "dataset": "agent.network_connection"},
+                "observer": {"name": hostname, "type": "agent"},
+                "source": {"ip": local_ip, "port": local_port},
+                "destination": {"ip": remote_ip, "port": remote_port},
+                "network": {"transport": protocol.lower()},
+                "connection": conn_data,
+                "agent_id": agent.agent_id,
+                "hostname": hostname,
+                "primary_ip": asset_ip,
+            },
+        }
+    )
 
 
 @require_http_methods(["GET"])
@@ -2340,6 +2453,288 @@ def siem_pipeline_ingest(request):
     return JsonResponse(response_payload, status=201)
 
 
+def _sensor_interfaces(sensor_meta):
+    names = sensor_meta.get("interfaces")
+    if isinstance(names, list):
+        return [str(item) for item in names if str(item).strip()]
+    if sensor_meta.get("interface"):
+        return [str(sensor_meta["interface"])]
+    return []
+
+
+def _update_sensor_status(sensor_type, sensor_meta, event_count, error=""):
+    sensor_id = (
+        sensor_meta.get("sensor_id")
+        or sensor_meta.get("hostname")
+        or f"{sensor_type}-sensor"
+    )
+    hostname = sensor_meta.get("hostname") or ""
+    interfaces = _sensor_interfaces(sensor_meta)
+    metadata = {
+        "observer_ip": sensor_meta.get("observer_ip"),
+        "capture_mode": sensor_meta.get("capture_mode"),
+        "testbed": sensor_meta.get("testbed"),
+    }
+    metadata = {key: value for key, value in metadata.items() if value not in ("", None)}
+
+    defaults = {
+        "sensor_type": sensor_type,
+        "hostname": hostname,
+        "status": "error" if error else "online",
+        "last_seen": now(),
+        "interface_names": interfaces,
+        "last_error": error or "",
+        "metadata": metadata,
+    }
+    status_obj, _ = SiemSensorStatus.objects.update_or_create(sensor_id=sensor_id, defaults=defaults)
+    if event_count:
+        status_obj.event_count += int(event_count)
+        status_obj.save(update_fields=["event_count"])
+
+
+def _siem_stale_before():
+    lookback_seconds = int(getattr(settings, "SIEM_SENSOR_HEALTH_LOOKBACK_SEC", 180))
+    return now() - timedelta(seconds=lookback_seconds)
+
+
+def _build_siem_sensor_rows():
+    stale_before = _siem_stale_before()
+    rows = []
+    for sensor in SiemSensorStatus.objects.all().order_by("sensor_type", "sensor_id"):
+        effective_status = sensor.status
+        if sensor.last_seen < stale_before and effective_status == "online":
+            effective_status = "stale"
+        rows.append(
+            {
+                "sensor_id": sensor.sensor_id,
+                "sensor_type": sensor.sensor_type,
+                "hostname": sensor.hostname,
+                "status": effective_status,
+                "last_seen": sensor.last_seen,
+                "event_count": sensor.event_count,
+                "interfaces": sensor.interface_names,
+                "last_error": sensor.last_error,
+                "metadata": sensor.metadata,
+            }
+        )
+    return rows
+
+
+def _filtered_count(qs, field_path):
+    return qs.exclude(**{f"{field_path}__isnull": True}).exclude(**{field_path: ""}).values(field_path).distinct().count()
+
+
+def _top_json_values(qs, field_path, label_key, limit=5):
+    rows = (
+        qs.exclude(**{f"{field_path}__isnull": True})
+        .exclude(**{field_path: ""})
+        .values(field_path)
+        .annotate(count=Count("id"))
+        .order_by("-count")[:limit]
+    )
+    return [{label_key: row[field_path], "count": row["count"]} for row in rows]
+
+
+def _soc_ip_policy_tags(value):
+    if not value:
+        return []
+    try:
+        ip_obj = ipaddress.ip_address(str(value))
+    except ValueError:
+        return ["invalid"]
+
+    tags = ["ipv6" if ip_obj.version == 6 else "ipv4"]
+    if ip_obj.version == 6 and ip_obj.is_link_local:
+        tags.append("ipv6_link_local")
+    if ip_obj.is_multicast:
+        tags.append("multicast")
+    if ip_obj.is_loopback:
+        tags.append("loopback")
+    if ip_obj.is_unspecified:
+        tags.append("unspecified")
+    return tags
+
+
+def _build_top_talker_rows(qs, limit=25):
+    counts = Counter()
+    for asset_ip, source_ip, destination_ip in qs.values_list("asset_ip", "source_ip", "destination_ip"):
+        seen = set()
+        for ip_text in (source_ip, destination_ip, asset_ip):
+            if not ip_text:
+                continue
+            try:
+                normalized = str(ipaddress.ip_address(str(ip_text)))
+            except ValueError:
+                continue
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            counts[normalized] += 1
+    rows = []
+    for ip_text, count in counts.most_common(limit):
+        rows.append({"asset_ip": ip_text, "count": count, "policy_tags": _soc_ip_policy_tags(ip_text)})
+    return rows
+
+
+def _siem_soc_focus_queryset(base_qs):
+    return (
+        base_qs.exclude(event_dataset__endswith=".stats")
+        .filter(
+            Q(asset_ip__isnull=False)
+            | Q(source_ip__isnull=False)
+            | Q(destination_ip__isnull=False)
+        )
+        .order_by("-timestamp")
+    )
+
+
+def _build_explorer_query(**params):
+    cleaned = {key: value for key, value in params.items() if value not in (None, "", [])}
+    return urlencode(cleaned, doseq=True)
+
+
+def _build_alert_explorer_url(alert):
+    return reverse("dashboard:siem_event_explorer") + "?" + _build_explorer_query(
+        event_type=alert.event_type,
+        event_module=alert.source or "",
+        asset_ip=alert.asset_ip,
+        asset_id=alert.asset_id,
+    )
+
+
+def _build_hunt_search_url(query_params):
+    return reverse("dashboard:siem_event_explorer") + "?" + _build_explorer_query(**query_params)
+
+
+def _siem_opensearch_context():
+    return {"opensearch": get_opensearch_overview()}
+
+
+def _normalize_transformed_events(transformed):
+    normalized = []
+    errors = []
+    for idx, event in enumerate(transformed):
+        try:
+            normalized.append(normalize_siem_event(event))
+        except SiemNormalizeError as exc:
+            errors.append({"index": idx, "error": str(exc)})
+    return normalized, errors
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def siem_suricata_ingest(request):
+    if not _check_siem_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    try:
+        payload = json.loads(request.body or "{}")
+        sensor_meta, transformed = transform_suricata_events(payload)
+    except (json.JSONDecodeError, SiemPipelineError) as exc:
+        return JsonResponse({"error": str(exc) if isinstance(exc, SiemPipelineError) else "Invalid JSON"}, status=400)
+
+    max_batch = getattr(settings, "SIEM_MAX_INGEST_BATCH", 500)
+    max_batch = apply_profile_max_batch(max_batch)
+    if len(transformed) > max_batch:
+        return JsonResponse({"error": f"Batch too large (max {max_batch})"}, status=413)
+
+    normalized, errors = _normalize_transformed_events(transformed)
+    if errors:
+        _update_sensor_status("suricata", sensor_meta, 0, error="normalize_failed")
+        return JsonResponse({"error": "Invalid event payload", "details": errors}, status=400)
+
+    _update_sensor_status("suricata", sensor_meta, len(normalized))
+    response_payload = _persist_normalized_events(normalized)
+    return JsonResponse(response_payload, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def siem_zeek_ingest(request):
+    if not _check_siem_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    try:
+        payload = json.loads(request.body or "{}")
+        sensor_meta, transformed = transform_zeek_events(payload)
+    except (json.JSONDecodeError, SiemPipelineError) as exc:
+        return JsonResponse({"error": str(exc) if isinstance(exc, SiemPipelineError) else "Invalid JSON"}, status=400)
+
+    max_batch = getattr(settings, "SIEM_MAX_INGEST_BATCH", 500)
+    max_batch = apply_profile_max_batch(max_batch)
+    if len(transformed) > max_batch:
+        return JsonResponse({"error": f"Batch too large (max {max_batch})"}, status=413)
+
+    normalized, errors = _normalize_transformed_events(transformed)
+    if errors:
+        _update_sensor_status("zeek", sensor_meta, 0, error="normalize_failed")
+        return JsonResponse({"error": "Invalid event payload", "details": errors}, status=400)
+
+    _update_sensor_status("zeek", sensor_meta, len(normalized))
+    response_payload = _persist_normalized_events(normalized)
+    return JsonResponse(response_payload, status=201)
+
+
+@require_http_methods(["GET"])
+def siem_sensor_health(request):
+    sensor_rows = [
+        {**row, "last_seen": row["last_seen"].isoformat()}
+        for row in _build_siem_sensor_rows()
+    ]
+    return JsonResponse({"sensors": sensor_rows, "count": len(sensor_rows)})
+
+
+@require_http_methods(["GET"])
+def siem_sensor_health_page(request):
+    sensor_rows = _build_siem_sensor_rows()
+    summary = {
+        "total": len(sensor_rows),
+        "online": sum(1 for row in sensor_rows if row["status"] == "online"),
+        "stale": sum(1 for row in sensor_rows if row["status"] == "stale"),
+        "error": sum(1 for row in sensor_rows if row["status"] not in {"online", "stale"}),
+    }
+    return render(
+        request,
+        "dashboard/siem_sensor_health.html",
+        {"sensors": sensor_rows, "summary": summary, **_siem_opensearch_context()},
+    )
+
+
+@require_http_methods(["GET"])
+def siem_soc_overview(request):
+    now_ts = timezone.now()
+    since = now_ts - timedelta(hours=24)
+    recent_qs = SiemEvent.objects.filter(timestamp__gte=since).order_by("-timestamp")
+    focus_qs = _siem_soc_focus_queryset(recent_qs)
+    if not focus_qs.exists():
+        focus_qs = recent_qs
+    sensor_rows = _build_siem_sensor_rows()
+    recent_alerts = Alert.objects.filter(status=Alert.Status.OPEN).order_by("-last_seen")[:8]
+
+    context = {
+        "summary": {
+            "events_24h": recent_qs.count(),
+            "open_alerts": Alert.objects.filter(status=Alert.Status.OPEN).count(),
+            "high_alerts": Alert.objects.filter(status=Alert.Status.OPEN, severity__gte=7).count(),
+            "open_cases": Case.objects.filter(status=Case.Status.OPEN).count(),
+            "open_hunts": Hunt.objects.filter(status=Hunt.Status.OPEN).count(),
+            "live_sensors": sum(1 for row in sensor_rows if row["status"] == "online"),
+            "stale_sensors": sum(1 for row in sensor_rows if row["status"] == "stale"),
+        },
+        "sensor_rows": sensor_rows[:8],
+        "top_modules": _top_json_values(focus_qs, "event_module", "event_module"),
+        "top_datasets": _top_json_values(focus_qs, "event_dataset", "event_dataset"),
+        "top_asset_ips": _build_top_talker_rows(focus_qs, limit=8),
+        "recent_alerts": [
+            {"alert": alert, "explorer_url": _build_alert_explorer_url(alert)} for alert in recent_alerts
+        ],
+        "recent_events": list(focus_qs[:10]),
+        "health": health_snapshot(),
+        **_siem_opensearch_context(),
+    }
+    return render(request, "dashboard/siem_overview.html", context)
+
+
 @require_http_methods(["GET"])
 def siem_event_search(request):
     """Search SIEM events by time range, filters, and aggregations."""
@@ -2399,11 +2794,16 @@ def siem_event_explorer(request):
     now_ts = timezone.now()
     since = now_ts - timedelta(hours=24)
 
-    recent_qs = SiemEvent.objects.filter(timestamp__gte=since)
+    recent_qs = SiemEvent.objects.filter(timestamp__gte=since).order_by("-timestamp")
+    focus_qs = _siem_soc_focus_queryset(recent_qs)
+    if not focus_qs.exists():
+        focus_qs = recent_qs
     summary = {
         "total_24h": recent_qs.count(),
         "sources_24h": recent_qs.values("source").distinct().count(),
         "types_24h": recent_qs.values("event_type").distinct().count(),
+        "modules_24h": _filtered_count(recent_qs, "event_module"),
+        "datasets_24h": _filtered_count(recent_qs, "event_dataset"),
     }
 
     top_sources = list(
@@ -2412,17 +2812,26 @@ def siem_event_explorer(request):
     top_types = list(
         recent_qs.values("event_type").annotate(count=Count("id")).order_by("-count")[:5]
     )
+    top_modules = _top_json_values(recent_qs, "event_module", "event_module")
+    top_datasets = _top_json_values(recent_qs, "event_dataset", "event_dataset")
+    top_observers = _top_json_values(recent_qs, "raw__observer__name", "observer_name")
 
-    events = list(SiemEvent.objects.all()[:50])
+    events = list(focus_qs[:50])
     health = health_snapshot()
     context = {
         "summary": summary,
         "top_sources": top_sources,
         "top_types": top_types,
+        "top_modules": top_modules,
+        "top_datasets": top_datasets,
+        "top_observers": top_observers,
         "events": events,
         "health": health,
         "default_start": timezone.localtime(since).strftime("%Y-%m-%dT%H:%M"),
         "default_end": timezone.localtime(now_ts).strftime("%Y-%m-%dT%H:%M"),
+        "sensor_health_url": reverse("dashboard:siem_sensor_health_page"),
+        "exclude_stats_default": True,
+        **_siem_opensearch_context(),
     }
     return render(request, "dashboard/siem_events.html", context)
 
@@ -2478,7 +2887,12 @@ def siem_alerts_page(request):
     status = request.GET.get("status", "open")
     alerts = Alert.objects.filter(status=status).order_by("-last_seen")[:200]
     rules = AlertRule.objects.all().order_by("name")
-    return render(request, "dashboard/siem_alerts.html", {"alerts": alerts, "rules": rules, "status": status})
+    alert_rows = [{"alert": alert, "explorer_url": _build_alert_explorer_url(alert)} for alert in alerts]
+    return render(
+        request,
+        "dashboard/siem_alerts.html",
+        {"alert_rows": alert_rows, "rules": rules, "status": status, **_siem_opensearch_context()},
+    )
 
 
 @require_http_methods(["POST"])
@@ -2501,7 +2915,11 @@ def siem_toggle_rule(request, rule_id):
 def siem_cases_page(request):
     status = request.GET.get("status", "open")
     cases = Case.objects.filter(status=status).order_by("-updated_at")[:200]
-    return render(request, "dashboard/siem_cases.html", {"cases": cases, "status": status})
+    return render(
+        request,
+        "dashboard/siem_cases.html",
+        {"cases": cases, "status": status, **_siem_opensearch_context()},
+    )
 
 
 @require_http_methods(["POST"])
@@ -2548,7 +2966,12 @@ def siem_case_promote_alert(request, alert_id):
 @require_http_methods(["GET"])
 def siem_case_detail(request, case_id):
     case = get_object_or_404(Case, id=case_id)
-    return render(request, "dashboard/siem_case_detail.html", {"case": case})
+    linked_alerts = [{"alert": alert, "explorer_url": _build_alert_explorer_url(alert)} for alert in case.alerts.all()]
+    return render(
+        request,
+        "dashboard/siem_case_detail.html",
+        {"case": case, "linked_alerts": linked_alerts, **_siem_opensearch_context()},
+    )
 
 
 @require_http_methods(["POST"])
@@ -2629,7 +3052,11 @@ def siem_case_export(request, case_id):
 def siem_hunts_page(request):
     status = request.GET.get("status", "open")
     hunts = Hunt.objects.filter(status=status).order_by("-updated_at")[:200]
-    return render(request, "dashboard/siem_hunts.html", {"hunts": hunts, "status": status})
+    return render(
+        request,
+        "dashboard/siem_hunts.html",
+        {"hunts": hunts, "status": status, **_siem_opensearch_context()},
+    )
 
 
 @require_http_methods(["POST"])
@@ -2666,7 +3093,15 @@ def siem_hunt_create(request):
 @require_http_methods(["GET"])
 def siem_hunt_detail(request, hunt_id):
     hunt = get_object_or_404(Hunt, id=hunt_id)
-    return render(request, "dashboard/siem_hunt_detail.html", {"hunt": hunt})
+    hunt_search_rows = [
+        {"search": search, "explorer_url": _build_hunt_search_url(search.query_params)}
+        for search in hunt.searches.all()
+    ]
+    return render(
+        request,
+        "dashboard/siem_hunt_detail.html",
+        {"hunt": hunt, "hunt_search_rows": hunt_search_rows, **_siem_opensearch_context()},
+    )
 
 
 @require_http_methods(["POST"])
@@ -4145,6 +4580,8 @@ def agent_network_metadata(request):
 
     primary_ip = _choose_primary_ip(interfaces, fallback_ip=agent.ip_address)
 
+    normalized_connection_events = []
+
     with transaction.atomic():
         _claim_existing_agent_identity(agent_id, agent.hostname, primary_ip)
         _claim_existing_node_identity(agent_id, agent.hostname, primary_ip)
@@ -4212,12 +4649,19 @@ def agent_network_metadata(request):
                 process_username=conn_data.get("process", {}).get("username"),
                 process_cmdline=conn_data.get("process", {}).get("cmdline", ""),
             )
+            normalized_event = _normalize_agent_connection_event(agent, primary_ip, conn_data)
+            if normalized_event:
+                normalized_connection_events.append(normalized_event)
+
+    if normalized_connection_events:
+        _persist_normalized_events(normalized_connection_events)
 
     return JsonResponse({
         "status": "network_metadata_received",
         "metadata_id": metadata.id,
         "connections_recorded": len(network_connections),
-        "interfaces_recorded": len(interface_statistics)
+        "interfaces_recorded": len(interface_statistics),
+        "siem_events_ingested": len(normalized_connection_events),
     })
 
 def _build_network_monitoring_dashboard_context():
@@ -5562,6 +6006,7 @@ def network_topology_api(request):
                 flows[flow_key] = {
                     'source': conn.agent.agent_id,
                     'local_address': conn.local_address,
+                    'local_port': conn.local_port,
                     'target': conn.remote_address,
                     'remote_port': conn.remote_port,
                     'protocol': conn.protocol,
@@ -5571,9 +6016,18 @@ def network_topology_api(request):
                 }
             flows[flow_key]['connection_count'] += 1
 
-    # Convert flows to edges
+    # Convert flows to logical-node edges to suppress duplicate endpoint noise.
+    logical_edges = {}
     for flow in flows.values():
         local_host, _ = _parse_endpoint_address(flow.get("local_address"))
+        if _is_topology_management_flow(
+            local_host=local_host,
+            remote_host=_parse_endpoint_address(flow["target"])[0],
+            local_port=flow.get("local_port"),
+            remote_port=flow.get("remote_port"),
+            process_name=flow.get("process_name", ""),
+        ):
+            continue
         local_override = _resolve_iaea_override(local_host, "", [local_host]) if iaea_testbed_active and local_host else None
         if (
             local_host
@@ -5624,16 +6078,25 @@ def network_topology_api(request):
             target_id = topology_id_by_ip.get(remote_host)
         if not source_id or not target_id:
             continue
+        if source_id == target_id:
+            continue
         _mark_topology_node_online(source_id)
         _mark_topology_node_online(target_id)
-        edges.append({
-            'from': source_id,
-            'to': target_id,
-            'label': f"{flow['protocol']} ({flow['connection_count']} conn)",
-            'protocol': flow['protocol'],
-            'connection_count': flow['connection_count'],
-            'target_ip': remote_host or flow['target'],
-        })
+        edge_key = (source_id, target_id, flow["protocol"])
+        if edge_key not in logical_edges:
+            logical_edges[edge_key] = {
+                'from': source_id,
+                'to': target_id,
+                'label': "",
+                'protocol': flow['protocol'],
+                'connection_count': 0,
+                'target_ip': remote_host or flow['target'],
+            }
+        logical_edges[edge_key]['connection_count'] += flow['connection_count']
+
+    for edge in logical_edges.values():
+        edge['label'] = f"{edge['protocol']} ({edge['connection_count']} conn)"
+        edges.append(edge)
 
     # Passive bridge sensors often see ARP for the field devices even when the
     # underlying Docker bridge does not mirror all peer TCP payload traffic into

@@ -216,6 +216,7 @@ PID_DRAWIO_OUTPUT_DIR = os.environ.get('PID_DRAWIO_OUTPUT_DIR', str(BASE_DIR / '
 
 # SIEM ingest settings
 SIEM_INGEST_TOKEN = read_secret("SIEM_INGEST_TOKEN", "")
+SIEM_SENSOR_TOKEN = read_secret("SIEM_SENSOR_TOKEN", "")
 SIEM_INGEST_TOKEN_REQUIRED = os.environ.get("SIEM_INGEST_TOKEN_REQUIRED", "1") == "1"
 SIEM_MAX_INGEST_BATCH = int(os.environ.get("SIEM_MAX_INGEST_BATCH", "500"))
 
@@ -226,6 +227,7 @@ AGENT_API_TOKEN_REQUIRED = os.environ.get("AGENT_API_TOKEN_REQUIRED", "1") == "1
 # OpenSearch (SIEM log store)
 OPENSEARCH_ENABLED = os.environ.get("OPENSEARCH_ENABLED", "0") == "1"
 OPENSEARCH_URL = os.environ.get("OPENSEARCH_URL", "http://opensearch:9200")
+OPENSEARCH_DASHBOARDS_URL = os.environ.get("OPENSEARCH_DASHBOARDS_URL", "http://127.0.0.1:5601")
 OPENSEARCH_INDEX_PREFIX = os.environ.get("OPENSEARCH_INDEX_PREFIX", "siem-events")
 OPENSEARCH_USER = os.environ.get("OPENSEARCH_USER", "")
 OPENSEARCH_PASS = read_secret("OPENSEARCH_PASS", "")

@@ -1,20 +1,72 @@
 {
-  "index_patterns": ["siem-events-*"],
+  "index_patterns": ["__OPENSEARCH_INDEX_PREFIX__-*"],
   "priority": 100,
   "template": {
     "settings": {
       "number_of_shards": 1,
       "number_of_replicas": 0,
-      "index.opendistro.index_state_management.policy_id": "siem-events-policy"
+      "index.opendistro.index_state_management.policy_id": "__SIEM_POLICY_ID__"
     },
     "mappings": {
       "properties": {
         "@timestamp": {"type": "date"},
         "event_type": {"type": "keyword"},
-        "source": {"type": "keyword"},
+        "event_source": {"type": "keyword"},
+        "event_module": {"type": "keyword"},
+        "event_dataset": {"type": "keyword"},
+        "observer_name": {"type": "keyword"},
         "severity": {"type": "integer"},
         "asset_id": {"type": "keyword"},
         "asset_ip": {"type": "ip"},
+        "source_ip": {"type": "ip"},
+        "source_port": {"type": "integer"},
+        "destination_ip": {"type": "ip"},
+        "destination_port": {"type": "integer"},
+        "network_community_id": {"type": "keyword"},
+        "event": {
+          "properties": {
+            "module": {"type": "keyword"},
+            "dataset": {"type": "keyword"}
+          }
+        },
+        "observer": {
+          "properties": {
+            "name": {"type": "keyword"},
+            "type": {"type": "keyword"},
+            "ingress": {
+              "properties": {
+                "interface": {
+                  "properties": {
+                    "name": {"type": "keyword"}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "source": {
+          "properties": {
+            "ip": {"type": "ip"},
+            "port": {"type": "integer"}
+          }
+        },
+        "destination": {
+          "properties": {
+            "ip": {"type": "ip"},
+            "port": {"type": "integer"}
+          }
+        },
+        "network": {
+          "properties": {
+            "community_id": {"type": "keyword"},
+            "transport": {"type": "keyword"}
+          }
+        },
+        "related": {
+          "properties": {
+            "ip": {"type": "ip"}
+          }
+        },
         "summary": {"type": "text"},
         "raw": {"type": "object", "enabled": true},
         "ingested_at": {"type": "date"}

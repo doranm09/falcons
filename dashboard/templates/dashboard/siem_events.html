@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block content %}
-<div class="container-fluid px-4 py-4" id="siem-explorer" data-search-url="{% url 'dashboard:siem_event_search' %}" data-pivot-url="{% url 'dashboard:siem_pivot_lookup' %}" data-default-start="{{ default_start }}" data-default-end="{{ default_end }}">
+<div class="container-fluid px-4 py-4" id="siem-explorer" data-search-url="{% url 'dashboard:siem_event_search' %}" data-pivot-url="{% url 'dashboard:siem_pivot_lookup' %}" data-default-start="{{ default_start }}" data-default-end="{{ default_end }}" data-exclude-stats-default="{% if exclude_stats_default %}1{% else %}0{% endif %}">
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
     <div>
       <h2 class="mb-1">SIEM Event Explorer</h2>
@@ -10,8 +10,10 @@
     </div>
     <div class="d-flex align-items-center gap-2">
       <span class="badge bg-primary-subtle text-primary border" data-testid="siem-results-count">{{ summary.total_24h }} events (24h)</span>
-      <span class="badge bg-secondary-subtle text-secondary border">{{ summary.sources_24h }} sources</span>
-      <span class="badge bg-secondary-subtle text-secondary border">{{ summary.types_24h }} types</span>
+      <span class="badge bg-secondary-subtle text-secondary border">{{ summary.modules_24h }} modules</span>
+      <span class="badge bg-secondary-subtle text-secondary border">{{ summary.datasets_24h }} datasets</span>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ sensor_health_url }}">Sensor Health</a>
+      <a class="btn btn-sm btn-outline-dark" href="{{ opensearch.dashboards_url }}" target="_blank">Open Dashboards</a>
     </div>
   </div>
 
@@ -29,6 +31,18 @@
               <input type="datetime-local" class="form-control" id="siem-end" value="{{ default_end }}">
             </div>
             <div class="col-md-3">
+              <label class="form-label" for="siem-event-module">Module</label>
+              <input type="text" class="form-control" id="siem-event-module" placeholder="suricata">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label" for="siem-event-dataset">Dataset</label>
+              <input type="text" class="form-control" id="siem-event-dataset" placeholder="zeek.conn">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label" for="siem-observer-name">Sensor</label>
+              <input type="text" class="form-control" id="siem-observer-name" placeholder="sensor-a">
+            </div>
+            <div class="col-md-3">
               <label class="form-label" for="siem-event-type">Event Type</label>
               <input type="text" class="form-control" id="siem-event-type" placeholder="suricata.alert">
             </div>
@@ -37,12 +51,32 @@
               <input type="text" class="form-control" id="siem-source" placeholder="zeek">
             </div>
             <div class="col-md-3">
+              <label class="form-label" for="siem-source-ip">Source IP</label>
+              <input type="text" class="form-control" id="siem-source-ip" placeholder="10.2.50.10 or 10.2.50.10,10.2.50.20">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label" for="siem-source-port">Source Port</label>
+              <input type="text" class="form-control" id="siem-source-port" placeholder="43000">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label" for="siem-destination-ip">Destination IP</label>
+              <input type="text" class="form-control" id="siem-destination-ip" placeholder="10.1.1.14 or 10.1.1.14,10.1.2.14">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label" for="siem-destination-port">Destination Port</label>
+              <input type="text" class="form-control" id="siem-destination-port" placeholder="502 or 4840">
+            </div>
+            <div class="col-md-3">
               <label class="form-label" for="siem-asset-ip">Asset IP</label>
-              <input type="text" class="form-control" id="siem-asset-ip" placeholder="10.0.0.10">
+              <input type="text" class="form-control" id="siem-asset-ip" placeholder="10.0.0.10 or 10.0.0.10,10.0.0.11">
             </div>
             <div class="col-md-3">
               <label class="form-label" for="siem-asset-id">Asset ID</label>
               <input type="text" class="form-control" id="siem-asset-id" placeholder="agent-123">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label" for="siem-community-id">Community ID</label>
+              <input type="text" class="form-control" id="siem-community-id" placeholder="1:abc123">
             </div>
             <div class="col-md-3">
               <label class="form-label" for="siem-severity">Severity</label>
@@ -61,6 +95,10 @@
                 <i class="bi bi-search"></i> Search
               </button>
               <button type="button" class="btn btn-outline-secondary" id="siem-reset">Reset</button>
+              <div class="form-check form-switch ms-2">
+                <input class="form-check-input" type="checkbox" role="switch" id="siem-exclude-stats" {% if exclude_stats_default %}checked{% endif %}>
+                <label class="form-check-label" for="siem-exclude-stats">Hide sensor stats noise</label>
+              </div>
               <div class="btn-group ms-auto" role="group" aria-label="Quick ranges">
                 <button type="button" class="btn btn-outline-primary" data-range="15">Last 15m</button>
                 <button type="button" class="btn btn-outline-primary" data-range="60">Last 1h</button>
@@ -68,7 +106,15 @@
               </div>
             </div>
           </form>
-          <div class="mt-3 text-muted" id="siem-status" data-testid="siem-status">Showing most recent events.</div>
+          <div class="d-flex flex-wrap gap-2 mt-3">
+            <button type="button" class="btn btn-sm btn-outline-dark" data-workflow="hybrid">Hybrid Connections</button>
+            <button type="button" class="btn btn-sm btn-outline-dark" data-workflow="modbus">Modbus Traffic</button>
+            <button type="button" class="btn btn-sm btn-outline-dark" data-workflow="opc">OPC Traffic</button>
+            <button type="button" class="btn btn-sm btn-outline-dark" data-workflow="engineering">Engineering to PLC</button>
+            <button type="button" class="btn btn-sm btn-outline-dark" data-workflow="field">Channel to PT</button>
+          </div>
+          <div class="small text-muted mt-2">Comma-separated values are accepted for IP, module, dataset, sensor, and port filters.</div>
+          <div class="mt-3 text-muted" id="siem-status" data-testid="siem-status">Showing most recent events. Sensor stats noise is hidden by default.</div>
         </div>
       </div>
     </div>
@@ -76,6 +122,28 @@
     <div class="col-xl-4">
       <div class="card shadow-sm h-100">
         <div class="card-body">
+          <h5 class="card-title">Top Modules (24h)</h5>
+          <ul class="list-unstyled mb-4" data-testid="siem-top-modules">
+            {% for item in top_modules %}
+              <li class="d-flex justify-content-between">
+                <span class="text-muted">{{ item.event_module }}</span>
+                <span class="badge bg-secondary">{{ item.count }}</span>
+              </li>
+            {% empty %}
+              <li class="text-muted">No data yet.</li>
+            {% endfor %}
+          </ul>
+          <h5 class="card-title">Top Datasets (24h)</h5>
+          <ul class="list-unstyled mb-4" data-testid="siem-top-datasets">
+            {% for item in top_datasets %}
+              <li class="d-flex justify-content-between">
+                <span class="text-muted">{{ item.event_dataset }}</span>
+                <span class="badge bg-secondary">{{ item.count }}</span>
+              </li>
+            {% empty %}
+              <li class="text-muted">No data yet.</li>
+            {% endfor %}
+          </ul>
           <h5 class="card-title">Top Sources (24h)</h5>
           <ul class="list-unstyled mb-4" data-testid="siem-top-sources">
             {% for src in top_sources %}
@@ -115,6 +183,17 @@
               <li class="text-muted">No status available.</li>
             {% endfor %}
           </ul>
+          <h5 class="card-title mt-4">Active Sensors</h5>
+          <ul class="list-unstyled">
+            {% for item in top_observers %}
+              <li class="d-flex justify-content-between">
+                <span class="text-muted">{{ item.observer_name }}</span>
+                <span class="badge bg-secondary">{{ item.count }}</span>
+              </li>
+            {% empty %}
+              <li class="text-muted">No sensor metadata yet.</li>
+            {% endfor %}
+          </ul>
         </div>
       </div>
     </div>
@@ -137,11 +216,13 @@
           <thead>
             <tr>
               <th>Timestamp</th>
+              <th>Module</th>
+              <th>Dataset</th>
               <th>Source</th>
-              <th>Event Type</th>
+              <th>Destination</th>
               <th>Severity</th>
-              <th>Asset IP</th>
-              <th>Asset ID</th>
+              <th>Asset</th>
+              <th>Observer</th>
               <th>Summary</th>
               <th>Pivot</th>
               <th></th>
@@ -149,10 +230,12 @@
           </thead>
           <tbody data-testid="siem-events-body">
             {% for event in events %}
-              <tr data-event-id="{{ event.id }}" data-asset-ip="{{ event.asset_ip|default:'' }}" data-asset-id="{{ event.asset_id|default:'' }}">
+              <tr data-event-id="{{ event.id }}" data-asset-ip="{{ event.asset_ip|default:'' }}" data-asset-id="{{ event.asset_id|default:'' }}" data-source-ip="{{ event.source_ip|default:'' }}" data-source-port="{{ event.source_port|default:'' }}" data-destination-ip="{{ event.destination_ip|default:'' }}" data-destination-port="{{ event.destination_port|default:'' }}">
                 <td>{{ event.timestamp|date:"Y-m-d H:i:s" }}</td>
-                <td><span class="badge bg-light text-dark border">{{ event.source }}</span></td>
-                <td>{{ event.event_type }}</td>
+                <td><span class="badge bg-light text-dark border">{{ event.event_module|default:event.source }}</span></td>
+                <td>{{ event.event_dataset|default:event.event_type }}</td>
+                <td>{{ event.source_ip|default:"-" }}{% if event.source_port is not None %}:{{ event.source_port }}{% endif %}</td>
+                <td>{{ event.destination_ip|default:"-" }}{% if event.destination_port is not None %}:{{ event.destination_port }}{% endif %}</td>
                 <td>
                   {% if event.severity is not None %}
                     {% if event.severity >= 7 %}
@@ -167,7 +250,7 @@
                   {% endif %}
                 </td>
                 <td>{{ event.asset_ip|default:"-" }}</td>
-                <td>{{ event.asset_id|default:"-" }}</td>
+                <td>{{ event.observer_name|default:"-" }}</td>
                 <td>{{ event.summary|default:"-" }}</td>
                 <td>
                   <button class="btn btn-sm btn-outline-secondary" data-action="pivot">Pivot</button>
@@ -180,7 +263,7 @@
               </tr>
             {% empty %}
               <tr>
-                <td colspan="9" class="text-muted text-center">No events ingested yet.</td>
+                <td colspan="11" class="text-muted text-center">No events ingested yet.</td>
               </tr>
             {% endfor %}
           </tbody>

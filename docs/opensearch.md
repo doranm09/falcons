@@ -22,7 +22,7 @@ The bootstrap container applies:
 - ISM policy: `configs/opensearch/siem_ism_policy.json` (deletes indices older than 30 days)
 - Index template: `configs/opensearch/siem_index_template.json`
 
-These are applied automatically by the `opensearch-init` service on startup.
+These are applied automatically by the `opensearch-init` service on startup. The init step renders both files with the active `OPENSEARCH_INDEX_PREFIX`, so the template/policy stay aligned with the prefix used by `dashboard/opensearch_client.py`.
 
 ## Quick Start
 1. `docker-compose up --build`
@@ -35,8 +35,9 @@ These are applied automatically by the `opensearch-init` service on startup.
    ```bash
    curl http://localhost:9200/_cat/indices?v
    ```
-5. Open dashboards at `http://localhost:5601` and create an index pattern for `siem-events-*`.
+5. Open dashboards at `http://localhost:5601` and create an index pattern for `${OPENSEARCH_INDEX_PREFIX}-*` (for the default config, `siem-events-*`).
 
 ## Notes
 - Security is disabled by default for local development. Enable OpenSearch security before production use.
-- Index names follow `siem-events-YYYY.MM.DD`.
+- Index names follow `${OPENSEARCH_INDEX_PREFIX}-YYYY.MM.DD`.
+- OpenSearch documents keep the producer as `event_source` and reserve ECS-style `source.*` / `destination.*` objects for network endpoints.

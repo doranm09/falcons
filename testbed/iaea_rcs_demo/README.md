@@ -4,12 +4,13 @@ This lab turns your diagram into a runnable Docker Compose environment that appr
 
 ## What is included
 
-- Layer 4: `metasploit`, `database`, `historian-db` (InfluxDB archive), `postgres`
+- Layer 4: `metasploit`, `postgres`
 - Layer 3: `historian`
-- Firewalls: `firewall-2`, `firewall-1`, `firewall-0`, `firewall-main-cell`, `firewall-backup-cell`
-- Layer 2: `hmi`, `engineer-ws`, `l2-jump`
-- Layer 1: `plc-main`, `plc-backup`
-- Layer 0: `pt-455`, `pt-456`, `pt-457`, `pt-458`, `vc-hv455a`, `vc-pv455b`, `vc-pv455c`, `heat-ctrl`
+- Firewalls: `firewall-2`, `firewall-1`, `firewall-0`
+- Layer 2: `hmi`, `engineer-ws`
+- Layer 1: `plc-main`, `plc-backup`, `channel-a`, `channel-b`, `channel-c`, `channel-d`
+- Layer 0 / field process: `pt-455`, `pt-456`, `pt-457`, `pt-458`, spray outputs, pressure-relief outputs, valve controllers, heat controller
+- Passive sensing and telemetry: `span-l1a`, `span-l1b`, `suricata-sensor`, `zeek-sensor`, `siem-forwarder`, `firewall-0-agent`, `firewall-1-agent`, `firewall-2-agent`
 
 The list above uses the runtime container names. The Mermaid diagram below keeps the higher-level Purdue-style roles from the source drawing, and the mapping between the two is called out immediately after the diagram.
 
@@ -19,7 +20,7 @@ The list above uses the runtime container names. The Mermaid diagram below keeps
 flowchart TB
 
 subgraph Enterprise_Layer
-    WS4A["Workstation 10.4.50.10"]
+    WS4A["Metasploit 10.4.50.10"]
     PG["Postgres 10.4.50.20"]
 end
 
@@ -58,6 +59,9 @@ subgraph OOB_Management
     OOBCHD["channel-d 172.31.250.13"]
     OOBS1["span-l1a 172.31.250.250"]
     OOBS2["span-l1b 172.31.250.251"]
+    SURI["suricata-sensor 172.31.250.240"]
+    ZEEK["zeek-sensor 172.31.250.241"]
+    FWD["siem-forwarder 172.31.250.242"]
     FW0A["firewall-0 agent"]
     FW1A["firewall-1 agent"]
     FW2A["firewall-2 agent"]
@@ -123,6 +127,11 @@ CHC -. OOB .-> OOBCHC
 CHD -. OOB .-> OOBCHD
 OOBS1 -. Sniff + report .-> DASH
 OOBS2 -. Sniff + report .-> DASH
+SURI -. EVE logs .-> FWD
+ZEEK -. JSON logs .-> FWD
+FWD -. SIEM ingest .-> DASH
+RCN -. Passive capture .-> SURI
+RCN -. Protocol metadata .-> ZEEK
 OOBPLCM -. Agent heartbeat .-> DASH
 OOBPLCB -. Agent heartbeat .-> DASH
 OOBCHA -. Agent heartbeat .-> DASH
@@ -176,6 +185,9 @@ style OOBCHC fill:#e8f4ff,stroke:#5a9bd5
 style OOBCHD fill:#e8f4ff,stroke:#5a9bd5
 style OOBS1 fill:#e8f4ff,stroke:#5a9bd5
 style OOBS2 fill:#e8f4ff,stroke:#5a9bd5
+style SURI fill:#e8f4ff,stroke:#5a9bd5
+style ZEEK fill:#e8f4ff,stroke:#5a9bd5
+style FWD fill:#e8f4ff,stroke:#5a9bd5
 style FW0A fill:#e8f4ff,stroke:#5a9bd5
 style FW1A fill:#e8f4ff,stroke:#5a9bd5
 style FW2A fill:#e8f4ff,stroke:#5a9bd5
@@ -185,39 +197,39 @@ style FW2A fill:#e8f4ff,stroke:#5a9bd5
 
 | Purdue layer | Purpose | Containers | Networks | Current reachability |
 |---|---|---|---|---|
-| Layer 4 | Enterprise IT | `metasploit`, `database`, `historian-db`, `postgres` | `l4_net` `10.4.50.0/24` | Same-segment access inside the enterprise tier to `database`, `historian-db`, and `postgres`; routed access from `metasploit` to the Layer 3 `historian` through `firewall-2`; no explicit routes to Layer 1, Layer 0, or PLC management subnets |
-| Layer 3 | Operations / DMZ | `historian`, `firewall-1`, `firewall-2` | `l3_net` `10.3.50.0/24` | `historian` sits between the supervisory and enterprise zones: Layer 2 reaches it on `443` and `4840`, it reaches the PLC OPC bridges through `firewall-1` and `firewall-0`, and it reaches `historian-db` on `8086` through `firewall-2` |
-| Layer 2 | Supervisory / operator access | `hmi`, `engineer-ws`, `l2-jump`, `firewall-0`, `firewall-1` | `l2_net` `10.2.50.0/24` | Same-segment access inside Layer 2; routed historian access on `443` and `4840`; routed PLC access on `502` and `44818`; no explicit routes to Layer 0 or PLC management subnets |
-| Layer 1 | Control | `plc-main`, `plc-backup`, `channel-a`, `channel-b`, `channel-c`, `channel-d`, `span-l1a`, `span-l1b`, `firewall-0` | `net_10_1_1` `10.1.1.0/24`, `net_10_1_2` `10.1.2.0/24`, `oob_mgmt` `172.31.250.0/24` | PLCs and channels are exposed to Layer 2 only through `firewall-0`; L1 passive sensors observe in-band control traffic on the redundant control bridges; the OOB management net provides direct heartbeat and telemetry paths back to the dashboard without changing the in-band control topology |
-| Layer 0 | Process I/O | `pt-455`, `pt-456`, `pt-457`, `pt-458`, `vc-hv455a`, `vc-pv455b`, `vc-pv455c`, `heat-ctrl`, `firewall-main-cell`, `firewall-backup-cell` | `p13_net` `10.3.13.0/24`, `p23_net` `10.4.23.0/24` | Field devices are reachable only through their cell firewall allowlists; Layers 2-4 do not route directly into `p13_net`, `p23_net`, or the management nets |
+| Layer 4 | Enterprise IT | `metasploit`, `postgres`, `firewall-2` | `l4_net` `10.4.50.0/24` | `metasploit` reaches `postgres` on `5432` and the Layer 3 historian on `443` and `4840` through `firewall-2`; no direct routes into the control bridges |
+| Layer 3 | Operations / DMZ | `historian`, `firewall-1`, `firewall-2` | `l3_net` `10.3.50.0/24` | `historian` is the DMZ pivot: Layer 2 reaches it on `443` and `4840`, and it reaches the PLC OPC bridges on `4840` through `firewall-1` and `firewall-0` |
+| Layer 2 | Supervisory / operator access | `hmi`, `engineer-ws`, `firewall-0`, `firewall-1` | `l2_net` `10.2.50.0/24` | Same-segment access inside Layer 2; routed historian access on `443` and `4840`; routed PLC access on `502` and `44818`; no direct routes to the OOB or field-only analog path |
+| Layer 1 | Control | `plc-main`, `plc-backup`, `channel-a`, `channel-b`, `channel-c`, `channel-d`, `span-l1a`, `span-l1b`, `suricata-sensor`, `zeek-sensor`, `firewall-0` | `net_10_1_1` `10.1.1.0/24`, `net_10_1_2` `10.1.2.0/24`, `oob_mgmt` `172.31.250.0/24` | PLCs and channels are exposed to Layer 2 only through `firewall-0`; passive sensors and SIEM sensors observe the redundant control bridges; the OOB network carries heartbeats and SIEM forwarding back to the dashboard |
+| Layer 0 | Process I/O | `pt-455`, `pt-456`, `pt-457`, `pt-458`, valve controllers, heat controller, spray outputs, pressure-relief outputs | Analog path plus dual-homed Modbus endpoints on `net_10_1_1` and `net_10_1_2` | `pt-455` and `pt-456` are IP-addressable Modbus transmitters; `pt-457` and `pt-458` remain analog-only process signals consumed by channels C and D rather than independent IP nodes |
 
 ## Device Address Inventory
 
 | Layer | Device | Role | IP addresses |
 |---|---|---|---|
-| Layer 4 | `database` | Enterprise database | `l4_net 10.4.50.20` |
-| Layer 4 | `historian-db` | InfluxDB archive / historian UI | `l4_net 10.4.50.30` |
 | Layer 4 | `metasploit` | Metasploit RPC service | `l4_net 10.4.50.10` |
-| Layer 4 | `postgres` | PostgreSQL server | `l4_net 10.4.50.41` |
+| Layer 4 | `postgres` | PostgreSQL server | `l4_net 10.4.50.20` |
 | Layer 3 | `historian` | DMZ historian | `l3_net 10.3.50.10` |
 | Boundary | `firewall-2` | Layer 4 ↔ Layer 3 firewall | `l4_net 10.4.50.254`, `l3_net 10.3.50.254` |
 | Boundary | `firewall-1` | Layer 3 ↔ Layer 2 firewall | `l2_net 10.2.50.254`, `l3_net 10.3.50.253` |
-| Boundary | `firewall-0` | Layer 2 ↔ Layer 1 firewall | `l2_net 10.2.50.253`, `l1_main 10.1.13.253`, `l1_backup 10.2.23.253` |
-| Boundary | `firewall-main-cell` | Layer 1 ↔ Layer 0 main-cell firewall | `l1_main 10.1.13.252`, `p13_net 10.3.13.253` |
-| Boundary | `firewall-backup-cell` | Layer 1 ↔ Layer 0 backup-cell firewall | `l1_backup 10.2.23.252`, `p23_net 10.4.23.253` |
+| Boundary | `firewall-0` | Layer 2 ↔ Layer 1 firewall | `l2_net 10.2.50.253`, `net_10_1_1 10.1.1.253`, `net_10_1_2 10.1.2.253` |
 | Layer 2 | `hmi` | Human-machine interface | `l2_net 10.2.50.10` |
 | Layer 2 | `engineer-ws` | Engineering workstation | `l2_net 10.2.50.20` |
-| Layer 2 | `l2-jump` | Jumpbox / utility node | `l2_net 10.2.50.30` |
 | Layer 1 | `plc-main` | Primary PLC | `net_10_1_1 10.1.1.14`, `net_10_1_2 10.1.2.14`, `oob_mgmt 172.31.250.14` |
 | Layer 1 | `plc-backup` | Backup PLC | `net_10_1_1 10.1.1.15`, `net_10_1_2 10.1.2.15`, `oob_mgmt 172.31.250.15` |
 | Layer 1 | `channel-a` | Channel A bridge | `net_10_1_1 10.1.1.10`, `net_10_1_2 10.1.2.10`, `oob_mgmt 172.31.250.10` |
 | Layer 1 | `channel-b` | Channel B bridge | `net_10_1_1 10.1.1.11`, `net_10_1_2 10.1.2.11`, `oob_mgmt 172.31.250.11` |
 | Layer 1 | `channel-c` | Channel C hybrid bridge | `net_10_1_1 10.1.1.12`, `net_10_1_2 10.1.2.12`, `oob_mgmt 172.31.250.12` |
 | Layer 1 | `channel-d` | Channel D hybrid bridge | `net_10_1_1 10.1.1.13`, `net_10_1_2 10.1.2.13`, `oob_mgmt 172.31.250.13` |
-| Layer 0 | `pt-455` | Pressure transmitter | `p13_net 10.3.13.11` |
-| Layer 0 | `pt-456` | Pressure transmitter | `p13_net 10.3.13.12`, `p23_net 10.4.23.12` |
-| Layer 0 | `pt-457` | Pressure transmitter | `p13_net 10.3.13.13`, `p23_net 10.4.23.13` |
-| Layer 0 | `pt-458` | Pressure transmitter | `p23_net 10.4.23.14` |
+| Layer 1 | `span-l1a` | Passive sensor on control bridge A | `net_10_1_1 10.1.1.250`, `oob_mgmt 172.31.250.250` |
+| Layer 1 | `span-l1b` | Passive sensor on control bridge B | `net_10_1_2 10.1.2.250`, `oob_mgmt 172.31.250.251` |
+| Layer 1 | `suricata-sensor` | Network IDS sensor | `net_10_1_1 10.1.1.240`, `net_10_1_2 10.1.2.240`, `oob_mgmt 172.31.250.240` |
+| Layer 1 | `zeek-sensor` | Protocol metadata sensor | `net_10_1_1 10.1.1.241`, `net_10_1_2 10.1.2.241`, `oob_mgmt 172.31.250.241` |
+| OOB | `siem-forwarder` | Sensor telemetry forwarder | `oob_mgmt 172.31.250.242` |
+| Layer 0 | `pt-455` | Pressure transmitter | `net_10_1_1 10.1.1.9`, `net_10_1_2 10.1.2.9` |
+| Layer 0 | `pt-456` | Pressure transmitter | `net_10_1_1 10.1.1.8`, `net_10_1_2 10.1.2.8` |
+| Layer 0 | `pt-457` | Analog sensor | `no IP address; analog path via channel-c` |
+| Layer 0 | `pt-458` | Analog sensor | `no IP address; analog path via channel-d` |
 | Layer 0 | `vc-hv455a` | Control valve | `p13_net 10.3.13.1`, `p23_net 10.4.23.1` |
 | Layer 0 | `vc-pv455b` | Control valve | `p13_net 10.3.13.2`, `p23_net 10.4.23.2` |
 | Layer 0 | `vc-pv455c` | Control valve | `p13_net 10.3.13.3`, `p23_net 10.4.23.3` |
@@ -747,6 +759,19 @@ To verify the Layer 1 OPC servers and Layer 2 OPC clients after the stack is up:
 ```bash
 python3 scripts/verify_opc_demo.py
 ```
+
+To verify the passive SIEM sensor path after rebuilding `zeek-sensor`, `suricata-sensor`, or `siem-forwarder`:
+
+```bash
+python3 scripts/verify_siem_sensors.py
+```
+
+Expected result:
+
+- `zeek-sensor`, `suricata-sensor`, and `siem-forwarder` are all running
+- `/dashboard/siem/sensors/health/` reports both sensors `online`
+- `zeek-sensor` has a positive `event_count`
+- `siem-forwarder` offsets include `/var/lib/siem/zeek/spool/logger/conn.log`
 
 Observed on `2026-04-04`:
 

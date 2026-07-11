@@ -10,6 +10,7 @@
     </div>
     <div class="d-flex gap-2">
       <a class="btn btn-outline-secondary" href="{% url 'dashboard:siem_hunts_page' %}">Back to Hunts</a>
+      <a class="btn btn-outline-dark" href="{{ opensearch.dashboards_url }}" target="_blank">Open Dashboards</a>
     </div>
   </div>
 
@@ -95,6 +96,15 @@
                 <input type="text" name="search_name" class="form-control" placeholder="Search name">
               </div>
               <div class="col-md-6">
+                <input type="text" name="event_module" class="form-control" placeholder="event_module">
+              </div>
+              <div class="col-md-6">
+                <input type="text" name="event_dataset" class="form-control" placeholder="event_dataset">
+              </div>
+              <div class="col-md-6">
+                <input type="text" name="observer_name" class="form-control" placeholder="observer_name">
+              </div>
+              <div class="col-md-6">
                 <input type="text" name="event_type" class="form-control" placeholder="event_type">
               </div>
               <div class="col-md-6">
@@ -136,13 +146,18 @@
             </div>
           </form>
           <ul class="list-unstyled mb-0">
-            {% for search in hunt.searches.all %}
+            {% for row in hunt_search_rows %}
+              {% with search=row.search %}
               <li class="mb-3">
                 <div><strong>{{ search.name }}</strong></div>
                 <div class="text-muted small">{{ search.created_at|date:"Y-m-d H:i:s" }}</div>
                 <div class="text-muted small">{{ search.query_params }}</div>
-                <a class="btn btn-sm btn-outline-secondary mt-1" href="{% url 'dashboard:siem_hunt_replay_search' hunt.id search.id %}" target="_blank">Replay</a>
+                <div class="d-flex gap-2 mt-1">
+                  <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:siem_hunt_replay_search' hunt.id search.id %}" target="_blank">Replay</a>
+                  <a class="btn btn-sm btn-outline-primary" href="{{ row.explorer_url }}">Open in Explorer</a>
+                </div>
               </li>
+              {% endwith %}
             {% empty %}
               <li class="text-muted">No searches saved.</li>
             {% endfor %}

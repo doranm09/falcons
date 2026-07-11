@@ -22,6 +22,20 @@ cd /home/michaeldoran/git/cyber_pen_test/cyber_pen_test
 
 Do not assume `python3` in the default shell has Django installed.
 
+## SIEM auth and OpenSearch invariants
+
+Date: 2026-04-17
+Working area: `dashboard/views.py`, `cyber_pen_test/settings.py`, `dashboard/opensearch_client.py`, `configs/opensearch/*`
+
+- If `SIEM_INGEST_TOKEN_REQUIRED=1`, SIEM ingest fails closed unless at least one SIEM token is configured.
+- Preferred SIEM secret:
+  - `SIEM_INGEST_TOKEN`
+- Compatibility alias accepted by the server and sensor forwarder:
+  - `SIEM_SENSOR_TOKEN`
+- If both SIEM token variables are set, keep them identical unless intentionally running a staged migration.
+- OpenSearch bootstrap now renders the ISM policy and index template from `OPENSEARCH_INDEX_PREFIX` at container startup.
+- OpenSearch documents keep producer identity in `event_source` and reserve ECS-style `source.*` / `destination.*` objects for endpoint fields.
+
 ## IAEA RCS hybrid topology alignment
 
 Date: 2026-04-16
@@ -331,6 +345,158 @@ Current implication:
 - the topology board is now effectively agent-driven / observation-driven
 - non-IP analog assets like `pt-457` / `pt-458` will not appear unless a separate telemetry-driven representation is implemented for them
 
+## Hybrid SIEM sensor smoke validation
+
+Date: 2026-04-16
+Working area: `testbed/iaea_rcs_demo/scripts/verify_siem_sensors.py`, `testbed/iaea_rcs_demo/services/zeek/Dockerfile`
+
+### Implemented
+
+1. Added a focused smoke script for the passive network sensor path
+   - script: `testbed/iaea_rcs_demo/scripts/verify_siem_sensors.py`
+   - waits for:
+     - `zeek-sensor`
+     - `suricata-sensor`
+     - `siem-forwarder`
+   - validates:
+     - dashboard sensor health endpoint returns both sensors online
+     - `zeek-sensor` reports a positive `event_count`
+     - Zeek log files exist under `/var/lib/siem/zeek`
+     - forwarder offsets include Zeek spool consumption such as `spool/logger/conn.log`
+
+2. Pinned the Zeek base image after runtime validation
+   - file: `testbed/iaea_rcs_demo/services/zeek/Dockerfile`
+   - pinned to the validated upstream digest instead of `zeek/zeek:latest`
+
+### Validation completed
+
+Validated against the running hybrid stack with:
+
+```bash
+python3 testbed/iaea_rcs_demo/scripts/verify_siem_sensors.py
+```
+
+Observed result:
+
+- SIEM sensor verification passed
+- dashboard health endpoint reported:
+  - `suricata-sensor` online
+  - `zeek-sensor` online
+- forwarder offsets contained Zeek spool paths
+- Zeek event flow was visible end to end through the dashboard sensor health API
+
+## Hybrid runtime verifier refresh
+
+Date: 2026-04-16
+Working area: `testbed/iaea_rcs_demo/scripts/verify_hybrid_runtime.py`
+
+### Problem found
+
+The hybrid runtime verifier had drifted behind the validated topology and live service model:
+
+- it still expected retired checks such as:
+  - historian to InfluxDB
+  - historian to old postgres IP `10.4.50.41`
+  - `l2-jump`
+- it assumed direct OPC payloads still exposed per-channel keys like:
+  - `channel_a_pv`
+  - `channel_b_pv`
+- the current runtime instead exposes:
+  - direct OPC summary fields like `average_pressure`
+  - HMI per-PT values like `pt455_pv`, `pt456_pv`, `pt457_pv`, `pt458_pv`
+
+### Implemented
+
+1. Refreshed field-path verification
+   - uses current main and backup field addresses:
+     - `10.1.1.9`, `10.1.1.8`, `10.1.1.12`
+     - `10.1.2.8`, `10.1.2.12`, `10.1.2.13`
+   - verifies direct Modbus reads return status `1`
+   - verifies direct OPC `average_pressure` matches the live field-value average
+
+2. Refreshed HMI checks
+   - verifies HMI remains connected to both PLCs
+   - verifies current HMI PT keys are present:
+     - `plc-main` -> `pt455_pv`, `pt456_pv`, `pt457_pv`
+     - `plc-backup` -> `pt456_pv`, `pt457_pv`, `pt458_pv`
+   - verifies HMI `average_pressure` matches the visible PT values
+
+3. Refreshed policy checks
+   - removed retired checks for:
+     - InfluxDB
+     - old postgres IP
+     - `l2-jump`
+   - current allow list includes historian to `postgres` at `10.4.50.20:5432`
+
+### Validation completed
+
+Validated against the live hybrid stack with:
+
+```bash
+python3 testbed/iaea_rcs_demo/scripts/verify_hybrid_runtime.py --timeout-sec 60
+```
+
+Observed result:
+
+- `Hybrid runtime verification passed`
+- services running: `25`
+- main and backup OPC bridge checks passed
+- HMI and historian checks passed
+- allow / block policy probes matched the validated hybrid topology
+
+## Hybrid layer traffic smoke gate
+
+Date: 2026-04-17
+Working area: `testbed/iaea_rcs_demo/scripts/verify_hybrid_runtime.py`, `testbed/iaea_rcs_demo/services/suricata/entrypoint.sh`
+
+### Problem found
+
+Before moving to the next SOC/SIEM integration step, the repo needed a clearer gate that actively drives traffic through the hybrid Purdue layers rather than only checking steady-state status.
+
+Also found during live validation:
+
+- `suricata-sensor` could get stuck in a restart loop because `/var/run/suricata.pid` was left behind after an earlier daemon run
+- when that happened, passive-sensor validation could fail even if the core hybrid traffic paths were otherwise healthy
+
+### Implemented
+
+1. Hybrid runtime verification now drives traffic intentionally before validating state
+   - `verify_hybrid_runtime.py` now exercises:
+     - Layer 4 to Layer 3 and Layer 4 to enterprise database paths
+     - Layer 3 to Layer 4 and Layer 3 to Layer 1 OPC paths
+     - Layer 2 to Layer 3 historian paths
+     - Layer 2 to Layer 1 PLC paths
+     - Layer 1 PLC to channel paths
+     - Layer 0 channel to digital transmitter paths
+   - new flag:
+     - `--traffic-iterations`
+   - verifier output now includes `layer_traffic` counts so the smoke run shows that each layer was actually exercised
+
+2. Hybrid runtime preflight now waits on core traffic-producing services
+   - it no longer blocks on passive SIEM sensor containers before verifying core process traffic
+   - this keeps the traffic smoke gate focused on the actual cross-layer plant/runtime behavior
+
+3. Suricata restart robustness improved
+   - `services/suricata/entrypoint.sh` now removes a stale `/var/run/suricata.pid` before starting
+   - this fixes the observed restart loop:
+     - `pid file '/var/run/suricata.pid' exists but appears stale`
+
+### Intended validation flow
+
+1. Drive and verify cross-layer traffic:
+
+```bash
+python3 testbed/iaea_rcs_demo/scripts/verify_hybrid_runtime.py --timeout-sec 60 --traffic-iterations 2
+```
+
+2. Then verify passive SIEM sensor ingestion:
+
+```bash
+python3 testbed/iaea_rcs_demo/scripts/verify_siem_sensors.py --timeout-sec 60
+```
+
+This is the preferred gate before continuing with the next SOC/SIEM build-out step.
+
 ## Agent-driven topology enumeration continuation
 
 Date: 2026-04-16
@@ -428,3 +594,437 @@ After the web process reloads, the updated Purdue topology should be viewable in
 - URL path: `/dashboard/network/monitoring/` if mounted under the dashboard prefix
 
 If the running web container does not auto-reload Python changes, restart the Django web service before browser verification.
+
+## Security Onion SIEM expansion plan
+
+Date: 2026-04-16
+Scope: phased build-out of a Security Onion-style SOC platform on top of the current repo
+
+### Current repo baseline
+
+This repository already has a substantial SIEM foundation and should not be treated as greenfield:
+
+- OpenSearch + OpenSearch Dashboards are already present in `docker-compose.yml`
+- Django already provides SIEM ingest, event search, alerting, case management, hunts, RBAC, audit, exports, and threat-intel enrichment
+- the host agent already supports:
+  - osquery result forwarding
+  - file integrity monitoring
+  - syslog / Windows-style event forwarding paths
+  - network metadata and connection reporting
+- the existing dashboard already has:
+  - Event Explorer
+  - alert queue
+  - cases
+  - hunts
+  - network monitoring and topology views
+
+Important implementation default:
+
+- keep OpenSearch as the backend
+- do not plan or perform an Elastic migration as part of this roadmap
+
+### Product target
+
+Target a Security Onion-style system optimized for:
+
+- phased parity, not a monolithic rewrite
+- single-node lab deployment first
+- containerized network sensors first
+- current Django SIEM as the control plane and analyst workflow layer
+
+The first major build-out after the existing SIEM base is the network sensor plane:
+
+- Zeek
+- Suricata
+- packet capture / mirrored interface attachment
+- normalized network event pipelines
+- sensor health and operator workflows
+
+### Canonical architecture
+
+Build the platform in four layers:
+
+1. Sensor plane
+- `suricata-sensor`
+- `zeek-sensor`
+- optional later sensor-side packet capture helpers
+
+2. Collection / forwarding plane
+- repo-owned `siem-forwarder` service
+- shared volumes from sensors into forwarder
+- batched POST into Django SIEM endpoints
+
+3. Control plane
+- Django views, normalization, detections, cases, hunts, dashboards, and health views
+
+4. Search / storage plane
+- OpenSearch indices for normalized events
+- OpenSearch Dashboards for raw analyst search and dashboards
+
+Implementation default:
+
+- sensors do not write directly to OpenSearch in the first implementation
+- all sensor data flows through repo-managed ingest endpoints
+
+### Canonical event conventions
+
+All normalized events must include:
+
+- `@timestamp`
+- `event.module`
+- `event.dataset`
+- `observer.*` for sensor identity
+- normalized `source.*`, `destination.*`, and `network.*` fields
+- raw payload retention for analyst inspection
+
+Use these module / dataset defaults:
+
+- `event.module=suricata`
+- `event.dataset=suricata.eve`
+- `event.module=zeek`
+- `event.dataset=zeek.conn`
+- `event.dataset=zeek.dns`
+- `event.dataset=zeek.http`
+- `event.dataset=zeek.ssl`
+- `event.dataset=zeek.notice`
+- `event.dataset=zeek.files`
+- existing endpoint telemetry keeps current datasets such as `osquery`, `fim`, `syslog`, and `windows`
+
+Required schema extensions for the network phase:
+
+- `network.community_id`
+- `related.ip`
+- `related.hosts`
+- `rule.*`
+- `suricata.*`
+- `zeek.*`
+
+### Required new interfaces
+
+New sensor ingest endpoints:
+
+- `POST /dashboard/siem/sensors/suricata/eve/`
+- `POST /dashboard/siem/sensors/zeek/logs/`
+- `GET /dashboard/siem/sensors/health/`
+
+These endpoints should use the current SIEM normalization path internally instead of bypassing it.
+
+Required config/env surface:
+
+- `SURICATA_ENABLED`
+- `ZEEK_ENABLED`
+- `SIEM_SENSOR_TOKEN`
+- `SIEM_SENSOR_BATCH_SIZE`
+- `SIEM_SENSOR_HEALTH_LOOKBACK_SEC`
+- explicit sensor interface / mirrored-network attachment configuration in compose
+
+### Implementation phases
+
+#### Phase 1: foundation hardening
+
+Goal:
+
+- document and stabilize the current SIEM baseline before adding sensors
+
+Required work:
+
+- inventory the current SIEM features already shipped in the repo
+- create a concise Security Onion-style architecture doc in repo docs and reference it from `README.md`
+- define the normalized network event contract and required fields
+- define OpenSearch index template updates needed for Zeek and Suricata data
+- ensure the current event explorer can filter reliably by `event.module` and `event.dataset`
+
+Acceptance criteria:
+
+- repo docs clearly distinguish existing SIEM capabilities from missing sensor-plane work
+- a developer can identify where new Zeek and Suricata events enter, normalize, index, and surface in the UI
+
+#### Phase 2: containerized network sensors
+
+Goal:
+
+- collect network telemetry from the lab using containerized sensors
+
+Required work:
+
+- add `suricata-sensor` service to compose
+- add `zeek-sensor` service to compose
+- add `siem-forwarder` service to compose
+- mount sensor output directories into the forwarder
+- attach sensors to mirrored / SPAN-style lab networks first, especially the IAEA hybrid testbed
+- add health checks for sensor liveness and forwarder backlog
+
+Acceptance criteria:
+
+- the stack boots with web, OpenSearch, Dashboards, Suricata, Zeek, and the forwarder
+- both sensors produce logs into shared volumes
+- the forwarder can report health and backlog state
+
+#### Phase 3: ingest and normalization
+
+Goal:
+
+- normalize Zeek and Suricata telemetry into the existing SIEM store
+
+Required work:
+
+- add Suricata EVE endpoint and parser
+- add Zeek log endpoint and parser
+- implement mappings for:
+  - Suricata alert, flow, DNS, HTTP, TLS, file records
+  - Zeek `conn`, `dns`, `http`, `ssl`, `notice`, `files`
+- extend index template / mappings to support network-specific fields
+- ensure raw payload stays available for analysts
+
+Acceptance criteria:
+
+- sample Zeek and Suricata fixtures ingest successfully end to end
+- normalized events are searchable in the current event explorer
+- OpenSearch documents contain module/dataset and observer identity consistently
+
+#### Phase 4: analyst workflows
+
+Goal:
+
+- make the current UI feel like a SOC console rather than just an event backend
+
+Required work:
+
+- add a SOC landing area summarizing:
+  - sensor health
+  - alert volume
+  - top talkers
+  - top detections
+  - recent DNS / HTTP / flow activity
+- extend pivots in the Event Explorer to support:
+  - source IP
+  - destination IP
+  - hostname
+  - community ID
+  - Suricata signature
+  - Zeek UID / session
+- add saved searches or overview widgets for common workflows:
+  - network alerts
+  - DNS hunting
+  - HTTP/TLS investigations
+  - lateral movement flow review
+
+Acceptance criteria:
+
+- analysts can pivot from network alert to related events, host context, and case creation without leaving the dashboard
+- the SOC landing page surfaces sensor problems and high-volume detections clearly
+
+#### Phase 5: detections and operations
+
+Goal:
+
+- make the platform operationally useful and maintainable
+
+Required work:
+
+- add lab-focused Suricata rule-pack management
+- add Sigma-style detections over normalized Zeek and Suricata data using the existing alert framework
+- add metrics for:
+  - sensor liveness
+  - ingest lag
+  - event throughput
+  - parser failures
+- add retention and operational docs for day-2 use
+- document the follow-on path for manager plus remote sensors after the single-node lab is stable
+
+Acceptance criteria:
+
+- detections can trigger from normalized network events and enter the existing alert queue
+- operators can tell if sensors are stale, broken, or backlogged
+
+### Agent work packages
+
+Use these disjoint workstreams for Codex agents.
+
+#### Workstream A: sensor runtime and compose
+
+Ownership:
+
+- compose services
+- sensor container definitions
+- mounted volumes
+- network attachments
+- sensor and forwarder health checks
+
+Primary files:
+
+- `docker-compose.yml`
+- sensor Dockerfiles / entrypoints under a new sensor service area
+- testbed compose overrides
+
+Acceptance criteria:
+
+- services boot consistently
+- sensors attach to intended mirrored networks
+- health endpoints reflect container and capture state
+
+Non-goals:
+
+- alert correlation logic
+- analyst dashboard implementation
+
+#### Workstream B: ingest and schema
+
+Ownership:
+
+- new sensor endpoints
+- parsers
+- normalization
+- OpenSearch mapping updates
+
+Primary files:
+
+- `dashboard/views.py`
+- `dashboard/siem_pipeline.py`
+- new `dashboard/siem_suricata.py`
+- new `dashboard/siem_zeek.py`
+- `configs/opensearch/*`
+
+Acceptance criteria:
+
+- fixtures normalize deterministically
+- documents index cleanly
+- event explorer can filter by new module/dataset values
+
+Non-goals:
+
+- compose sensor runtime
+- analyst dashboard widgets
+
+#### Workstream C: analyst UI
+
+Ownership:
+
+- SOC landing pages
+- sensor status views
+- Event Explorer pivots
+- saved workflow dashboards
+
+Primary files:
+
+- `dashboard/templates/dashboard/*`
+- related dashboard view/controller code
+
+Acceptance criteria:
+
+- UI exposes sensor health, top detections, and network pivots
+- analysts can traverse from alert to events to case context
+
+Non-goals:
+
+- parser implementation
+- container capture setup
+
+#### Workstream D: detections and operations
+
+Ownership:
+
+- Suricata rule management
+- network detection rules
+- throughput/health metrics
+- operational docs
+
+Primary files:
+
+- alerting modules
+- rule/config directories
+- docs under `docs/`
+
+Acceptance criteria:
+
+- network-derived alerts appear in the current queue
+- operator docs cover startup, rule reload, and troubleshooting
+
+Non-goals:
+
+- raw sensor container build logic
+- event explorer UI detail work
+
+#### Workstream E: fixtures and validation
+
+Ownership:
+
+- sample Zeek and Suricata fixtures
+- integration validation scripts
+- regression coverage
+
+Primary files:
+
+- tests for SIEM ingest and search
+- sample log fixture directories
+
+Acceptance criteria:
+
+- fixtures cover the canonical sensor record types
+- end-to-end tests prove indexing and UI visibility
+
+Non-goals:
+
+- production compose changes
+- analyst UX design
+
+### Required tests
+
+Before any phase is marked complete, run the appropriate focused tests from the project virtualenv.
+
+Unit tests required:
+
+- Suricata EVE normalization:
+  - alerts
+  - flows
+  - DNS
+  - HTTP
+  - TLS
+- Zeek normalization:
+  - `conn`
+  - `dns`
+  - `http`
+  - `ssl`
+  - `notice`
+- alert generation over normalized network events
+
+API tests required:
+
+- sensor ingest endpoints accept valid batched payloads
+- malformed payloads are rejected with clear errors
+- sensor health endpoint marks live versus stale sensors correctly
+
+UI tests required:
+
+- SOC overview renders sensor counts and event summaries
+- Event Explorer filters and pivots by `event.module` and `event.dataset`
+
+Integration tests required:
+
+- Suricata fixture logs flow from forwarder to Django to OpenSearch to dashboard search
+- Zeek fixture logs flow from forwarder to Django to OpenSearch to dashboard search
+- normalized network events can promote alerts, cases, and hunts through the current workflow model
+
+Compose smoke tests required:
+
+- single-node stack boots with:
+  - web
+  - OpenSearch
+  - OpenSearch Dashboards
+  - Suricata
+  - Zeek
+  - forwarder
+- known traffic replay produces both Zeek and Suricata events visible in the UI
+
+### Explicit defaults and non-decisions
+
+These defaults are chosen so implementers do not need to make architecture decisions during implementation:
+
+- backend remains OpenSearch
+- first deployment target is single-node lab
+- first sensor model is containerized sensors
+- first monitored environment is the existing lab / testbed networks, especially the IAEA hybrid topology
+- Django remains the primary control plane and analyst workflow layer
+- initial storage stays in the existing SIEM event store pattern; distinguish sources by module/dataset before introducing separate stores
+- direct Elastic migration is out of scope
+- multi-sensor distributed manager/sensor separation is a later phase after the single-node lab is stable

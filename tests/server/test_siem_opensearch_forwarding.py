@@ -37,3 +37,11 @@ def test_siem_ingest_forwards_to_opensearch(siem_client):
     body = resp.json()
     assert body["opensearch"]["indexed"] == 1
     assert len(responses.calls) == 1
+    raw_body = responses.calls[0].request.body
+    if isinstance(raw_body, bytes):
+        raw_body = raw_body.decode("utf-8")
+    bulk_lines = raw_body.strip().splitlines()
+    indexed = json.loads(bulk_lines[1])
+    assert indexed["event_source"] == "suricata"
+    assert indexed["source"]["ip"] is None
+    assert indexed["destination"]["ip"] is None

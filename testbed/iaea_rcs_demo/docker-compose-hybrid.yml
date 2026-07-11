@@ -685,6 +685,83 @@ services:
       oob_mgmt:
         ipv4_address: 172.31.250.251
 
+  suricata-sensor:
+    build:
+      context: ./services/suricata
+      dockerfile: Dockerfile
+    container_name: suricata-sensor
+    restart: unless-stopped
+    cap_add: ["NET_ADMIN", "NET_RAW"]
+    environment:
+      SIEM_SENSOR_ID: suricata-sensor
+      SIEM_SENSOR_HOSTNAME: suricata-sensor
+      SIEM_SENSOR_INTERFACES: "eth0,eth1"
+      SIEM_RUNTIME_DIR: /var/lib/siem/runtime
+      SIEM_SURICATA_DIR: /var/lib/siem/suricata
+    volumes:
+      - siem_sensor_data:/var/lib/siem
+    networks:
+      net_10_1_1:
+        ipv4_address: 10.1.1.240
+      net_10_1_2:
+        ipv4_address: 10.1.2.240
+      oob_mgmt:
+        ipv4_address: 172.31.250.240
+
+  zeek-sensor:
+    build:
+      context: ./services/zeek
+      dockerfile: Dockerfile
+    container_name: zeek-sensor
+    restart: unless-stopped
+    cap_add: ["NET_ADMIN", "NET_RAW"]
+    environment:
+      SIEM_SENSOR_ID: zeek-sensor
+      SIEM_SENSOR_HOSTNAME: zeek-sensor
+      SIEM_SENSOR_INTERFACES: "eth0,eth1"
+      SIEM_RUNTIME_DIR: /var/lib/siem/runtime
+      SIEM_ZEEK_DIR: /var/lib/siem/zeek
+    volumes:
+      - siem_sensor_data:/var/lib/siem
+    networks:
+      net_10_1_1:
+        ipv4_address: 10.1.1.241
+      net_10_1_2:
+        ipv4_address: 10.1.2.241
+      oob_mgmt:
+        ipv4_address: 172.31.250.241
+
+  siem-forwarder:
+    build:
+      context: ./services/siem-runtime
+      dockerfile: forwarder.Dockerfile
+    container_name: siem-forwarder
+    restart: unless-stopped
+    depends_on:
+      suricata-sensor:
+        condition: service_started
+      zeek-sensor:
+        condition: service_started
+    environment:
+      SIEM_SERVER_URL: "http://host.docker.internal:8000/dashboard"
+      SIEM_INGEST_TOKEN: "${SIEM_INGEST_TOKEN:-iaea-demo-siem-token}"
+      SIEM_SENSOR_TOKEN: "${SIEM_SENSOR_TOKEN:-iaea-demo-siem-token}"
+      SIEM_SENSOR_BATCH_SIZE: "${SIEM_SENSOR_BATCH_SIZE:-200}"
+      SIEM_RUNTIME_DIR: /var/lib/siem/runtime
+      SIEM_SURICATA_DIR: /var/lib/siem/suricata
+      SIEM_ZEEK_DIR: /var/lib/siem/zeek
+      SIEM_ZEEK_PATTERNS: "spool/logger/conn.log,spool/logger/dns.log,spool/logger/http.log,spool/logger/ssl.log,spool/logger/notice.log,spool/logger/files.log,spool/logger/weird.log,spool/logger/reporter.log,spool/logger/stats.log"
+      SIEM_FORWARDER_STATE: /var/lib/siem/state/offsets.json
+      SIEM_SENSOR_HEARTBEAT_SEC: "${SIEM_SENSOR_HEARTBEAT_SEC:-30}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - siem_sensor_data:/var/lib/siem
+      - siem_forwarder_state:/var/lib/siem/state
+    networks:
+      oob_mgmt:
+        ipv4_address: 172.31.250.242
+
 networks:
   l4_net:
     driver: bridge
@@ -743,3 +820,5 @@ volumes:
   plc_backup_data:
   eng_ws_home:
   postgres_data:
+  siem_sensor_data:
+  siem_forwarder_state:

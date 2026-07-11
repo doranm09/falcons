@@ -43,6 +43,9 @@ def build_query_payload_from_form(data: Dict[str, Any]) -> Dict[str, Any]:
     allowed = {
         "event_type",
         "source",
+        "event_module",
+        "event_dataset",
+        "observer_name",
         "asset_id",
         "asset_ip",
         "q",

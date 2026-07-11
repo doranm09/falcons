@@ -6,6 +6,7 @@
   const form = document.getElementById('siem-search-form');
   const defaultStart = explorer.dataset.defaultStart || '';
   const defaultEnd = explorer.dataset.defaultEnd || '';
+  const excludeStatsDefault = explorer.dataset.excludeStatsDefault === '1';
   const pivotUrl = explorer.dataset.pivotUrl || '';
   const statusEl = document.getElementById('siem-status');
   const resultsCountBadge = document.querySelector('[data-testid="siem-results-count"]');
@@ -15,6 +16,7 @@
   const pivotModalEl = document.getElementById('siem-pivot-modal');
   const pivotContent = document.getElementById('siem-pivot-content');
   const quickRangeButtons = explorer.querySelectorAll('[data-range]');
+  const workflowButtons = explorer.querySelectorAll('[data-workflow]');
   const resetButton = document.getElementById('siem-reset');
   const timelineBars = document.getElementById('siem-timeline-bars');
   const timelineLabel = document.getElementById('siem-timeline-label');
@@ -26,13 +28,22 @@
   const inputs = {
     start: document.getElementById('siem-start'),
     end: document.getElementById('siem-end'),
+    eventModule: document.getElementById('siem-event-module'),
+    eventDataset: document.getElementById('siem-event-dataset'),
+    observerName: document.getElementById('siem-observer-name'),
     eventType: document.getElementById('siem-event-type'),
     source: document.getElementById('siem-source'),
+    sourceIp: document.getElementById('siem-source-ip'),
+    sourcePort: document.getElementById('siem-source-port'),
+    destinationIp: document.getElementById('siem-destination-ip'),
+    destinationPort: document.getElementById('siem-destination-port'),
     assetIp: document.getElementById('siem-asset-ip'),
     assetId: document.getElementById('siem-asset-id'),
+    communityId: document.getElementById('siem-community-id'),
     severity: document.getElementById('siem-severity'),
     query: document.getElementById('siem-query'),
     limit: document.getElementById('siem-limit'),
+    excludeStats: document.getElementById('siem-exclude-stats'),
   };
 
   function formatSeverityBadge(severity) {
@@ -54,17 +65,43 @@
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
   }
 
+  function formatEndpoint(ip, port) {
+    if (!ip && (port === null || port === undefined || port === '')) return '-';
+    if (!ip) return `:${port}`;
+    if (port === null || port === undefined || port === '') return ip;
+    return `${ip}:${port}`;
+  }
+
+  function setScalarOrList(params, key, value) {
+    const text = String(value || '').trim();
+    if (!text) return;
+    if (text.includes(',')) {
+      params.set(`${key}_in`, text);
+      return;
+    }
+    params.set(key, text);
+  }
+
   function buildParams() {
     const params = new URLSearchParams();
     if (inputs.start.value) params.set('start', new Date(inputs.start.value).toISOString());
     if (inputs.end.value) params.set('end', new Date(inputs.end.value).toISOString());
-    if (inputs.eventType.value) params.set('event_type', inputs.eventType.value.trim());
-    if (inputs.source.value) params.set('source', inputs.source.value.trim());
-    if (inputs.assetIp.value) params.set('asset_ip', inputs.assetIp.value.trim());
+    setScalarOrList(params, 'event_module', inputs.eventModule.value);
+    setScalarOrList(params, 'event_dataset', inputs.eventDataset.value);
+    setScalarOrList(params, 'observer_name', inputs.observerName.value);
+    setScalarOrList(params, 'event_type', inputs.eventType.value);
+    setScalarOrList(params, 'source', inputs.source.value);
+    setScalarOrList(params, 'source_ip', inputs.sourceIp.value);
+    setScalarOrList(params, 'source_port', inputs.sourcePort.value);
+    setScalarOrList(params, 'destination_ip', inputs.destinationIp.value);
+    setScalarOrList(params, 'destination_port', inputs.destinationPort.value);
+    setScalarOrList(params, 'asset_ip', inputs.assetIp.value);
     if (inputs.assetId.value) params.set('asset_id', inputs.assetId.value.trim());
+    if (inputs.communityId.value) params.set('network_community_id', inputs.communityId.value.trim());
     if (inputs.severity.value) params.set('severity', inputs.severity.value.trim());
     if (inputs.query.value) params.set('q', inputs.query.value.trim());
     if (inputs.limit.value) params.set('limit', inputs.limit.value.trim());
+    if (inputs.excludeStats?.checked) params.set('exclude_stats', '1');
     return params;
   }
 
@@ -131,7 +168,7 @@
   function renderRows(events) {
     tbody.innerHTML = '';
     if (!events.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-muted text-center">No events match this search.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="11" class="text-muted text-center">No events match this search.</td></tr>';
       return;
     }
 
@@ -143,13 +180,19 @@
       row.dataset.eventId = eventId;
       row.dataset.assetIp = event.asset_ip || '';
       row.dataset.assetId = event.asset_id || '';
+      row.dataset.sourceIp = event.source_ip || '';
+      row.dataset.sourcePort = event.source_port ?? '';
+      row.dataset.destinationIp = event.destination_ip || '';
+      row.dataset.destinationPort = event.destination_port ?? '';
       row.innerHTML = `
         <td>${formatDateTime(event.timestamp)}</td>
-        <td><span class="badge bg-light text-dark border">${event.source || '-'}</span></td>
-        <td>${event.event_type || '-'}</td>
+        <td><span class="badge bg-light text-dark border">${event.event_module || event.source || '-'}</span></td>
+        <td>${event.event_dataset || event.event_type || '-'}</td>
+        <td>${formatEndpoint(event.source_ip, event.source_port)}</td>
+        <td>${formatEndpoint(event.destination_ip, event.destination_port)}</td>
         <td>${formatSeverityBadge(event.severity)}</td>
         <td>${event.asset_ip || '-'}</td>
-        <td>${event.asset_id || '-'}</td>
+        <td>${event.observer_name || '-'}</td>
         <td>${event.summary || '-'}</td>
         <td><button class="btn btn-sm btn-outline-secondary" data-action="pivot">Pivot</button></td>
         <td><button class="btn btn-sm btn-outline-primary" data-action="view-raw" data-event-id="${eventId}">View</button></td>
@@ -207,8 +250,13 @@
         input.value = defaultEnd;
         return;
       }
+      if (input.id === 'siem-exclude-stats') {
+        input.checked = excludeStatsDefault;
+        return;
+      }
       input.value = '';
     });
+    workflowButtons.forEach((button) => button.classList.remove('active'));
     setStatus('Filters cleared. Showing most recent events.');
     runSearch();
   });
@@ -221,8 +269,82 @@
       const start = new Date(end.getTime() - minutes * 60 * 1000);
       inputs.end.value = end.toISOString().slice(0, 16);
       inputs.start.value = start.toISOString().slice(0, 16);
+      workflowButtons.forEach((workflowButton) => workflowButton.classList.remove('active'));
       runSearch();
     });
+  });
+
+  const workflowPresets = {
+    hybrid: {
+      eventDataset: 'agent.network_connection,zeek.conn,suricata.flow',
+      excludeStats: true,
+      message: 'Showing connection-centric hybrid telemetry across agents, Zeek, and Suricata.',
+    },
+    modbus: {
+      destinationPort: '502',
+      excludeStats: true,
+      message: 'Showing traffic targeting Modbus/TCP port 502.',
+    },
+    opc: {
+      destinationPort: '4840',
+      excludeStats: true,
+      message: 'Showing traffic targeting OPC UA port 4840.',
+    },
+    engineering: {
+      sourceIp: '10.2.50.20',
+      destinationPort: '44818',
+      excludeStats: true,
+      message: 'Showing engineering workstation traffic toward PLC EtherNet/IP services.',
+    },
+    field: {
+      sourceIp: '10.1.1.10,10.1.1.11,10.1.1.12,10.1.1.13,10.1.2.10,10.1.2.11,10.1.2.12,10.1.2.13',
+      destinationPort: '502',
+      excludeStats: true,
+      message: 'Showing channel-to-field Modbus traffic from the redundant control network.',
+    },
+  };
+
+  function applyWorkflowPreset(workflowKey) {
+    const preset = workflowPresets[workflowKey];
+    if (!preset) return;
+
+    Object.entries({
+      eventModule: '',
+      eventDataset: '',
+      observerName: '',
+      eventType: '',
+      source: '',
+      sourceIp: '',
+      sourcePort: '',
+      destinationIp: '',
+      destinationPort: '',
+      assetIp: '',
+      assetId: '',
+      communityId: '',
+      severity: '',
+      query: '',
+    }).forEach(([key, value]) => {
+      if (inputs[key]) inputs[key].value = value;
+    });
+
+    Object.entries(preset).forEach(([key, value]) => {
+      if (key === 'excludeStats' || key === 'message') return;
+      if (inputs[key]) inputs[key].value = value;
+    });
+
+    if (inputs.excludeStats) {
+      inputs.excludeStats.checked = Boolean(preset.excludeStats);
+    }
+
+    workflowButtons.forEach((button) => {
+      button.classList.toggle('active', button.dataset.workflow === workflowKey);
+    });
+    setStatus(preset.message || 'Workflow preset applied.');
+    runSearch();
+  }
+
+  workflowButtons.forEach((button) => {
+    button.addEventListener('click', () => applyWorkflowPreset(button.dataset.workflow || ''));
   });
 
   tbody.addEventListener('click', async (event) => {

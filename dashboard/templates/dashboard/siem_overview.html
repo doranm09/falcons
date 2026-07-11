@@ -1,0 +1,281 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h2 class="mb-1">SOC Overview</h2>
+      <p class="text-muted mb-0">Operator entrypoint for sensor health, detections, and recent network telemetry.</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-primary" href="{% url 'dashboard:siem_event_explorer' %}">Open Event Explorer</a>
+      <a class="btn btn-outline-secondary" href="{% url 'dashboard:siem_sensor_health_page' %}">Sensor Health</a>
+      <a class="btn btn-outline-dark" href="{{ opensearch.dashboards_url }}" target="_blank">Open Dashboards</a>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Events (24h)</div><div class="fs-2 fw-bold">{{ summary.events_24h }}</div></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Open Alerts</div><div class="fs-2 fw-bold text-danger">{{ summary.open_alerts }}</div><div class="small text-muted">{{ summary.high_alerts }} high severity</div></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Open Cases / Hunts</div><div class="fs-2 fw-bold">{{ summary.open_cases }}</div><div class="small text-muted">{{ summary.open_hunts }} active hunts</div></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Sensors</div><div class="fs-2 fw-bold">{{ summary.live_sensors }}</div><div class="small text-muted">{{ summary.stale_sensors }} stale</div></div></div></div>
+  </div>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="card-title mb-0">OpenSearch</h5>
+        <div class="d-flex gap-2 align-items-center">
+          <span class="badge {% if opensearch.enabled %}bg-success{% else %}bg-secondary{% endif %}">Forwarding {% if opensearch.enabled %}Enabled{% else %}Disabled{% endif %}</span>
+          <a class="btn btn-sm btn-outline-dark" href="{{ opensearch.dashboards_url }}" target="_blank">Dashboards</a>
+        </div>
+      </div>
+      <div class="row g-3 mb-3">
+        <div class="col-md-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Cluster Status</div><div class="fw-bold">{{ opensearch.cluster_status|default:opensearch.status }}</div></div></div>
+        <div class="col-md-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Nodes</div><div class="fw-bold">{{ opensearch.node_count }}</div></div></div>
+        <div class="col-md-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Indices</div><div class="fw-bold">{{ opensearch.index_count }}</div></div></div>
+        <div class="col-md-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Indexed Docs</div><div class="fw-bold">{{ opensearch.document_count }}</div></div></div>
+      </div>
+      <div class="small text-muted mb-3">URL: {{ opensearch.url|default:"not configured" }} | Prefix: {{ opensearch.index_prefix }}</div>
+      {% if opensearch.error %}
+        <div class="alert alert-warning py-2 mb-3">OpenSearch check error: {{ opensearch.error }}</div>
+      {% endif %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Index</th>
+              <th>Health</th>
+              <th>Status</th>
+              <th>Docs</th>
+              <th>Store Size</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for index in opensearch.indices %}
+              <tr>
+                <td>{{ index.index }}</td>
+                <td>{{ index.health|default:"-" }}</td>
+                <td>{{ index.status|default:"-" }}</td>
+                <td>{{ index.docs_count }}</td>
+                <td>{{ index.store_size|default:"-" }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="5" class="text-muted text-center">No OpenSearch indices found for {{ opensearch.index_prefix }}-*.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-lg-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h5 class="card-title">Top Modules</h5>
+          <ul class="list-unstyled mb-0">
+            {% for item in top_modules %}
+              <li class="d-flex justify-content-between"><span>{{ item.event_module }}</span><span class="badge bg-secondary">{{ item.count }}</span></li>
+            {% empty %}
+              <li class="text-muted">No module data yet.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h5 class="card-title">Top Datasets</h5>
+          <ul class="list-unstyled mb-0">
+            {% for item in top_datasets %}
+              <li class="d-flex justify-content-between"><span>{{ item.event_dataset }}</span><span class="badge bg-secondary">{{ item.count }}</span></li>
+            {% empty %}
+              <li class="text-muted">No dataset data yet.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="card-title mb-0">Top Talkers</h5>
+            <select class="form-select form-select-sm w-auto" id="soc-talker-policy">
+              <option value="suppress_link_local_ipv6" selected>Suppress Link-Local IPv6</option>
+              <option value="show_all">Show All</option>
+            </select>
+          </div>
+          <div class="small text-muted mb-2" id="soc-talker-policy-note">Default policy hides link-local IPv6 noise so routed hybrid assets are easier to spot.</div>
+          <ul class="list-unstyled mb-0" id="soc-top-talkers">
+            {% for item in top_asset_ips %}
+              <li class="d-flex justify-content-between soc-talker-row"
+                  data-asset-ip="{{ item.asset_ip }}"
+                  data-policy-tags="{{ item.policy_tags|join:' ' }}">
+                <a href="{% url 'dashboard:siem_event_explorer' %}?asset_ip={{ item.asset_ip }}">{{ item.asset_ip }}</a>
+                <span class="badge bg-secondary">{{ item.count }}</span>
+              </li>
+            {% empty %}
+              <li class="text-muted" id="soc-top-talkers-empty">No asset IP data yet.</li>
+            {% endfor %}
+          </ul>
+          <div class="text-muted small d-none" id="soc-top-talkers-hidden-note">Current frontend policy is hiding noisy talkers.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="card-title mb-0">Sensor Health</h5>
+            <a href="{% url 'dashboard:siem_sensor_health_page' %}" class="btn btn-sm btn-outline-secondary">View All</a>
+          </div>
+          <ul class="list-unstyled mb-0">
+            {% for sensor in sensor_rows %}
+              <li class="mb-3">
+                <div class="d-flex justify-content-between">
+                  <strong>{{ sensor.hostname|default:sensor.sensor_id }}</strong>
+                  <span class="badge {% if sensor.status == 'online' %}bg-success{% elif sensor.status == 'stale' %}bg-warning text-dark{% else %}bg-danger{% endif %}">{{ sensor.status }}</span>
+                </div>
+                <div class="text-muted small">{{ sensor.sensor_type }} | {{ sensor.last_seen|date:"Y-m-d H:i:s" }}</div>
+              </li>
+            {% empty %}
+              <li class="text-muted">No sensor records yet.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="card-title mb-0">Recent Alerts</h5>
+            <a href="{% url 'dashboard:siem_alerts_page' %}" class="btn btn-sm btn-outline-secondary">Open Queue</a>
+          </div>
+          <ul class="list-unstyled mb-0">
+            {% for row in recent_alerts %}
+              <li class="mb-3">
+                <div class="d-flex justify-content-between">
+                  <strong>{{ row.alert.rule_name }}</strong>
+                  <span class="badge bg-danger">{{ row.alert.severity|default:"-" }}</span>
+                </div>
+                <div class="text-muted small">{{ row.alert.summary|default:"-" }}</div>
+                <a href="{{ row.explorer_url }}" class="small">Open related events</a>
+              </li>
+            {% empty %}
+              <li class="text-muted">No open alerts.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="card-title mb-0">Recent Events</h5>
+        <a href="{% url 'dashboard:siem_event_explorer' %}" class="btn btn-sm btn-outline-primary">Explore All</a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Module</th>
+              <th>Dataset</th>
+              <th>Asset IP</th>
+              <th>Summary</th>
+            </tr>
+          </thead>
+          <tbody id="soc-recent-events-body">
+            {% for event in recent_events %}
+              <tr class="soc-recent-event-row"
+                  data-asset-ip="{{ event.asset_ip|default:'' }}"
+                  data-source-ip="{{ event.source_ip|default:'' }}"
+                  data-destination-ip="{{ event.destination_ip|default:'' }}">
+                <td>{{ event.timestamp|date:"Y-m-d H:i:s" }}</td>
+                <td>{{ event.event_module|default:event.source }}</td>
+                <td>{{ event.event_dataset|default:event.event_type }}</td>
+                <td>{{ event.asset_ip|default:"-" }}</td>
+                <td>{{ event.summary|default:"-" }}</td>
+              </tr>
+            {% empty %}
+              <tr id="soc-recent-events-empty"><td colspan="5" class="text-muted text-center">No SIEM events yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="text-muted small d-none" id="soc-recent-events-hidden-note">Current frontend policy is hiding noisy recent events.</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function () {
+    const policyKey = 'socOverviewTalkerPolicy';
+    const policySelect = document.getElementById('soc-talker-policy');
+    if (!policySelect) return;
+
+    const talkerRows = Array.from(document.querySelectorAll('.soc-talker-row'));
+    const talkerHiddenNote = document.getElementById('soc-top-talkers-hidden-note');
+    const recentRows = Array.from(document.querySelectorAll('.soc-recent-event-row'));
+    const recentHiddenNote = document.getElementById('soc-recent-events-hidden-note');
+
+    function isLinkLocalIPv6(value) {
+      return typeof value === 'string' && value.toLowerCase().startsWith('fe80:');
+    }
+
+    function rowHiddenByPolicy(row, policy) {
+      if (policy !== 'suppress_link_local_ipv6') return false;
+      const tags = (row.dataset.policyTags || '').split(/\s+/).filter(Boolean);
+      if (tags.includes('ipv6_link_local')) return true;
+      const ips = [row.dataset.assetIp, row.dataset.sourceIp, row.dataset.destinationIp].filter(Boolean);
+      return ips.length > 0 && ips.every(isLinkLocalIPv6);
+    }
+
+    function applyPolicy(policy) {
+      let hiddenTalkers = 0;
+      talkerRows.forEach((row) => {
+        const hide = rowHiddenByPolicy(row, policy);
+        row.classList.toggle('d-none', hide);
+        if (hide) hiddenTalkers += 1;
+      });
+      if (talkerHiddenNote) {
+        talkerHiddenNote.classList.toggle('d-none', hiddenTalkers === 0);
+      }
+
+      let hiddenEvents = 0;
+      recentRows.forEach((row) => {
+        const hide = rowHiddenByPolicy(row, policy);
+        row.classList.toggle('d-none', hide);
+        if (hide) hiddenEvents += 1;
+      });
+      if (recentHiddenNote) {
+        recentHiddenNote.classList.toggle('d-none', hiddenEvents === 0);
+      }
+    }
+
+    const savedPolicy = window.localStorage.getItem(policyKey);
+    if (savedPolicy) {
+      policySelect.value = savedPolicy;
+    }
+    applyPolicy(policySelect.value);
+
+    policySelect.addEventListener('change', () => {
+      const policy = policySelect.value;
+      window.localStorage.setItem(policyKey, policy);
+      applyPolicy(policy);
+    });
+  })();
+</script>
+{% endblock %}

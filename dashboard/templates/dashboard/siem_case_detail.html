@@ -11,6 +11,7 @@
     <div class="d-flex gap-2">
       <a class="btn btn-outline-secondary" href="{% url 'dashboard:siem_cases_page' %}">Back to Cases</a>
       <a class="btn btn-outline-primary" href="{% url 'dashboard:siem_case_export' case.id %}">Export JSON</a>
+      <a class="btn btn-outline-dark" href="{{ opensearch.dashboards_url }}" target="_blank">Open Dashboards</a>
     </div>
   </div>
 
@@ -38,11 +39,14 @@
         <div class="card-body">
           <h5 class="card-title">Linked Alerts</h5>
           <ul class="list-unstyled mb-0">
-            {% for alert in case.alerts.all %}
+            {% for row in linked_alerts %}
+              {% with alert=row.alert %}
               <li class="mb-2">
                 <div><strong>{{ alert.rule_name }}</strong> ({{ alert.event_type }})</div>
                 <div class="text-muted">{{ alert.summary|default:"-" }} | {{ alert.asset_ip|default:"-" }}</div>
+                <a class="small" href="{{ row.explorer_url }}">Open related events</a>
               </li>
+              {% endwith %}
             {% empty %}
               <li class="text-muted">No alerts linked.</li>
             {% endfor %}

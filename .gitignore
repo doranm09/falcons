@@ -90,3 +90,12 @@ report/*.fls
 report/*.fdb_latexmk
 report/*.pdf
 .codex
+
+# === Falcon inventory exports ===
+falcons_dependency_inventory.csv
+falcons_inventory_index.csv
+falcons_module_inventory.csv
+falcons_service_inventory.csv
+falcons_service_inventory_external.csv
+falcons_service_inventory_internal.csv
+falcons_service_inventory_master.csv

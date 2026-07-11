@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 from django.utils import timezone
 from django.core.validators import MinValueValidator
@@ -116,6 +118,130 @@ class CampaignRun(models.Model):
 
     def __str__(self):
         return f"Campaign {self.id} ({self.cidr}) [{self.status}]"
+
+
+class ExperimentSuite(models.Model):
+    """A reproducible collection of FALCONS S0-S4 scenario runs."""
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        RUNNING = "RUNNING", "Running"
+        COMPLETED = "COMPLETED", "Completed"
+        FAILED = "FAILED", "Failed"
+        ROLLBACK_FAILED = "ROLLBACK_FAILED", "Rollback failed"
+
+    suite_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="falcons_experiment_suites",
+    )
+    status = models.CharField(max_length=32, choices=Status.choices, default=Status.PENDING, db_index=True)
+    manifest = models.JSONField(default=dict)
+    locked_manifest = models.JSONField(default=dict)
+    manifest_sha256 = models.CharField(max_length=64, blank=True)
+    model_sha256 = models.CharField(max_length=64, blank=True)
+    repository_revisions = models.JSONField(default=dict, blank=True)
+    environment = models.JSONField(default=dict, blank=True)
+    output_dir = models.CharField(max_length=1024, blank=True)
+    celery_task_id = models.CharField(max_length=64, blank=True, db_index=True)
+    requested_scenarios = models.JSONField(default=list, blank=True)
+    repetitions = models.PositiveSmallIntegerField(default=5)
+    random_seed = models.PositiveIntegerField(default=20260710)
+    error = models.TextField(blank=True)
+    started_at = models.DateTimeField(default=timezone.now, db_index=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-started_at"]
+        indexes = [models.Index(fields=["status", "started_at"])]
+
+    def __str__(self):
+        return f"FALCONS suite {self.suite_id} [{self.status}]"
+
+
+class ScenarioRun(models.Model):
+    """One scenario condition and repetition within a FALCONS suite."""
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        RUNNING = "RUNNING", "Running"
+        COMPLETED = "COMPLETED", "Completed"
+        FAILED = "FAILED", "Failed"
+        ROLLED_BACK = "ROLLED_BACK", "Rolled back"
+        ROLLBACK_FAILED = "ROLLBACK_FAILED", "Rollback failed"
+
+    suite = models.ForeignKey(ExperimentSuite, on_delete=models.CASCADE, related_name="scenario_runs")
+    scenario_id = models.CharField(max_length=8, db_index=True)
+    condition = models.CharField(max_length=64, default="default")
+    repetition = models.PositiveSmallIntegerField(default=1)
+    seed = models.PositiveIntegerField(default=0)
+    status = models.CharField(max_length=32, choices=Status.choices, default=Status.PENDING, db_index=True)
+    risk_experiment_id = models.CharField(max_length=64, blank=True)
+    risk_evaluation_id = models.CharField(max_length=64, blank=True)
+    input_sha256 = models.CharField(max_length=64, blank=True)
+    output_sha256 = models.CharField(max_length=64, blank=True)
+    expected_risk = models.FloatField(null=True, blank=True)
+    metrics = models.JSONField(default=dict, blank=True)
+    result_payload = models.JSONField(default=dict, blank=True)
+    rollback_verified = models.BooleanField(default=False)
+    error = models.TextField(blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["scenario_id", "repetition", "condition"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["suite", "scenario_id", "repetition", "condition"],
+                name="unique_falcons_scenario_condition",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["suite", "scenario_id"]),
+            models.Index(fields=["status", "started_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.suite.suite_id}:{self.scenario_id}:{self.condition}:r{self.repetition}"
+
+
+class ExperimentArtifact(models.Model):
+    """Checksummed raw or derived artifact produced by an experiment."""
+
+    suite = models.ForeignKey(ExperimentSuite, on_delete=models.CASCADE, related_name="artifacts")
+    scenario_run = models.ForeignKey(
+        ScenarioRun,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="artifacts",
+    )
+    kind = models.CharField(max_length=64, db_index=True)
+    relative_path = models.CharField(max_length=1024)
+    sha256 = models.CharField(max_length=64)
+    size_bytes = models.PositiveBigIntegerField(default=0)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["relative_path"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["suite", "relative_path"],
+                name="unique_falcons_suite_artifact_path",
+            )
+        ]
+        indexes = [models.Index(fields=["suite", "kind"])]
+
+    def __str__(self):
+        return f"{self.kind}: {self.relative_path}"
 
 
 class MinimegaExecutionLog(models.Model):
@@ -660,6 +786,11 @@ class Vulnerability(models.Model):
     published = models.DateTimeField()
     last_modified = models.DateTimeField()
     references = models.TextField(blank=True)
+    epss_score = models.FloatField(null=True, blank=True)
+    epss_percentile = models.FloatField(null=True, blank=True)
+    epss_model_date = models.DateField(null=True, blank=True)
+    epss_retrieved_at = models.DateTimeField(null=True, blank=True)
+    epss_source = models.CharField(max_length=64, blank=True)
     nodes = models.ManyToManyField(Node, blank=True)
 
     class Meta:

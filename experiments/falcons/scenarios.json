@@ -1,0 +1,117 @@
+{
+  "version": "1.0",
+  "repetitions": 5,
+  "random_seed": 20260710,
+  "model_path": "",
+  "risk_api_url": "",
+  "risk_api_timeout_seconds": 300,
+  "horizon": 3,
+  "time_step_seconds": 3600,
+  "stabilization_seconds": 10,
+  "collection_seconds": 30,
+  "telemetry_timeout_seconds": 5,
+  "max_network_records": 5000,
+  "process_telemetry_url": "http://host.docker.internal:4840/",
+  "threat_origin": "engineer-ws",
+  "target_function": "maintain_pressure",
+  "cyber_policy_overlay": {
+    "version": "validated-hybrid-2026-04-17",
+    "description": "Acyclic attack-consequence dependencies derived from the validated hybrid routes and firewall policy.",
+    "edges": [
+      {"source": "metasploit", "target": "firewall-2", "evidence": "Layer 4 enterprise boundary"},
+      {"source": "firewall-2", "target": "postgres", "evidence": "Validated Layer 4 database policy"},
+      {"source": "engineer-ws", "target": "firewall-1", "evidence": "Validated Layer 2 to Layer 3 route"},
+      {"source": "firewall-1", "target": "historian", "evidence": "Validated historian access policy"},
+      {"source": "historian", "target": "firewall-0", "evidence": "Validated historian to control route"},
+      {"source": "hmi", "target": "firewall-0", "evidence": "Validated HMI to control route"},
+      {"source": "firewall-0", "target": "plc-main", "evidence": "Validated primary PLC control route"},
+      {"source": "firewall-0", "target": "plc-backup", "evidence": "Validated backup PLC control route"}
+    ]
+  },
+  "consequence_weights": {
+    "maintain_pressure": {
+      "Operating": 0.0,
+      "Degraded": 1.0,
+      "Failed": 2.0
+    }
+  },
+  "observation_likelihoods": {
+    "host": {"Nominal": 1.0, "Faulty": 0.5, "Compromised": 0.5},
+    "network": {"Normal": 1.0, "Abnormal": 0.5, "Compromised": 0.5},
+    "process": {"Operating": 1.0, "Degraded": 0.5, "Failed": 0.2}
+  },
+  "gpwr_thresholds": {
+    "degraded_low": null,
+    "degraded_high": null,
+    "failed_low": null,
+    "failed_high": null,
+    "units": "psi",
+    "provenance": ""
+  },
+  "epss_overrides": {},
+  "max_ranked_vulnerabilities": 20,
+  "scenarios": {
+    "S0": {},
+    "S1": {
+      "allowed_assets": [
+        "historian",
+        "hmi",
+        "plc-main",
+        "plc-backup"
+      ],
+      "vulnerability": {
+        "asset": "historian",
+        "cve": "CVE-2025-13836"
+      }
+    },
+    "S2": {
+      "preferred_assets": [
+        "postgres",
+        "metasploit"
+      ],
+      "model_patch": {
+        "digital": {
+          "postgres": {
+            "networks": null,
+            "source": null
+          }
+        }
+      },
+      "vulnerability": {
+        "asset": "postgres",
+        "cve": "CVE-2026-31789"
+      }
+    },
+    "S3": {
+      "conditions": [
+        "none",
+        "host",
+        "network",
+        "process",
+        "combined"
+      ]
+    },
+    "S4": {
+      "baseline_masks": ["host"],
+      "candidates": [
+        {
+          "id": "patch-s1-vulnerability",
+          "label": "Patch the reachable S1 vulnerability",
+          "kind": "patch_s1_vulnerability"
+        },
+        {
+          "id": "restore-full-telemetry",
+          "label": "Restore all telemetry classes",
+          "kind": "add_telemetry"
+        }
+      ]
+    }
+  },
+  "benchmarks": {
+    "enabled": true,
+    "warmups": 3,
+    "repetitions": 30,
+    "horizons": [1, 3, 5, 10, 20],
+    "model_scales": [25, 50, 75, 100]
+  }
+}

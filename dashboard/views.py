@@ -90,6 +90,7 @@ from .models import (
     CommandResult,
     MinimegaExecutionLog,
     NetworkConnection,
+    NetworkFlow,
     NetworkMetadata,
     Node,
     NodeInterface,
@@ -106,6 +107,9 @@ from .models import (
     CaseNote,
     CaseEvidence,
     CampaignRun,
+    ExperimentArtifact,
+    ExperimentSuite,
+    ScenarioRun,
     Hunt,
     HuntNote,
     HuntSearch,
@@ -127,6 +131,7 @@ from .tasks import (
     parse_and_save_vulnerabilities,
     scan_sbom_vulnerabilities_task,
     run_ot_campaign_task,
+    run_falcons_experiment_task,
 )
 from .openvas_client import openvas_session, get_task_status, get_report_id, download_report
 from .opensearch_client import get_opensearch_overview
@@ -9085,3 +9090,243 @@ def _relative_to_base(path: Path) -> str:
         return str(path.relative_to(settings.BASE_DIR))
     except Exception:
         return str(path)
+
+
+# ---------------------------------------------------------------------------
+# FALCONS experiment control plane
+# ---------------------------------------------------------------------------
+def _falcons_runs_root() -> Path:
+    configured = str(os.environ.get("FALCONS_RUNS_DIR", "") or "").strip()
+    return Path(configured).expanduser() if configured else Path(settings.BASE_DIR) / "runs" / "falcons"
+
+
+def _falcons_manifest() -> dict:
+    from .falcons_experiments import load_manifest
+
+    payload = load_manifest(Path(settings.BASE_DIR) / "experiments" / "falcons" / "scenarios.json")
+    payload["model_path"] = payload.get("model_path") or getattr(settings, "RISK_ASSESSMENT_SIM_SYSTEM_PATH", "")
+    payload["risk_api_url"] = payload.get("risk_api_url") or getattr(settings, "RISK_ASSESSMENT_API_URL", "")
+    return payload
+
+
+def _falcons_preflight_payload(manifest: dict) -> dict:
+    from .falcons_experiments import EVIDENCE_CLASSES, _find_epss, model_nodes, normalize_asset
+
+    checks = []
+    model_path = Path(str(manifest.get("model_path") or ""))
+    model = {}
+    try:
+        model = json.loads(model_path.read_text(encoding="utf-8"))
+        checks.append({"id": "model", "ok": True, "detail": f"{len(model_nodes(model))} modeled nodes"})
+    except Exception as exc:
+        checks.append({"id": "model", "ok": False, "detail": str(exc)})
+    try:
+        response = requests.get(f"{str(manifest.get('risk_api_url')).rstrip('/')}/", timeout=5)
+        response.raise_for_status()
+        endpoints = response.json().get("endpoints", {})
+        ok = "POST /experiments" in endpoints
+        checks.append({"id": "risk_api", "ok": ok, "detail": "isolated experiment API available" if ok else "isolated API missing"})
+    except Exception as exc:
+        checks.append({"id": "risk_api", "ok": False, "detail": str(exc)})
+    target_assets = {"historian", "hmi", "plc-main", "plc-backup", "postgres", "metasploit"}
+    candidates = []
+    for vulnerability in Vulnerability.objects.filter(nodes__isnull=False).exclude(score__isnull=True).prefetch_related("nodes").distinct():
+        for node in vulnerability.nodes.all():
+            asset = normalize_asset(node.hostname or node.name)
+            if asset not in target_assets:
+                continue
+            epss = vulnerability.epss_score
+            if epss is None:
+                for report in SbomReport.objects.filter(node=node).order_by("-created_at")[:5]:
+                    epss = _find_epss(report.scan_metadata, vulnerability.cve_id)
+                    if epss is None:
+                        epss = _find_epss(report.document, vulnerability.cve_id)
+                    if epss is not None:
+                        break
+            candidates.append({
+                "asset": asset, "cve": vulnerability.cve_id, "cvss": vulnerability.score,
+                "epss": epss, "epss_date": vulnerability.epss_model_date,
+            })
+    s1_ok = any(row["asset"] in {"historian", "hmi", "plc-main", "plc-backup"} and row["epss"] is not None for row in candidates)
+    s2_ok = any(row["asset"] in {"postgres", "metasploit"} and row["epss"] is not None for row in candidates)
+    checks.append({"id": "s1_cve", "ok": s1_ok, "detail": "scored reachable CVE with EPSS" if s1_ok else "FIRST EPSS snapshot required"})
+    checks.append({"id": "s2_cve", "ok": s2_ok, "detail": "scored isolated CVE with EPSS" if s2_ok else "FIRST EPSS snapshot required"})
+    evidence_counts = {
+        "host": AgentStatus.objects.filter(status="online").count(),
+        "network": NetworkConnection.objects.count() + NetworkFlow.objects.count(),
+        "process": 0,
+        "vulnerability": Vulnerability.objects.filter(nodes__isnull=False).distinct().count(),
+        "configuration": 0,
+    }
+    try:
+        response = requests.get(str(manifest.get("process_telemetry_url")), timeout=5)
+        response.raise_for_status()
+        evidence_counts["process"] = 1 if str(response.json().get("status", "")).lower() == "ok" else 0
+    except Exception:
+        pass
+    for category in ("host", "network", "process"):
+        checks.append({"id": f"evidence_{category}", "ok": evidence_counts[category] > 0, "detail": f"{evidence_counts[category]} observations"})
+    thresholds = manifest.get("gpwr_thresholds") or {}
+    required = ("degraded_low", "degraded_high", "failed_low", "failed_high", "provenance")
+    threshold_ok = all(thresholds.get(key) not in (None, "") for key in required)
+    checks.append({"id": "thresholds", "ok": threshold_ok, "detail": "manual values and provenance recorded" if threshold_ok else "manual GPWR thresholds required"})
+    return {
+        "ready": all(check["ok"] for check in checks),
+        "checks": checks,
+        "candidates": sorted(candidates, key=lambda row: (row["asset"], -(row["cvss"] or 0), row["cve"])),
+        "evidence_counts": evidence_counts,
+        "manifest": manifest,
+    }
+
+
+def falcons_experiments_page(request):
+    return render(request, "dashboard/falcons_experiments.html", {
+        "falcons_runs_root": str(_falcons_runs_root()),
+        "risk_service_url": getattr(settings, "RISK_ASSESSMENT_API_URL", ""),
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def falcons_experiment_preflight(request):
+    from .falcons_experiments import refresh_first_epss
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+    manifest = _falcons_manifest()
+    if payload.get("refresh_epss"):
+        cve_ids = list(Vulnerability.objects.exclude(score__isnull=True).values_list("cve_id", flat=True))
+        try:
+            refresh_first_epss(cve_ids)
+        except Exception as exc:
+            return JsonResponse({"error": f"FIRST EPSS refresh failed: {exc}"}, status=502)
+    return JsonResponse(_falcons_preflight_payload(manifest))
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def falcons_experiment_start(request):
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "JSON body must be an object."}, status=400)
+    manifest = _falcons_manifest()
+    scenarios = payload.get("scenarios") or ["S0", "S1", "S2", "S3", "S4"]
+    if not isinstance(scenarios, list) or not scenarios or any(item not in {"S0", "S1", "S2", "S3", "S4"} for item in scenarios):
+        return JsonResponse({"error": "scenarios must contain only S0-S4."}, status=400)
+    try:
+        repetitions = max(1, min(100, int(payload.get("repetitions", 5))))
+        horizon = max(1, min(80, int(payload.get("horizon", manifest.get("horizon", 3)))))
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "repetitions and horizon must be integers."}, status=400)
+    manifest["horizon"] = horizon
+    publication = bool(payload.get("publication"))
+    if not publication:
+        manifest["skip_analysis"] = True
+        manifest["max_ranked_vulnerabilities"] = 0
+        manifest["importance_assets"] = ["plc-main"]
+    preflight = _falcons_preflight_payload(manifest)
+    required_checks = preflight["checks"] if publication else [check for check in preflight["checks"] if check["id"] != "thresholds"]
+    failed = [check for check in required_checks if not check["ok"]]
+    if failed:
+        return JsonResponse({"error": "Experiment preflight failed.", "checks": failed}, status=409)
+    suite = ExperimentSuite.objects.create(
+        requested_by=request.user if getattr(request, "user", None) and request.user.is_authenticated else None,
+        manifest=manifest,
+        requested_scenarios=scenarios,
+        repetitions=repetitions,
+        random_seed=int(manifest.get("random_seed", 20260710)),
+    )
+    task = run_falcons_experiment_task.delay(
+        str(suite.suite_id),
+        scenarios=scenarios,
+        repetitions=repetitions,
+        output_dir=str(_falcons_runs_root() / str(suite.suite_id)),
+        no_wait=not publication,
+        allow_mutations=bool(payload.get("allow_mutations")),
+        skip_benchmarks=not publication,
+    )
+    suite.celery_task_id = task.id
+    suite.save(update_fields=["celery_task_id", "updated_at"])
+    return JsonResponse({"task_id": task.id, "suite_id": str(suite.suite_id), "scenarios": scenarios, "repetitions": repetitions, "horizon": horizon}, status=202)
+
+
+@require_GET
+def falcons_experiment_status(request, task_id):
+    result = AsyncResult(str(task_id))
+    payload = {"task_id": str(task_id), "state": result.state}
+    if isinstance(result.info, dict):
+        payload.update(result.info)
+    if result.ready():
+        payload["result"] = result.result if not isinstance(result.result, Exception) else {"error": str(result.result)}
+    suite = ExperimentSuite.objects.filter(celery_task_id=str(task_id)).first()
+    if suite:
+        payload["suite"] = _serialize_falcons_suite(suite)
+    return JsonResponse(payload)
+
+
+def _serialize_falcons_suite(suite):
+    runs = list(suite.scenario_runs.order_by("scenario_id", "condition", "repetition"))
+    return {
+        "suite_id": str(suite.suite_id), "status": suite.status, "error": suite.error,
+        "repetitions": suite.repetitions, "requested_scenarios": suite.requested_scenarios,
+        "started_at": suite.started_at, "finished_at": suite.finished_at,
+        "environment": suite.environment, "locked_manifest": suite.locked_manifest,
+        "runs": [{
+            "id": run.id, "scenario": run.scenario_id, "condition": run.condition,
+            "repetition": run.repetition, "status": run.status, "expected_risk": run.expected_risk,
+            "metrics": run.metrics, "result": run.result_payload, "error": run.error,
+            "rollback_verified": run.rollback_verified,
+        } for run in runs],
+        "artifacts": [{"id": item.id, "kind": item.kind, "path": item.relative_path, "sha256": item.sha256, "size": item.size_bytes} for item in suite.artifacts.all()],
+    }
+
+
+@require_GET
+def falcons_experiment_suites(request):
+    return JsonResponse({"suites": [_serialize_falcons_suite(suite) for suite in ExperimentSuite.objects.all()[:20]]})
+
+
+@require_GET
+def falcons_experiment_artifact(request, suite_id, artifact):
+    suite = get_object_or_404(ExperimentSuite, suite_id=suite_id)
+    artifact_row = get_object_or_404(ExperimentArtifact, suite=suite, id=artifact)
+    path = Path(suite.output_dir) / artifact_row.relative_path
+    if not path.is_file():
+        return JsonResponse({"error": "Artifact not found."}, status=404)
+    if path.suffix == ".json":
+        return JsonResponse(json.loads(path.read_text(encoding="utf-8")), safe=False)
+    return FileResponse(path.open("rb"), as_attachment=True, filename=path.name)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def falcons_experiment_promote(request, suite_id):
+    from dashboard.management.commands.audit_falcons_manuscript import Command as AuditCommand
+
+    suite = get_object_or_404(ExperimentSuite, suite_id=suite_id)
+    if suite.status != ExperimentSuite.Status.COMPLETED:
+        return JsonResponse({"error": "Only a completed suite can be promoted."}, status=409)
+    thresholds = (suite.locked_manifest or suite.manifest).get("gpwr_thresholds") or {}
+    required_thresholds = ("degraded_low", "degraded_high", "failed_low", "failed_high", "provenance")
+    if not all(thresholds.get(key) not in (None, "") for key in required_thresholds):
+        return JsonResponse({"error": "Manual GPWR thresholds and provenance are required."}, status=409)
+    report_dir = Path(suite.output_dir) / "reports"
+    names = ("falcons_results_macros.tex", "falcons_vulnerability_rows.tex", "falcons_telemetry_rows.tex")
+    missing = [name for name in names if not (report_dir / name).is_file()]
+    if missing:
+        return JsonResponse({"error": "Suite publication artifacts are incomplete.", "missing": missing}, status=409)
+    macro_text = (report_dir / names[0]).read_text(encoding="utf-8")
+    unresolved = [token for token in ("TBD", "[Insert", "[Confirm", "unavailable") if token in macro_text]
+    missing_macros = [name for name in AuditCommand.REQUIRED_MACROS if f"\\renewcommand{{\\{name}}}" not in macro_text]
+    if unresolved or missing_macros:
+        return JsonResponse({"error": "Suite manuscript bundle failed audit.", "unresolved": unresolved, "missing_macros": sorted(missing_macros)}, status=409)
+    generated = Path(settings.BASE_DIR) / "journal_iee_itt" / "generated"
+    generated.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        shutil.copy2(report_dir / name, generated / name)
+    return JsonResponse({"status": "promoted", "suite_id": str(suite.suite_id), "generated_dir": str(generated)})

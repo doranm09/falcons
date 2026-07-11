@@ -199,7 +199,9 @@ services:
       l3_net:
         ipv4_address: 10.3.50.10
     ports:
-      - "127.0.0.1:4840:4840"
+      # Publication experiment collectors reach this read-only status endpoint
+      # through host.docker.internal; PLC/process-control ports remain isolated.
+      - "4840:4840"
 
   # ---------------------- Firewalls ----------------------
   firewall-2:

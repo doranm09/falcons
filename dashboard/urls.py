@@ -134,6 +134,13 @@ urlpatterns = [
     path('risk-assessment/pid/nodes/', views.risk_assessment_pid_nodes_api, name='risk_assessment_pid_nodes_api'),
     path('risk-assessment/pid/validate/', views.risk_assessment_pid_validate, name='risk_assessment_pid_validate'),
     path('risk-assessment/pid/testbed/', views.risk_assessment_pid_testbed, name='risk_assessment_pid_testbed'),
+    path('experiments/falcons/', views.falcons_experiments_page, name='falcons_experiments'),
+    path('experiments/falcons/start/', views.falcons_experiment_start, name='falcons_experiment_start'),
+    path('experiments/falcons/preflight/', views.falcons_experiment_preflight, name='falcons_experiment_preflight'),
+    path('experiments/falcons/status/<str:task_id>/', views.falcons_experiment_status, name='falcons_experiment_status'),
+    path('experiments/falcons/suites/', views.falcons_experiment_suites, name='falcons_experiment_suites'),
+    path('experiments/falcons/artifacts/<str:suite_id>/<str:artifact>/', views.falcons_experiment_artifact, name='falcons_experiment_artifact'),
+    path('experiments/falcons/suites/<str:suite_id>/promote/', views.falcons_experiment_promote, name='falcons_experiment_promote'),
 
     # Network monitoring and Security Onion-like features
     path('network/monitoring/', views.network_monitoring_dashboard, name='network_monitoring'),

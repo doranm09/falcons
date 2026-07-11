@@ -114,6 +114,8 @@ services:
       ICS_RISK_ASSESSMENT_REPO_PATH: ${ICS_RISK_ASSESSMENT_REPO_PATH:-/opt/ics-risk-assessment}
       TRIVY_CACHE_DIR: /tmp/cyber-sbom-cache/trivy
       GRYPE_DB_CACHE_DIR: /tmp/cyber-sbom-cache/grype/db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy

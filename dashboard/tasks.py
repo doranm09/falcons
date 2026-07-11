@@ -957,3 +957,39 @@ def run_ot_campaign_task(
             result_payload=result,
         )
     return result
+
+
+@shared_task(bind=True)
+def run_falcons_experiment_task(
+    self,
+    suite_id,
+    scenarios=None,
+    repetitions=None,
+    output_dir=None,
+    no_wait=False,
+    allow_mutations=False,
+    skip_benchmarks=False,
+):
+    """Celery entry point for the publication-grade FALCONS scenario runner."""
+    from .falcons_experiments import FalconsExperimentRunner, SCENARIOS
+    from .models import ExperimentSuite
+
+    suite = ExperimentSuite.objects.get(suite_id=suite_id)
+    suite.celery_task_id = str(getattr(self.request, "id", "") or "")
+    suite.save(update_fields=["celery_task_id", "updated_at"])
+    runner = FalconsExperimentRunner(
+        manifest=suite.manifest,
+        suite=suite,
+        scenarios=scenarios or SCENARIOS,
+        repetitions=repetitions,
+        output_dir=output_dir,
+        no_wait=bool(no_wait),
+        allow_mutations=bool(allow_mutations),
+        skip_benchmarks=bool(skip_benchmarks),
+    )
+    completed = runner.run()
+    return {
+        "suite_id": str(completed.suite_id),
+        "status": completed.status,
+        "output_dir": completed.output_dir,
+    }

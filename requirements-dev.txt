@@ -9,3 +9,4 @@ faker
 responses
 requests
 django-extensions
+PyYAML>=6.0

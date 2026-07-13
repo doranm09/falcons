@@ -1,0 +1,639 @@
+name: falcons_case_study
+
+# Publication-specific topology matching Figure 3 of the FALCONS manuscript.
+# Plant networks are internal Docker bridges. The OOB network is used only for
+# telemetry collection and is excluded from publication reachability.
+
+x-agent-env: &agent_env
+  AGENT_SERVER_URL: "http://host.docker.internal:8000"
+  AGENT_API_TOKEN: "${AGENT_API_TOKEN:-iaea-demo-agent-token}"
+
+x-agent-extra-hosts: &agent_extra_hosts
+  - "host.docker.internal:host-gateway"
+
+x-common-endpoint: &common_endpoint
+  build:
+    context: ../..
+    dockerfile: testbed/iaea_rcs_demo/services/sim-endpoint/Dockerfile
+  image: falcons_case_study_sim_endpoint:local
+  restart: unless-stopped
+  cap_drop: ["ALL"]
+  cap_add: ["NET_ADMIN", "NET_BIND_SERVICE"]
+  read_only: true
+  tmpfs:
+    - /tmp
+  extra_hosts: *agent_extra_hosts
+
+x-control-endpoint: &control_endpoint
+  <<: *common_endpoint
+  volumes:
+    - ../iaea_rcs_demo/simulated_data:/app/simulated_data:ro
+
+x-openplc: &openplc
+  build:
+    context: ../..
+    dockerfile: testbed/iaea_rcs_demo/services/openplc-v3/Dockerfile
+  image: falcons_case_study_openplc:local
+  restart: unless-stopped
+  cap_drop: ["ALL"]
+  cap_add: ["NET_ADMIN", "NET_BIND_SERVICE", "SYS_NICE", "SYS_RESOURCE"]
+  tmpfs:
+    - /tmp
+  extra_hosts: *agent_extra_hosts
+
+services:
+  # -------------------------------------------------------------------------
+  # Enterprise layer: information consumers only. Neither workstation has a
+  # route into Operations, Supervisory, or Control.
+  # -------------------------------------------------------------------------
+  enterprise-ws-1:
+    <<: *common_endpoint
+    hostname: enterprise-ws-1
+    environment:
+      <<: *agent_env
+      AGENT_ID: enterprise-ws-1
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.251.0/24"
+      OOB_MGMT_PREFIX: "172.31.251."
+      DEVICE_NAME: Enterprise-WS-1
+      DEVICE_ROLE: Enterprise plant-information workstation
+      DEVICE_DESC: Receives one-way historian exports through the data diode
+      SERVICE_PORTS: "8080"
+      HTTP_PORT: "8080"
+    networks:
+      enterprise_net:
+        ipv4_address: 10.4.50.10
+      oob_mgmt:
+        ipv4_address: 172.31.251.110
+    ports:
+      - "127.0.0.1:18010:8080"
+
+  enterprise-ws-2:
+    <<: *common_endpoint
+    hostname: enterprise-ws-2
+    environment:
+      <<: *agent_env
+      AGENT_ID: enterprise-ws-2
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.251.0/24"
+      OOB_MGMT_PREFIX: "172.31.251."
+      DEVICE_NAME: Enterprise-WS-2
+      DEVICE_ROLE: Enterprise plant-information workstation
+      DEVICE_DESC: Enterprise information consumer with no reverse plant route
+      SERVICE_PORTS: "8080"
+      HTTP_PORT: "8080"
+    networks:
+      enterprise_net:
+        ipv4_address: 10.4.50.20
+      oob_mgmt:
+        ipv4_address: 172.31.251.120
+    ports:
+      - "127.0.0.1:18020:8080"
+
+  # Shares enterprise-ws-1's network namespace so the historian export is
+  # delivered to the logical workstation at 10.4.50.10 rather than to a third
+  # enterprise asset.
+  enterprise-export-receiver:
+    build:
+      context: ./services/enterprise-export-receiver
+    image: falcons_case_study_export_receiver:local
+    restart: unless-stopped
+    network_mode: "service:enterprise-ws-1"
+    depends_on:
+      enterprise-ws-1:
+        condition: service_started
+    environment:
+      EXPORT_BIND_HOST: "0.0.0.0"
+      EXPORT_PORT: "5514"
+      EXPORT_LOG: /data/historian-export.jsonl
+    volumes:
+      - historian_export_data:/data
+
+  # -------------------------------------------------------------------------
+  # Operations-to-Enterprise data diode. The dedicated implementation permits
+  # one exact UDP export flow and deliberately installs no reverse or
+  # ESTABLISHED forwarding rule.
+  # -------------------------------------------------------------------------
+  data-diode:
+    build:
+      context: ./services/data-diode
+    image: falcons_case_study_data_diode:local
+    restart: unless-stopped
+    cap_drop: ["ALL"]
+    cap_add: ["NET_ADMIN", "NET_RAW"]
+    sysctls:
+      net.ipv4.ip_forward: "1"
+      net.ipv4.conf.all.rp_filter: "0"
+    environment:
+      DIODE_SOURCE_IP: "10.3.50.10"
+      DIODE_DESTINATION_IP: "10.4.50.10"
+      DIODE_DESTINATION_PORT: "5514"
+      DIODE_PROTOCOL: udp
+    networks:
+      operations_net:
+        ipv4_address: 10.3.50.254
+      enterprise_net:
+        ipv4_address: 10.4.50.254
+
+  # -------------------------------------------------------------------------
+  # Operations layer. The historian has an Operations interface for export and
+  # a Supervisory interface for read-only process access. IP forwarding remains
+  # disabled, so it cannot become an implicit boundary router.
+  # -------------------------------------------------------------------------
+  historian:
+    build:
+      context: ../..
+      dockerfile: testbed/iaea_rcs_demo/services/historian/Dockerfile
+    image: falcons_case_study_historian:local
+    restart: unless-stopped
+    hostname: historian
+    cap_drop: ["ALL"]
+    cap_add: ["NET_ADMIN", "NET_BIND_SERVICE"]
+    read_only: true
+    tmpfs:
+      - /tmp
+    sysctls:
+      net.ipv4.ip_forward: "0"
+    environment:
+      <<: *agent_env
+      AGENT_ID: historian
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.251.0/24"
+      OOB_MGMT_PREFIX: "172.31.251."
+      DEVICE_NAME: Historian
+      DEVICE_ROLE: Operations historian
+      DEVICE_DESC: Polls PLC OPC telemetry and exports a one-way status stream
+      SERVICE_PORTS: "443,4840"
+      STATIC_ROUTES: "10.4.50.0/24 via 10.3.50.254;10.1.1.0/24 via 10.2.50.253;10.1.2.0/24 via 10.2.50.253"
+      MAIN_OPC_URL: "opc.tcp://10.1.1.14:4840/main"
+      BACKUP_OPC_URL: "opc.tcp://10.1.2.15:4840/backup"
+      HISTORIAN_POLL_INTERVAL: "0.5"
+      INFLUX_URL: "${HISTORIAN_INFLUX_URL:-}"
+      INFLUX_TOKEN: "${HISTORIAN_INFLUX_TOKEN:-falcons-historian-token}"
+      INFLUX_ORG: "${HISTORIAN_INFLUX_ORG:-falcons}"
+      INFLUX_BUCKET: "${HISTORIAN_INFLUX_BUCKET:-falcons_case_study}"
+    extra_hosts: *agent_extra_hosts
+    networks:
+      operations_net:
+        ipv4_address: 10.3.50.10
+      supervisory_net:
+        ipv4_address: 10.2.50.30
+      oob_mgmt:
+        ipv4_address: 172.31.251.130
+    ports:
+      - "127.0.0.1:14840:4840"
+
+  # Shares the historian namespace so exported datagrams have the historian's
+  # Operations IP. The route to Enterprise is forced through the data diode.
+  historian-exporter:
+    build:
+      context: ./services/historian-exporter
+    image: falcons_case_study_historian_exporter:local
+    restart: unless-stopped
+    network_mode: "service:historian"
+    depends_on:
+      historian:
+        condition: service_started
+      data-diode:
+        condition: service_started
+      enterprise-export-receiver:
+        condition: service_started
+    environment:
+      HISTORIAN_STATUS_URL: "http://127.0.0.1:4840/"
+      EXPORT_DESTINATION_HOST: "10.4.50.10"
+      EXPORT_DESTINATION_PORT: "5514"
+      EXPORT_INTERVAL_SECONDS: "2"
+
+  # -------------------------------------------------------------------------
+  # Supervisory layer.
+  # -------------------------------------------------------------------------
+  hmi:
+    build:
+      context: ../..
+      dockerfile: testbed/iaea_rcs_demo/services/hmi/Dockerfile
+    image: falcons_case_study_hmi:local
+    restart: unless-stopped
+    hostname: hmi
+    cap_drop: ["ALL"]
+    cap_add: ["NET_ADMIN", "NET_BIND_SERVICE"]
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      <<: *agent_env
+      AGENT_ID: hmi
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.251.0/24"
+      OOB_MGMT_PREFIX: "172.31.251."
+      DEVICE_NAME: HMI
+      DEVICE_ROLE: Supervisory HMI
+      DEVICE_DESC: Operator HMI using the Gateway-0-approved OPC paths
+      SERVICE_PORTS: "80,443"
+      PLC_MAIN_OPC_ENDPOINT: "opc.tcp://10.1.1.14:4840/main"
+      PLC_MAIN_OPC_NAMESPACE: "urn:falcons-case-study:main"
+      PLC_BACKUP_OPC_ENDPOINT: "opc.tcp://10.1.2.15:4840/backup"
+      PLC_BACKUP_OPC_NAMESPACE: "urn:falcons-case-study:backup"
+      STATIC_ROUTES: "10.1.1.0/24 via 10.2.50.253;10.1.2.0/24 via 10.2.50.253"
+    extra_hosts: *agent_extra_hosts
+    networks:
+      supervisory_net:
+        ipv4_address: 10.2.50.10
+      oob_mgmt:
+        ipv4_address: 172.31.251.140
+    ports:
+      - "127.0.0.1:18081:80"
+      - "127.0.0.1:18445:443"
+
+  operator-ws:
+    build:
+      context: ../..
+      dockerfile: testbed/iaea_rcs_demo/services/eng-ws/Dockerfile
+    image: falcons_case_study_operator_ws:local
+    restart: unless-stopped
+    hostname: operator-ws
+    cap_add: ["NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"]
+    tty: true
+    stdin_open: true
+    environment:
+      <<: *agent_env
+      AGENT_ID: operator-ws
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.251.0/24"
+      OOB_MGMT_PREFIX: "172.31.251."
+      DEVICE_NAME: Operator-Workstation
+      DEVICE_ROLE: Supervisory operator workstation
+      DEVICE_DESC: Supervisory workstation for PLC management and verification
+      SERVICE_PORTS: "80,443"
+      ENGINEER_WS_NOVNC_PORT: "6080"
+      ENGINEER_WS_VNC_PORT: "5900"
+      ENGINEER_WS_VNC_PASSWORD: "${FALCONS_OPERATOR_VNC_PASSWORD:-falconsdemo}"
+      STATIC_ROUTES: "10.1.1.0/24 via 10.2.50.253;10.1.2.0/24 via 10.2.50.253"
+    extra_hosts: *agent_extra_hosts
+    networks:
+      supervisory_net:
+        ipv4_address: 10.2.50.20
+      oob_mgmt:
+        ipv4_address: 172.31.251.150
+    volumes:
+      - operator_ws_home:/home/engineer
+    ports:
+      - "127.0.0.1:16080:6080"
+
+  # -------------------------------------------------------------------------
+  # Gateway-0 is the only routed service between Supervisory and the redundant
+  # Control networks. It permits exact source/destination/service tuples only.
+  # -------------------------------------------------------------------------
+  gateway-0:
+    build:
+      context: ../iaea_rcs_demo/firewall
+    image: falcons_case_study_gateway:local
+    restart: unless-stopped
+    hostname: gateway-0
+    cap_drop: ["ALL"]
+    cap_add: ["NET_ADMIN", "NET_RAW"]
+    sysctls:
+      net.ipv4.ip_forward: "1"
+      net.ipv4.conf.all.rp_filter: "0"
+    environment:
+      FIREWALL_NAME: Gateway-0
+      ALLOW_TCP: >-
+        10.2.50.10|10.1.1.14|4840;
+        10.2.50.10|10.1.2.15|4840;
+        10.2.50.20|10.1.1.14|44818,4840;
+        10.2.50.20|10.1.2.15|44818,4840;
+        10.2.50.30|10.1.1.14|4840;
+        10.2.50.30|10.1.2.15|4840
+    networks:
+      supervisory_net:
+        ipv4_address: 10.2.50.253
+      control_a:
+        ipv4_address: 10.1.1.253
+      control_b:
+        ipv4_address: 10.1.2.253
+
+  # -------------------------------------------------------------------------
+  # Control layer: redundant PLCs and independent Channels A-D.
+  # -------------------------------------------------------------------------
+  plc-main:
+    <<: *openplc
+    hostname: plc-main
+    environment:
+      <<: *agent_env
+      AGENT_ID: plc-main
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.251.0/24"
+      OOB_MGMT_PREFIX: "172.31.251."
+      DEVICE_NAME: PLC-Main
+      DEVICE_ROLE: Primary control PLC
+      DEVICE_DESC: Main PLC polling independent Channels A-D
+      COMPAT_HTTP_PORT: "44818"
+      PLC_PROGRAM_TEMPLATE: /opt/openplc-lab/programs/rcs_main_channel_polling_hybrid-model.st
+      PLC_PROGRAM_FILE: rcs_main_channel_polling_hybrid-model.st
+      PLC_PROGRAM_NAME: FALCONS Main Channel Polling
+      PLC_PROGRAM_DESCRIPTION: Publication case-study main controller
+      PLC_MODBUS_PROFILE: /opt/openplc-lab/profiles/plc-main-channels-hybrid-model.json
+      PLC_OPC_PROFILE: main-hybrid-model
+      PLC_OPC_NAMESPACE: urn:falcons-case-study:main
+      PLC_OPC_ENDPOINT_PATH: main
+      PLC_OPC_SERVER_NAME: FALCONS PLC Main OPC Bridge
+      PLC_START_RUN_MODE: "true"
+      PLC_ENIP_PORT: disabled
+      STATIC_ROUTES: "10.2.50.0/24 via 10.1.1.253"
+    volumes:
+      - plc_main_data:/docker_persistent
+    networks:
+      control_a:
+        ipv4_address: 10.1.1.14
+      control_b:
+        ipv4_address: 10.1.2.14
+      oob_mgmt:
+        ipv4_address: 172.31.251.160
+    ports:
+      - "127.0.0.1:18180:8080"
+
+  plc-backup:
+    <<: *openplc
+    hostname: plc-backup
+    environment:
+      <<: *agent_env
+      AGENT_ID: plc-backup
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.251.0/24"
+      OOB_MGMT_PREFIX: "172.31.251."
+      DEVICE_NAME: PLC-Backup
+      DEVICE_ROLE: Backup control PLC
+      DEVICE_DESC: Backup PLC polling independent Channels A-D
+      COMPAT_HTTP_PORT: "44818"
+      PLC_PROGRAM_TEMPLATE: /opt/openplc-lab/programs/rcs_backup_channel_polling_hybrid-model.st
+      PLC_PROGRAM_FILE: rcs_backup_channel_polling_hybrid-model.st
+      PLC_PROGRAM_NAME: FALCONS Backup Channel Polling
+      PLC_PROGRAM_DESCRIPTION: Publication case-study backup controller
+      PLC_MODBUS_PROFILE: /opt/openplc-lab/profiles/plc-backup-channels-hybrid-model.json
+      PLC_OPC_PROFILE: backup-hybrid-model
+      PLC_OPC_NAMESPACE: urn:falcons-case-study:backup
+      PLC_OPC_ENDPOINT_PATH: backup
+      PLC_OPC_SERVER_NAME: FALCONS PLC Backup OPC Bridge
+      PLC_START_RUN_MODE: "true"
+      PLC_ENIP_PORT: disabled
+      STATIC_ROUTES: "10.2.50.0/24 via 10.1.2.253"
+    volumes:
+      - plc_backup_data:/docker_persistent
+    networks:
+      control_a:
+        ipv4_address: 10.1.1.15
+      control_b:
+        ipv4_address: 10.1.2.15
+      oob_mgmt:
+        ipv4_address: 172.31.251.161
+    ports:
+      - "127.0.0.1:18181:8080"
+
+  channel-a:
+    <<: *control_endpoint
+    hostname: channel-a
+    environment:
+      <<: *agent_env
+      AGENT_ID: channel-a
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.251.0/24"
+      OOB_MGMT_PREFIX: "172.31.251."
+      DEVICE_NAME: Channel-A
+      DEVICE_ROLE: Independent control I/O channel
+      DEVICE_DESC: Channel A reads smart pressure transmitter PT-455
+      SERVICE_PORTS: "502"
+      MODBUS_PORT: "502"
+      MODBUS_PROFILE: analog_passthrough
+      MODBUS_UPSTREAM_HOST: "10.1.1.9"
+      MODBUS_UPSTREAM_PORT: "502"
+      MODBUS_UPSTREAM_UNIT_ID: "1"
+      MODBUS_UPSTREAM_FUNCTION: "4"
+      MODBUS_UPSTREAM_START: "0"
+      MODBUS_UPSTREAM_COUNT: "2"
+      MODBUS_UPSTREAM_CACHE_SEC: "0.2"
+    networks:
+      control_a:
+        ipv4_address: 10.1.1.10
+      control_b:
+        ipv4_address: 10.1.2.10
+      oob_mgmt:
+        ipv4_address: 172.31.251.170
+    healthcheck:
+      test: ["CMD-SHELL", "ss -lnt | grep -q ':502'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  channel-b:
+    <<: *control_endpoint
+    hostname: channel-b
+    environment:
+      <<: *agent_env
+      AGENT_ID: channel-b
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.251.0/24"
+      OOB_MGMT_PREFIX: "172.31.251."
+      DEVICE_NAME: Channel-B
+      DEVICE_ROLE: Independent control I/O channel
+      DEVICE_DESC: Channel B reads smart pressure transmitter PT-456
+      SERVICE_PORTS: "502"
+      MODBUS_PORT: "502"
+      MODBUS_PROFILE: analog_passthrough
+      MODBUS_UPSTREAM_HOST: "10.1.2.8"
+      MODBUS_UPSTREAM_PORT: "502"
+      MODBUS_UPSTREAM_UNIT_ID: "2"
+      MODBUS_UPSTREAM_FUNCTION: "4"
+      MODBUS_UPSTREAM_START: "0"
+      MODBUS_UPSTREAM_COUNT: "2"
+      MODBUS_UPSTREAM_CACHE_SEC: "0.2"
+    networks:
+      control_a:
+        ipv4_address: 10.1.1.11
+      control_b:
+        ipv4_address: 10.1.2.11
+      oob_mgmt:
+        ipv4_address: 172.31.251.171
+    healthcheck:
+      test: ["CMD-SHELL", "ss -lnt | grep -q ':502'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  channel-c:
+    <<: *control_endpoint
+    hostname: channel-c
+    environment:
+      <<: *agent_env
+      AGENT_ID: channel-c
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.251.0/24"
+      OOB_MGMT_PREFIX: "172.31.251."
+      DEVICE_NAME: Channel-C
+      DEVICE_ROLE: Independent control I/O channel
+      DEVICE_DESC: Analog PT-457, heater, and spray/valve control channel
+      SERVICE_PORTS: "502"
+      MODBUS_PORT: "502"
+      MODBUS_PROFILE: hybrid_channel_c
+      MODBUS_CSV_PATH: /app/simulated_data/PZRData_demo.csv
+      MODBUS_CSV_SENSOR_COLUMN: PT-457
+      MODBUS_CSV_ACTUATOR_COLUMNS: VC-HV455A,VC-PV455B,Heat-Ctrl
+      MODBUS_BASE_VALUE: "4570"
+      MODBUS_STATUS_VALUE: "1"
+      MODBUS_CONTROLLER_MAP: "1|10.1.1.14|200;2|10.1.2.15|100"
+      MODBUS_OWNER_LEASE_SEC: "2.0"
+      MODBUS_COMMAND_MIN: "0"
+      MODBUS_COMMAND_MAX: "100"
+    networks:
+      control_a:
+        ipv4_address: 10.1.1.12
+      control_b:
+        ipv4_address: 10.1.2.12
+      oob_mgmt:
+        ipv4_address: 172.31.251.172
+    healthcheck:
+      test: ["CMD-SHELL", "ss -lnt | grep -q ':502'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  channel-d:
+    <<: *control_endpoint
+    hostname: channel-d
+    environment:
+      <<: *agent_env
+      AGENT_ID: channel-d
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.251.0/24"
+      OOB_MGMT_PREFIX: "172.31.251."
+      DEVICE_NAME: Channel-D
+      DEVICE_ROLE: Independent control I/O channel
+      DEVICE_DESC: Analog PT-458 and relief-valve control channel
+      SERVICE_PORTS: "502"
+      MODBUS_PORT: "502"
+      MODBUS_PROFILE: hybrid_channel_d
+      MODBUS_CSV_PATH: /app/simulated_data/PZRData_demo.csv
+      MODBUS_CSV_SENSOR_COLUMN: PT-458
+      MODBUS_CSV_ACTUATOR_COLUMNS: VC-PV455C
+      MODBUS_BASE_VALUE: "4580"
+      MODBUS_STATUS_VALUE: "1"
+      MODBUS_CONTROLLER_MAP: "1|10.1.1.14|200;2|10.1.2.15|100"
+      MODBUS_OWNER_LEASE_SEC: "2.0"
+      MODBUS_COMMAND_MIN: "0"
+      MODBUS_COMMAND_MAX: "100"
+    networks:
+      control_a:
+        ipv4_address: 10.1.1.13
+      control_b:
+        ipv4_address: 10.1.2.13
+      oob_mgmt:
+        ipv4_address: 172.31.251.173
+    healthcheck:
+      test: ["CMD-SHELL", "ss -lnt | grep -q ':502'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # -------------------------------------------------------------------------
+  # Field layer: only the smart transmitters are network-addressable. PT-457,
+  # PT-458, heater/valve controllers, sprays, and relief valves remain physical
+  # elements represented in sim_system.json rather than IP containers.
+  # -------------------------------------------------------------------------
+  pt-455:
+    <<: *control_endpoint
+    hostname: pt-455
+    environment:
+      <<: *agent_env
+      AGENT_ID: pt-455
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.251.0/24"
+      OOB_MGMT_PREFIX: "172.31.251."
+      DEVICE_NAME: PT-455
+      DEVICE_ROLE: Smart pressure transmitter
+      DEVICE_DESC: Network-addressable pressurizer pressure transmitter
+      SERVICE_PORTS: "502"
+      MODBUS_PORT: "502"
+      MODBUS_PROFILE: pressure_transmitter
+      MODBUS_CSV_PATH: /app/simulated_data/PZRData_demo.csv
+      MODBUS_CSV_SENSOR_COLUMN: PT-455
+      MODBUS_BASE_VALUE: "4550"
+      MODBUS_STATUS_VALUE: "1"
+    networks:
+      control_a:
+        ipv4_address: 10.1.1.9
+      control_b:
+        ipv4_address: 10.1.2.9
+      oob_mgmt:
+        ipv4_address: 172.31.251.180
+    healthcheck:
+      test: ["CMD-SHELL", "ss -lnt | grep -q ':502'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  pt-456:
+    <<: *control_endpoint
+    hostname: pt-456
+    environment:
+      <<: *agent_env
+      AGENT_ID: pt-456
+      OOB_GUARD_ENABLED: "1"
+      OOB_MGMT_SUBNET: "172.31.251.0/24"
+      OOB_MGMT_PREFIX: "172.31.251."
+      DEVICE_NAME: PT-456
+      DEVICE_ROLE: Smart pressure transmitter
+      DEVICE_DESC: Network-addressable pressurizer pressure transmitter
+      SERVICE_PORTS: "502"
+      MODBUS_PORT: "502"
+      MODBUS_PROFILE: pressure_transmitter
+      MODBUS_CSV_PATH: /app/simulated_data/PZRData_demo.csv
+      MODBUS_CSV_SENSOR_COLUMN: PT-456
+      MODBUS_BASE_VALUE: "4560"
+      MODBUS_STATUS_VALUE: "1"
+    networks:
+      control_a:
+        ipv4_address: 10.1.1.8
+      control_b:
+        ipv4_address: 10.1.2.8
+      oob_mgmt:
+        ipv4_address: 172.31.251.181
+    healthcheck:
+      test: ["CMD-SHELL", "ss -lnt | grep -q ':502'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+networks:
+  enterprise_net:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.4.50.0/24
+  operations_net:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.3.50.0/24
+  supervisory_net:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.2.50.0/24
+  control_a:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.1.1.0/24
+  control_b:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.1.2.0/24
+  oob_mgmt:
+    ipam:
+      config:
+        - subnet: 172.31.251.0/24
+
+volumes:
+  historian_export_data:
+  operator_ws_home:
+  plc_main_data:
+  plc_backup_data:

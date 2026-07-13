@@ -1,0 +1,159 @@
+{
+  "version": "1.0",
+  "testbed": "falcons_case_study",
+  "description": "Service-aware allowlist for the publication case-study topology. Communication not listed here is unreachable unless an experiment explicitly applies a versioned policy change.",
+  "default_action": "deny",
+  "excluded_from_reachability": [
+    {
+      "network": "oob_mgmt",
+      "cidr": "172.31.251.0/24",
+      "reason": "Out-of-band collection plane; not part of the modeled plant attack path."
+    }
+  ],
+  "boundaries": {
+    "data-diode": {
+      "type": "unidirectional_gateway",
+      "from_zone": "operations",
+      "to_zone": "enterprise",
+      "reverse_allowed": false
+    },
+    "gateway-0": {
+      "type": "filtered_router",
+      "from_zone": "supervisory",
+      "to_zone": "control",
+      "default_action": "deny"
+    }
+  },
+  "communications": [
+    {
+      "id": "historian-export",
+      "source": "historian",
+      "destination": "enterprise-ws-1",
+      "protocol": "udp",
+      "destination_ports": [5514],
+      "boundary": "data-diode",
+      "direction": "operations_to_enterprise",
+      "purpose": "One-way historian status export"
+    },
+    {
+      "id": "hmi-historian",
+      "source": "hmi",
+      "destination": "historian",
+      "protocol": "tcp",
+      "destination_ports": [443, 4840],
+      "boundary": null,
+      "direction": "supervisory_local",
+      "purpose": "Read-only operator access to historian data"
+    },
+    {
+      "id": "operator-historian",
+      "source": "operator-ws",
+      "destination": "historian",
+      "protocol": "tcp",
+      "destination_ports": [443, 4840],
+      "boundary": null,
+      "direction": "supervisory_local",
+      "purpose": "Operator workstation access to historian data"
+    },
+    {
+      "id": "hmi-plc-main-opc",
+      "source": "hmi",
+      "destination": "plc-main",
+      "protocol": "tcp",
+      "destination_ports": [4840],
+      "boundary": "gateway-0",
+      "direction": "supervisory_to_control",
+      "purpose": "HMI OPC UA access to primary PLC"
+    },
+    {
+      "id": "hmi-plc-backup-opc",
+      "source": "hmi",
+      "destination": "plc-backup",
+      "protocol": "tcp",
+      "destination_ports": [4840],
+      "boundary": "gateway-0",
+      "direction": "supervisory_to_control",
+      "purpose": "HMI OPC UA access to backup PLC"
+    },
+    {
+      "id": "operator-plc-main",
+      "source": "operator-ws",
+      "destination": "plc-main",
+      "protocol": "tcp",
+      "destination_ports": [44818, 4840],
+      "boundary": "gateway-0",
+      "direction": "supervisory_to_control",
+      "purpose": "Approved primary PLC management and verification"
+    },
+    {
+      "id": "operator-plc-backup",
+      "source": "operator-ws",
+      "destination": "plc-backup",
+      "protocol": "tcp",
+      "destination_ports": [44818, 4840],
+      "boundary": "gateway-0",
+      "direction": "supervisory_to_control",
+      "purpose": "Approved backup PLC management and verification"
+    },
+    {
+      "id": "historian-plc-main",
+      "source": "historian",
+      "destination": "plc-main",
+      "protocol": "tcp",
+      "destination_ports": [4840],
+      "boundary": "gateway-0",
+      "direction": "supervisory_to_control",
+      "purpose": "Historian collection from primary PLC OPC bridge"
+    },
+    {
+      "id": "historian-plc-backup",
+      "source": "historian",
+      "destination": "plc-backup",
+      "protocol": "tcp",
+      "destination_ports": [4840],
+      "boundary": "gateway-0",
+      "direction": "supervisory_to_control",
+      "purpose": "Historian collection from backup PLC OPC bridge"
+    },
+    {
+      "id": "plc-main-channels",
+      "source": "plc-main",
+      "destination": ["channel-a", "channel-b", "channel-c", "channel-d"],
+      "protocol": "tcp",
+      "destination_ports": [502],
+      "boundary": null,
+      "direction": "control_local",
+      "purpose": "Primary PLC Modbus/TCP polling and commands"
+    },
+    {
+      "id": "plc-backup-channels",
+      "source": "plc-backup",
+      "destination": ["channel-a", "channel-b", "channel-c", "channel-d"],
+      "protocol": "tcp",
+      "destination_ports": [502],
+      "boundary": null,
+      "direction": "control_local",
+      "purpose": "Backup PLC Modbus/TCP polling and commands"
+    },
+    {
+      "id": "channel-a-pt455",
+      "source": "channel-a",
+      "destination": "pt-455",
+      "protocol": "tcp",
+      "destination_ports": [502],
+      "boundary": null,
+      "direction": "field_local",
+      "purpose": "Smart pressure-transmitter acquisition"
+    },
+    {
+      "id": "channel-b-pt456",
+      "source": "channel-b",
+      "destination": "pt-456",
+      "protocol": "tcp",
+      "destination_ports": [502],
+      "boundary": null,
+      "direction": "field_local",
+      "purpose": "Smart pressure-transmitter acquisition"
+    }
+  ]
+}

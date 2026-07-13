@@ -1,0 +1,340 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "name": "falcons_case_study",
+    "purpose": "Publication-specific cyber-physical model aligned with Figure 3",
+    "compose_path": "testbed/falcons_case_study/docker-compose.yml",
+    "communication_policy_path": "testbed/falcons_case_study/allowed_communications.json",
+    "process_source": {
+      "mode": "integration_trace",
+      "value": "testbed/iaea_rcs_demo/simulated_data/PZRData_demo.csv",
+      "publication_approved": false,
+      "note": "Replace with live or approved recorded GPWR provenance before final publication runs."
+    }
+  },
+  "digital": {
+    "enterprise-net": {
+      "type": "network",
+      "cidr": "10.4.50.0/24",
+      "source": {},
+      "target": {}
+    },
+    "operations-net": {
+      "type": "network",
+      "cidr": "10.3.50.0/24",
+      "source": {},
+      "target": {}
+    },
+    "supervisory-net": {
+      "type": "network",
+      "cidr": "10.2.50.0/24",
+      "source": {},
+      "target": {}
+    },
+    "control-a": {
+      "type": "network",
+      "cidr": "10.1.1.0/24",
+      "source": {},
+      "target": {}
+    },
+    "control-b": {
+      "type": "network",
+      "cidr": "10.1.2.0/24",
+      "source": {},
+      "target": {}
+    },
+    "enterprise-ws-1": {
+      "type": "Computer",
+      "role": "enterprise_information_consumer",
+      "ip_address": "10.4.50.10",
+      "networks": {"enterprise-net": {"ipv4_address": "10.4.50.10"}},
+      "services": [{"protocol": "udp", "port": 5514, "purpose": "historian_export_receiver"}],
+      "source": {"data-diode": "Firewall"},
+      "target": {}
+    },
+    "enterprise-ws-2": {
+      "type": "Computer",
+      "role": "enterprise_information_consumer",
+      "ip_address": "10.4.50.20",
+      "networks": {"enterprise-net": {"ipv4_address": "10.4.50.20"}},
+      "source": {},
+      "target": {}
+    },
+    "data-diode": {
+      "type": "Firewall",
+      "role": "unidirectional_gateway",
+      "networks": {
+        "operations-net": {"ipv4_address": "10.3.50.254"},
+        "enterprise-net": {"ipv4_address": "10.4.50.254"}
+      },
+      "boundary_policy": {
+        "direction": "operations_to_enterprise",
+        "protocol": "udp",
+        "destination_port": 5514,
+        "reverse_allowed": false
+      },
+      "source": {"historian": "Computer"},
+      "target": {"enterprise-ws-1": "Computer"}
+    },
+    "historian": {
+      "type": "Computer",
+      "role": "operations_historian",
+      "ip_addresses": ["10.3.50.10", "10.2.50.30"],
+      "networks": {
+        "operations-net": {"ipv4_address": "10.3.50.10"},
+        "supervisory-net": {"ipv4_address": "10.2.50.30"}
+      },
+      "services": [
+        {"protocol": "tcp", "port": 443, "purpose": "historian_status"},
+        {"protocol": "tcp", "port": 4840, "purpose": "opc_telemetry"}
+      ],
+      "source": {},
+      "target": {
+        "data-diode": "Firewall",
+        "gateway-0": "Firewall"
+      }
+    },
+    "hmi": {
+      "type": "HMI",
+      "role": "supervisory_hmi",
+      "ip_address": "10.2.50.10",
+      "networks": {"supervisory-net": {"ipv4_address": "10.2.50.10"}},
+      "source": {},
+      "target": {
+        "historian": "Computer",
+        "gateway-0": "Firewall"
+      }
+    },
+    "operator-ws": {
+      "type": "Computer",
+      "role": "supervisory_operator_workstation",
+      "ip_address": "10.2.50.20",
+      "networks": {"supervisory-net": {"ipv4_address": "10.2.50.20"}},
+      "source": {},
+      "target": {
+        "historian": "Computer",
+        "gateway-0": "Firewall"
+      }
+    },
+    "gateway-0": {
+      "type": "Firewall",
+      "role": "supervisory_control_gateway",
+      "networks": {
+        "supervisory-net": {"ipv4_address": "10.2.50.253"},
+        "control-a": {"ipv4_address": "10.1.1.253"},
+        "control-b": {"ipv4_address": "10.1.2.253"}
+      },
+      "source": {
+        "historian": "Computer",
+        "hmi": "HMI",
+        "operator-ws": "Computer"
+      },
+      "target": {
+        "plc-main": "PLC",
+        "plc-backup": "PLC"
+      }
+    },
+    "plc-main": {
+      "type": "PLC",
+      "role": "primary_controller",
+      "ip_addresses": ["10.1.1.14", "10.1.2.14"],
+      "networks": {
+        "control-a": {"ipv4_address": "10.1.1.14"},
+        "control-b": {"ipv4_address": "10.1.2.14"}
+      },
+      "source": {"gateway-0": "Firewall"},
+      "target": {
+        "channel-a": "Computer",
+        "channel-b": "Computer",
+        "channel-c": "Computer",
+        "channel-d": "Computer",
+        "E_455A_Main": "electricity",
+        "E_455B_Main": "electricity",
+        "E_455C_Main": "electricity",
+        "E_HEAT_Main": "electricity"
+      }
+    },
+    "plc-backup": {
+      "type": "PLC",
+      "role": "backup_controller",
+      "ip_addresses": ["10.1.1.15", "10.1.2.15"],
+      "networks": {
+        "control-a": {"ipv4_address": "10.1.1.15"},
+        "control-b": {"ipv4_address": "10.1.2.15"}
+      },
+      "source": {"gateway-0": "Firewall"},
+      "target": {
+        "channel-a": "Computer",
+        "channel-b": "Computer",
+        "channel-c": "Computer",
+        "channel-d": "Computer",
+        "E_455A_Backup": "electricity",
+        "E_455B_Backup": "electricity",
+        "E_455C_Backup": "electricity",
+        "E_HEAT_Backup": "electricity"
+      }
+    },
+    "channel-a": {
+      "type": "Computer",
+      "role": "independent_io_channel",
+      "ip_addresses": ["10.1.1.10", "10.1.2.10"],
+      "networks": {
+        "control-a": {"ipv4_address": "10.1.1.10"},
+        "control-b": {"ipv4_address": "10.1.2.10"}
+      },
+      "source": {"plc-main": "PLC", "plc-backup": "PLC", "pt-455": "tr_press"},
+      "target": {}
+    },
+    "channel-b": {
+      "type": "Computer",
+      "role": "independent_io_channel",
+      "ip_addresses": ["10.1.1.11", "10.1.2.11"],
+      "networks": {
+        "control-a": {"ipv4_address": "10.1.1.11"},
+        "control-b": {"ipv4_address": "10.1.2.11"}
+      },
+      "source": {"plc-main": "PLC", "plc-backup": "PLC", "pt-456": "tr_press"},
+      "target": {}
+    },
+    "channel-c": {
+      "type": "Computer",
+      "role": "independent_io_channel",
+      "ip_addresses": ["10.1.1.12", "10.1.2.12"],
+      "networks": {
+        "control-a": {"ipv4_address": "10.1.1.12"},
+        "control-b": {"ipv4_address": "10.1.2.12"}
+      },
+      "source": {"plc-main": "PLC", "plc-backup": "PLC", "E_PT457": "electricity"},
+      "target": {}
+    },
+    "channel-d": {
+      "type": "Computer",
+      "role": "independent_io_channel",
+      "ip_addresses": ["10.1.1.13", "10.1.2.13"],
+      "networks": {
+        "control-a": {"ipv4_address": "10.1.1.13"},
+        "control-b": {"ipv4_address": "10.1.2.13"}
+      },
+      "source": {"plc-main": "PLC", "plc-backup": "PLC", "E_PT458": "electricity"},
+      "target": {}
+    },
+    "pt-455": {
+      "type": "tr_press",
+      "role": "smart_pressure_transmitter",
+      "ip_addresses": ["10.1.1.9", "10.1.2.9"],
+      "networks": {
+        "control-a": {"ipv4_address": "10.1.1.9"},
+        "control-b": {"ipv4_address": "10.1.2.9"}
+      },
+      "source": {"P_Pressurizer": "pressure"},
+      "target": {"channel-a": "Computer"}
+    },
+    "pt-456": {
+      "type": "tr_press",
+      "role": "smart_pressure_transmitter",
+      "ip_addresses": ["10.1.1.8", "10.1.2.8"],
+      "networks": {
+        "control-a": {"ipv4_address": "10.1.1.8"},
+        "control-b": {"ipv4_address": "10.1.2.8"}
+      },
+      "source": {"P_Pressurizer": "pressure"},
+      "target": {"channel-b": "Computer"}
+    }
+  },
+  "physical": {
+    "Pressurizer": {
+      "type": "pressurizer",
+      "source": {"H_Heater": "heat", "FL_PZRSpray": "fluid"},
+      "target": {"P_Pressurizer": "pressure"}
+    },
+    "Heater": {
+      "type": "heater",
+      "source": {"CTRL_HEATER": "electricity"},
+      "target": {"H_Heater": "heat"}
+    },
+    "pt-457": {
+      "type": "tr_press",
+      "role": "analog_pressure_transmitter",
+      "source": {"P_Pressurizer": "pressure"},
+      "target": {"E_PT457": "electricity"}
+    },
+    "pt-458": {
+      "type": "tr_press",
+      "role": "analog_pressure_transmitter",
+      "source": {"P_Pressurizer": "pressure"},
+      "target": {"E_PT458": "electricity"}
+    },
+    "vc-hv455a": {
+      "type": "valve_ctrl",
+      "source": {"E_455A_Main": "electricity", "E_455A_Backup": "electricity"},
+      "target": {"CTRL_RELIEF": "electricity"}
+    },
+    "vc-pv455b": {
+      "type": "valve_ctrl",
+      "source": {"E_455B_Main": "electricity", "E_455B_Backup": "electricity"},
+      "target": {"CTRL_SPRAY_1": "electricity"}
+    },
+    "vc-pv455c": {
+      "type": "valve_ctrl",
+      "source": {"E_455C_Main": "electricity", "E_455C_Backup": "electricity"},
+      "target": {"CTRL_SPRAY_2": "electricity"}
+    },
+    "heat-ctrl": {
+      "type": "heater_ctrl",
+      "source": {"E_HEAT_Main": "electricity", "E_HEAT_Backup": "electricity"},
+      "target": {"CTRL_HEATER": "electricity"}
+    }
+  },
+  "flow": {
+    "P_Pressurizer": {
+      "type": "pressure",
+      "source": {"Pressurizer": "pressurizer"},
+      "target": {
+        "pt-455": "tr_press",
+        "pt-456": "tr_press",
+        "pt-457": "tr_press",
+        "pt-458": "tr_press",
+        "maintain_pressure": "system_function"
+      }
+    },
+    "H_Heater": {
+      "type": "heat",
+      "source": {"Heater": "heater"},
+      "target": {"Pressurizer": "pressurizer"}
+    },
+    "FL_PZRSpray": {
+      "type": "fluid",
+      "source": {"CTRL_SPRAY_1": "electricity", "CTRL_SPRAY_2": "electricity"},
+      "target": {"Pressurizer": "pressurizer"}
+    },
+    "E_PT457": {
+      "type": "electricity",
+      "source": {"pt-457": "tr_press"},
+      "target": {"channel-c": "Computer"}
+    },
+    "E_PT458": {
+      "type": "electricity",
+      "source": {"pt-458": "tr_press"},
+      "target": {"channel-d": "Computer"}
+    },
+    "E_455A_Main": {"type": "electricity", "source": {"plc-main": "PLC"}, "target": {"vc-hv455a": "valve_ctrl"}},
+    "E_455A_Backup": {"type": "electricity", "source": {"plc-backup": "PLC"}, "target": {"vc-hv455a": "valve_ctrl"}},
+    "E_455B_Main": {"type": "electricity", "source": {"plc-main": "PLC"}, "target": {"vc-pv455b": "valve_ctrl"}},
+    "E_455B_Backup": {"type": "electricity", "source": {"plc-backup": "PLC"}, "target": {"vc-pv455b": "valve_ctrl"}},
+    "E_455C_Main": {"type": "electricity", "source": {"plc-main": "PLC"}, "target": {"vc-pv455c": "valve_ctrl"}},
+    "E_455C_Backup": {"type": "electricity", "source": {"plc-backup": "PLC"}, "target": {"vc-pv455c": "valve_ctrl"}},
+    "E_HEAT_Main": {"type": "electricity", "source": {"plc-main": "PLC"}, "target": {"heat-ctrl": "heater_ctrl"}},
+    "E_HEAT_Backup": {"type": "electricity", "source": {"plc-backup": "PLC"}, "target": {"heat-ctrl": "heater_ctrl"}},
+    "CTRL_RELIEF": {"type": "electricity", "source": {"vc-hv455a": "valve_ctrl"}, "target": {"Pressurizer": "pressurizer"}},
+    "CTRL_SPRAY_1": {"type": "electricity", "source": {"vc-pv455b": "valve_ctrl"}, "target": {"FL_PZRSpray": "fluid"}},
+    "CTRL_SPRAY_2": {"type": "electricity", "source": {"vc-pv455c": "valve_ctrl"}, "target": {"FL_PZRSpray": "fluid"}},
+    "CTRL_HEATER": {"type": "electricity", "source": {"heat-ctrl": "heater_ctrl"}, "target": {"Heater": "heater"}}
+  },
+  "function": {
+    "maintain_pressure": {
+      "type": "system_function",
+      "source": {"P_Pressurizer": "pressure"},
+      "target": {}
+    }
+  }
+}
